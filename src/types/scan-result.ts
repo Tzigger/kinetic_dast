@@ -1,5 +1,18 @@
-import { Vulnerability, VulnerabilitySummary } from './vulnerability';
+import { Vulnerability } from './vulnerability';
+import { ScanConfiguration } from './config';
 import { ScannerType, ScanStatus } from './enums';
+
+/**
+ * Vulnerability summary interface
+ */
+export interface VulnerabilitySummary {
+  total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+}
 
 /**
  * Result from a single scanner execution
@@ -8,35 +21,41 @@ export interface ScanResult {
   /** Unique identifier for this scan result */
   scanId: string;
 
-  /** Scanner identifier */
-  scannerId: string;
-
-  /** Scanner name */
-  scannerName: string;
-
-  /** Scanner type */
-  scannerType: ScannerType;
-
-  /** Scan start time */
-  startTime: Date;
-
-  /** Scan end time */
-  endTime: Date;
-
-  /** Scan duration in milliseconds */
-  duration: number;
-
   /** Target URL that was scanned */
   targetUrl: string;
 
   /** Scan status */
   status: ScanStatus;
 
+  /** Scan start time */
+  startTime: Date | number;
+
+  /** Scan end time */
+  endTime: Date | number;
+
+  /** Scan duration in milliseconds */
+  duration: number;
+
   /** Vulnerabilities found */
   vulnerabilities: Vulnerability[];
 
-  /** Statistics about the scan */
-  statistics: ScanStatistics;
+  /** Summary */
+  summary: VulnerabilitySummary;
+
+  /** Configuration used */
+  config: ScanConfiguration;
+
+  /** Scanner identifier (optional) */
+  scannerId?: string;
+
+  /** Scanner name (optional) */
+  scannerName?: string;
+
+  /** Scanner type (optional) */
+  scannerType?: ScannerType;
+
+  /** Statistics about the scan (optional) */
+  statistics?: ScanStatistics;
 
   /** Errors encountered during scan */
   errors?: ScanError[];
@@ -45,7 +64,7 @@ export interface ScanResult {
   warnings?: string[];
 
   /** Additional metadata */
-  metadata: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 /**

@@ -106,6 +106,8 @@ export interface CustomRule {
 export interface BrowserConfig {
     type: 'chromium' | 'firefox' | 'webkit';
     headless: boolean;
+    timeout?: number;
+    args?: string[];
     viewport?: {
         width: number;
         height: number;

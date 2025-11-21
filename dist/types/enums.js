@@ -11,10 +11,14 @@ export var VulnerabilityCategory;
     VulnerabilityCategory["INJECTION"] = "injection";
     VulnerabilityCategory["XSS"] = "xss";
     VulnerabilityCategory["DATA_EXPOSURE"] = "data-exposure";
+    VulnerabilityCategory["INFORMATION_DISCLOSURE"] = "information-disclosure";
     VulnerabilityCategory["INSECURE_TRANSMISSION"] = "insecure-transmission";
+    VulnerabilityCategory["INSECURE_COMMUNICATION"] = "insecure-communication";
     VulnerabilityCategory["AUTHENTICATION"] = "authentication";
+    VulnerabilityCategory["BROKEN_AUTHENTICATION"] = "broken-authentication";
     VulnerabilityCategory["AUTHORIZATION"] = "authorization";
     VulnerabilityCategory["CONFIGURATION"] = "configuration";
+    VulnerabilityCategory["SECURITY_MISCONFIGURATION"] = "security-misconfiguration";
     VulnerabilityCategory["CRYPTOGRAPHY"] = "cryptography";
     VulnerabilityCategory["CSRF"] = "csrf";
     VulnerabilityCategory["CLICKJACKING"] = "clickjacking";
@@ -49,6 +53,12 @@ export var ScanStatus;
     ScanStatus["FAILED"] = "failed";
     ScanStatus["CANCELLED"] = "cancelled";
 })(ScanStatus || (ScanStatus = {}));
+export var BrowserType;
+(function (BrowserType) {
+    BrowserType["CHROMIUM"] = "chromium";
+    BrowserType["FIREFOX"] = "firefox";
+    BrowserType["WEBKIT"] = "webkit";
+})(BrowserType || (BrowserType = {}));
 export var LogLevel;
 (function (LogLevel) {
     LogLevel["ERROR"] = "error";

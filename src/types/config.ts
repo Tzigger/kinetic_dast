@@ -289,6 +289,12 @@ export interface BrowserConfig {
   /** Whether to run in headless mode */
   headless: boolean;
 
+  /** Browser launch timeout in milliseconds */
+  timeout?: number;
+
+  /** Additional browser launch arguments */
+  args?: string[];
+
   /** Viewport dimensions */
   viewport?: {
     width: number;

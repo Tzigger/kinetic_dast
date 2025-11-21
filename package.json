@@ -24,7 +24,8 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "clean": "rm -rf dist coverage",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run test && npm run lint"
+    "prepublishOnly": "npm run test && npm run lint",
+    "test:phase2": "npx playwright test tests/integration/phase2-comprehensive.test.ts --reporter=list --project=chromium"
   },
   "keywords": [
     "dast",
@@ -64,9 +65,11 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@types/uuid": "^10.0.0",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "ora": "^5.4.1",
+    "uuid": "^13.0.0",
     "winston": "^3.11.0"
   }
 }

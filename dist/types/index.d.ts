@@ -1,6 +1,6 @@
 export * from './enums';
 export * from './evidence';
-export * from './vulnerability';
+export type { Vulnerability, VulnerabilityMetadata, VulnerabilityReport } from './vulnerability';
 export * from './config';
-export * from './scan-result';
+export type { ScanResult, VulnerabilitySummary, AggregatedScanResult } from './scan-result';
 //# sourceMappingURL=index.d.ts.map

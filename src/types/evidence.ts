@@ -5,10 +5,33 @@ import { HttpMethod } from './enums';
  */
 export interface Evidence {
   /** The URL where the vulnerability was found */
-  url: string;
+  url?: string;
 
   /** HTTP method used */
   method?: HttpMethod;
+
+  /** Request information */
+  request?: {
+    method?: HttpMethod | string;
+    url?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  };
+
+  /** Response information */
+  response?: {
+    status?: number;
+    statusText?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    snippet?: string;
+  };
+
+  /** Source of the detection */
+  source?: string;
+
+  /** Description of the evidence */
+  description?: string;
 
   /** Request headers */
   requestHeaders?: Record<string, string>;

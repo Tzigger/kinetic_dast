@@ -1,7 +1,22 @@
 import { HttpMethod } from './enums';
 export interface Evidence {
-    url: string;
+    url?: string;
     method?: HttpMethod;
+    request?: {
+        method?: HttpMethod | string;
+        url?: string;
+        headers?: Record<string, string>;
+        body?: string;
+    };
+    response?: {
+        status?: number;
+        statusText?: string;
+        headers?: Record<string, string>;
+        body?: string;
+        snippet?: string;
+    };
+    source?: string;
+    description?: string;
     requestHeaders?: Record<string, string>;
     requestBody?: string;
     responseHeaders?: Record<string, string>;

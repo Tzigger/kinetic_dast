@@ -69,7 +69,7 @@ export abstract class BaseDetector implements IDetector {
   async validate(vulnerability: Vulnerability): Promise<boolean> {
     // Default implementation: trust the detection
     // Override in subclasses for additional validation
-    return vulnerability.confidence > 0.5;
+    return (vulnerability.confidence ?? 0.8) > 0.5;
   }
 
   abstract getPatterns(): RegExp[];

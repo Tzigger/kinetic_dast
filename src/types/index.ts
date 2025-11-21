@@ -9,10 +9,10 @@ export * from './enums';
 export * from './evidence';
 
 // Vulnerability types
-export * from './vulnerability';
+export type { Vulnerability, VulnerabilityMetadata, VulnerabilityReport } from './vulnerability';
 
 // Configuration types
 export * from './config';
 
 // Scan result types
-export * from './scan-result';
+export type { ScanResult, VulnerabilitySummary, AggregatedScanResult } from './scan-result';

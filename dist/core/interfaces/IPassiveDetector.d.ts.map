@@ -1,0 +1,1 @@
+{"version":3,"file":"IPassiveDetector.d.ts","sourceRoot":"","sources":["../../../src/core/interfaces/IPassiveDetector.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,aAAa,EAAE,MAAM,2BAA2B,CAAC;AAM1D,MAAM,WAAW,gBAAgB;IAI/B,MAAM,CAAC,IAAI,EAAE,GAAG,GAAG,OAAO,CAAC,aAAa,EAAE,CAAC,CAAC;IAK5C,QAAQ,IAAI,OAAO,CAAC,OAAO,CAAC,CAAC;IAK7B,WAAW,IAAI,MAAM,EAAE,CAAC;CACzB"}

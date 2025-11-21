@@ -1,20 +1,31 @@
-import { Vulnerability, VulnerabilitySummary } from './vulnerability';
+import { Vulnerability } from './vulnerability';
+import { ScanConfiguration } from './config';
 import { ScannerType, ScanStatus } from './enums';
+export interface VulnerabilitySummary {
+    total: number;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    info: number;
+}
 export interface ScanResult {
     scanId: string;
-    scannerId: string;
-    scannerName: string;
-    scannerType: ScannerType;
-    startTime: Date;
-    endTime: Date;
-    duration: number;
     targetUrl: string;
     status: ScanStatus;
+    startTime: Date | number;
+    endTime: Date | number;
+    duration: number;
     vulnerabilities: Vulnerability[];
-    statistics: ScanStatistics;
+    summary: VulnerabilitySummary;
+    config: ScanConfiguration;
+    scannerId?: string;
+    scannerName?: string;
+    scannerType?: ScannerType;
+    statistics?: ScanStatistics;
     errors?: ScanError[];
     warnings?: string[];
-    metadata: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
 }
 export interface ScanStatistics {
     totalRequests: number;

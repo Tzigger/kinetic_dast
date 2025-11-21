@@ -1,7 +1,7 @@
 export class BaseDetector {
     enabledByDefault = true;
     async validate(vulnerability) {
-        return vulnerability.confidence > 0.5;
+        return (vulnerability.confidence ?? 0.8) > 0.5;
     }
     getCWEReferences() {
         return [];

@@ -16,10 +16,14 @@ export enum VulnerabilityCategory {
   INJECTION = 'injection',
   XSS = 'xss',
   DATA_EXPOSURE = 'data-exposure',
+  INFORMATION_DISCLOSURE = 'information-disclosure',
   INSECURE_TRANSMISSION = 'insecure-transmission',
+  INSECURE_COMMUNICATION = 'insecure-communication',
   AUTHENTICATION = 'authentication',
+  BROKEN_AUTHENTICATION = 'broken-authentication',
   AUTHORIZATION = 'authorization',
   CONFIGURATION = 'configuration',
+  SECURITY_MISCONFIGURATION = 'security-misconfiguration',
   CRYPTOGRAPHY = 'cryptography',
   CSRF = 'csrf',
   CLICKJACKING = 'clickjacking',
@@ -65,6 +69,15 @@ export enum ScanStatus {
   COMPLETED = 'completed',
   FAILED = 'failed',
   CANCELLED = 'cancelled',
+}
+
+/**
+ * Browser types
+ */
+export enum BrowserType {
+  CHROMIUM = 'chromium',
+  FIREFOX = 'firefox',
+  WEBKIT = 'webkit',
 }
 
 /**
