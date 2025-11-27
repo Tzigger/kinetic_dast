@@ -6,25 +6,44 @@ Welcome to the Playwright Security Framework documentation!
 
 New to the framework? Start here:
 
-1. **[Developer Guide](./DEVELOPER-GUIDE.md)** ⭐ **Start Here!**
+1. **[Testing Guide](./TESTING-GUIDE.md)** ⭐ **Start Here!**
+   - How to write security tests easily
+   - Helper function reference (`runActiveSecurityScan`, etc.)
+   - Configuration options and examples
+   - Attack surface types explained
+   - Best practices and patterns
+   - **~35 KB** | **Essential for Test Writers**
+
+2. **[Developer Guide](./DEVELOPER-GUIDE.md)**
    - Complete guide for using the framework in your projects
    - Installation, configuration, and usage
    - API reference and examples
    - Best practices and troubleshooting
    - **~26 KB** | **Comprehensive**
 
-2. **[API Quick Reference](./API-QUICK-REFERENCE.md)**
+3. **[API Quick Reference](./API-QUICK-REFERENCE.md)**
    - Quick lookup for all APIs and methods
    - Common patterns and imports
    - Configuration examples
    - **~11 KB** | **Quick Reference**
 
-3. **[Examples](./EXAMPLES.md)**
+4. **[Examples](./EXAMPLES.md)**
    - Real-world usage examples
    - Playwright test integration
    - CI/CD integration (GitHub Actions, GitLab, Jenkins)
    - Custom detectors and reporters
    - **~23 KB** | **Practical Examples**
+
+## ⚠️ Known Limitations
+
+Important information about current limitations:
+
+- **[SPA Testing Limitations](./SPA-TESTING-LIMITATIONS.md)**
+  - Current status of SPA (Single Page Application) support
+  - Known issues with Angular/React/Vue testing
+  - Recommended workarounds and alternatives
+  - Timeline for improvements
+  - **~8 KB** | **Important for SPA Testing**
 
 ## 🔄 Upgrading
 
@@ -56,18 +75,30 @@ Want to contribute to the framework?
 
 | Document | Purpose | Target Audience | Size |
 |----------|---------|-----------------|------|
+| [Testing Guide](./TESTING-GUIDE.md) | Write security tests | Test writers | 35 KB |
 | [Developer Guide](./DEVELOPER-GUIDE.md) | Complete usage guide | Framework users | 26 KB |
 | [API Quick Reference](./API-QUICK-REFERENCE.md) | Quick API lookup | All developers | 11 KB |
 | [Examples](./EXAMPLES.md) | Real-world examples | Framework users | 23 KB |
+| [SPA Testing Limitations](./SPA-TESTING-LIMITATIONS.md) | SPA testing issues | SPA testers | 8 KB |
 | [Migration Guide](./MIGRATION-GUIDE.md) | Version upgrades | Existing users | 6 KB |
 | [Architecture](./architecture.md) | System design | Contributors | 5.5 KB |
 | [Plugin Development](./plugin-development.md) | Custom plugins | Advanced users | 7.5 KB |
 
 ## 🎯 Quick Links
 
+### For Test Writers
+
+Want to write security tests?
+
+1. 📖 **Testing Guide**: See [Testing Guide](./TESTING-GUIDE.md) - **Start here!**
+2. 🚀 **Quick Start**: See [Testing Guide - Quick Start](./TESTING-GUIDE.md#quick-start)
+3. 🔧 **Helper Functions**: See [Testing Guide - Helper Functions](./TESTING-GUIDE.md#helper-functions)
+4. ⚙️ **Configuration**: See [Testing Guide - Configuration Options](./TESTING-GUIDE.md#configuration-options)
+5. 🎯 **Patterns**: See [Testing Guide - Advanced Patterns](./TESTING-GUIDE.md#advanced-patterns)
+
 ### For Framework Users
 
-Want to use this framework in your project?
+Want to use this framework programmatically?
 
 1. 📦 **Installation**: See [Developer Guide - Installation](./DEVELOPER-GUIDE.md#installation)
 2. 🚀 **Quick Start**: See [Developer Guide - Quick Start](./DEVELOPER-GUIDE.md#quick-start)
@@ -98,17 +129,17 @@ Want to contribute to the framework?
 
 ```typescript
 // tests/security.spec.ts
-import { test } from '@playwright/test';
-import { runSecurityScan, assertNoVulnerabilities } from '@tzigger/playwright-security/testing';
+import { test, expect } from '@playwright/test';
+import { runActiveSecurityScan } from '@tzigger/playwright-security';
 
 test('app security', async ({ page }) => {
   await page.goto('https://myapp.com');
-  const vulns = await runSecurityScan(page.url());
-  assertNoVulnerabilities(vulns);
+  const vulnerabilities = await runActiveSecurityScan(page);
+  expect(vulnerabilities).toHaveLength(0);
 });
 ```
 
-**See**: [Developer Guide - Testing Integration](./DEVELOPER-GUIDE.md#testing-integration)
+**See**: [Testing Guide - Quick Start](./TESTING-GUIDE.md#quick-start)
 
 ### Use Case 2: Programmatic Security Scanning
 
@@ -156,9 +187,9 @@ class MyDetector extends BaseDetector {
 
 ## 📊 Documentation Stats
 
-- **Total Documents**: 7
-- **Total Size**: ~85 KB
-- **Last Updated**: November 24, 2025
+- **Total Documents**: 9
+- **Total Size**: ~128 KB
+- **Last Updated**: November 27, 2025
 - **Framework Version**: 0.1.0-beta.1
 
 ---

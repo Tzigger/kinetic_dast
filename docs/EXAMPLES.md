@@ -4,6 +4,7 @@
 
 ## Table of Contents
 
+- [Quick Start with Helper Functions](#quick-start-with-helper-functions)
 - [Playwright Test Integration](#playwright-test-integration)
 - [CI/CD Integration](#cicd-integration)
 - [Custom Detectors](#custom-detectors)
@@ -12,27 +13,119 @@
 
 ---
 
+## Quick Start with Helper Functions
+
+### Example 1: Passive Security Headers Check
+
+```typescript
+import { test, expect } from '@playwright/test';
+import { runPassiveSecurityScan, VulnerabilitySeverity } from '../src/testing/helpers';
+
+test('should have proper security headers', async () => {
+  const vulnerabilities = await runPassiveSecurityScan('https://myapp.com', {
+    detectors: 'headers',
+    headless: true
+  });
+  
+  // Check for missing HSTS header
+  const hstsIssues = vulnerabilities.filter(v => 
+    v.title.includes('Strict-Transport-Security')
+  );
+  expect(hstsIssues).toHaveLength(0);
+});
+```
+
+### Example 2: SQL Injection Test
+
+```typescript
+import { test } from '@playwright/test';
+import { runActiveSecurityScan, assertNoVulnerabilities } from '../src/testing/helpers';
+
+test('login form should not have SQL injection', async () => {
+  const vulnerabilities = await runActiveSecurityScan('https://myapp.com/login', {
+    detectors: 'sql',
+    aggressiveness: 'medium',
+    maxPages: 1
+  });
+  
+  // Fail test if any vulnerabilities found
+  assertNoVulnerabilities(vulnerabilities);
+});
+```
+
+### Example 3: Combined Active + Passive Scan
+
+```typescript
+import { test, expect } from '@playwright/test';
+import { 
+  runActiveSecurityScan, 
+  runPassiveSecurityScan,
+  VulnerabilitySeverity 
+} from '../src/testing/helpers';
+
+test('comprehensive security check', async () => {
+  // Fast passive scan first (3-5s)
+  const passiveVulns = await runPassiveSecurityScan('https://myapp.com');
+  console.log(`Passive: ${passiveVulns.length} issues`);
+  
+  // Then active scan for injections (30-120s)
+  const activeVulns = await runActiveSecurityScan('https://myapp.com', {
+    aggressiveness: 'low',
+    maxPages: 3
+  });
+  console.log(`Active: ${activeVulns.length} issues`);
+  
+  // Combine and check severity
+  const allVulns = [...passiveVulns, ...activeVulns];
+  const critical = allVulns.filter(v => v.severity === VulnerabilitySeverity.CRITICAL);
+  expect(critical).toHaveLength(0);
+});
+```
+
+### Example 4: SPA Security Testing
+
+```typescript
+import { test, expect } from '@playwright/test';
+import { runPassiveSecurityScan } from '../src/testing/helpers';
+
+test('SPA should not leak sensitive data', async () => {
+  const vulnerabilities = await runPassiveSecurityScan(
+    'https://myapp.com/#/dashboard',
+    {
+      detectors: 'data', // Focus on data exposure
+      headless: true
+    }
+  );
+  
+  // Check for exposed phone numbers, emails, etc.
+  const dataLeaks = vulnerabilities.filter(v => 
+    v.category === 'sensitive-data-exposure'
+  );
+  expect(dataLeaks).toHaveLength(0);
+});
+```
+
+---
+
 ## Playwright Test Integration
 
-### Example 1: Basic Security Test Suite
+### Example 5: Basic Security Test Suite
 
 ```typescript
 // tests/security.spec.ts
 import { test, expect } from '@playwright/test';
 import { 
-  runSecurityScan, 
+  runActiveSecurityScan,
+  runPassiveSecurityScan,
   assertNoVulnerabilities, 
   VulnerabilitySeverity 
-} from '@tzigger/playwright-security/testing';
+} from '../src/testing/helpers';
 
 test.describe('Application Security Tests', () => {
   
-  test('home page should have no critical vulnerabilities', async ({ page }) => {
-    await page.goto('https://myapp.com');
-    
-    const vulnerabilities = await runSecurityScan(page.url(), {
+  test('home page should have no critical vulnerabilities', async () => {
+    const vulnerabilities = await runPassiveSecurityScan('https://myapp.com', {
       detectors: 'all',
-      maxPages: 1,
       headless: true
     });
     
@@ -40,15 +133,14 @@ test.describe('Application Security Tests', () => {
     assertNoVulnerabilities(vulnerabilities, VulnerabilitySeverity.MEDIUM);
   });
   
-  test('login form should be protected against SQL injection', async ({ page }) => {
-    await page.goto('https://myapp.com/login');
-    
-    const vulnerabilities = await runSecurityScan(page.url(), {
+  test('login form should be protected against SQL injection', async () => {
+    const vulnerabilities = await runActiveSecurityScan('https://myapp.com/login', {
       detectors: 'sql',
       maxPages: 1
     });
     
     const sqlVulns = vulnerabilities.filter(v => v.category === 'injection');
+    expect(sqlVulns).toHaveLength(0);
     expect(sqlVulns, 'No SQL injection vulnerabilities allowed').toHaveLength(0);
   });
   
