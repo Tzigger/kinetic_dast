@@ -78,20 +78,7 @@ export class PayloadInjector {
 
     this.logger.debug(`Injecting payload into ${surface.name} (${surface.type})`);
 
-    // Restore state if baseUrl is provided
-    if (options.baseUrl) {
-      try {
-        const currentUrl = page.url();
-        // Only reload if we are not on the base URL or if we suspect state is dirty
-        // For robustness, we always reload for form inputs as they likely caused navigation
-        if (surface.type === AttackSurfaceType.FORM_INPUT || currentUrl !== options.baseUrl) {
-           await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-        }
-      } catch (error) {
-        this.logger.warn(`Failed to restore state to ${options.baseUrl}: ${error}`);
-      }
-    }
-
+    // Create result object early for potential early returns
     const result: InjectionResult = {
       payload,
       encoding,
@@ -99,7 +86,41 @@ export class PayloadInjector {
       surface,
     };
 
+    // Restore state if baseUrl is provided
+    if (options.baseUrl) {
+      try {
+        // Check if page/context is still open before attempting navigation
+        if (page.isClosed()) {
+          this.logger.debug('Page is closed, skipping state restoration');
+          result.error = 'Page closed';
+          return result; // Return early with error result
+        }
+        
+        const currentUrl = page.url();
+        // Only reload if we are not on the base URL or if we suspect state is dirty
+        // For robustness, we always reload for form inputs as they likely caused navigation
+        if (surface.type === AttackSurfaceType.FORM_INPUT || currentUrl !== options.baseUrl) {
+           await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        }
+      } catch (error) {
+        // Check if error is due to closed page/context
+        const errorMsg = String(error);
+        if (errorMsg.includes('closed') || errorMsg.includes('Target closed')) {
+          this.logger.debug('Page/context closed during state restoration, aborting injection');
+          result.error = 'Page/context closed';
+          return result; // Return early with error result
+        }
+        this.logger.warn(`Failed to restore state to ${options.baseUrl}: ${error}`);
+      }
+    }
+
     try {
+      // Check again before starting injection (in case page closed during state restore)
+      if (page.isClosed()) {
+        result.error = 'Page closed before injection';
+        return result;
+      }
+
       // 1. Encode payload
       const encodedPayload = this.encodePayload(payload, encoding);
 
@@ -108,6 +129,7 @@ export class PayloadInjector {
 
       // 3. Inject based on surface type
       const startTime = Date.now();
+      let apiResponse: { body: string; status: number; headers: Record<string, string> } | null = null;
       
       switch (surface.type) {
         case AttackSurfaceType.FORM_INPUT:
@@ -121,30 +143,123 @@ export class PayloadInjector {
         case AttackSurfaceType.COOKIE:
           await this.injectIntoCookie(page, surface, finalPayload);
           break;
+          
+        case AttackSurfaceType.API_PARAM:
+        case AttackSurfaceType.JSON_BODY:
+          apiResponse = await this.injectIntoApiRequest(page, surface, finalPayload);
+          break;
         
         default:
           throw new Error(`Unsupported attack surface type: ${surface.type}`);
       }
 
-      // 4. Wait for response and capture
-      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-      
       const endTime = Date.now();
 
-      result.response = {
-        url: page.url(),
-        status: 200, // Will be updated from network monitoring
-        body: await page.content(),
-        headers: {},
-        timing: endTime - startTime,
-      };
+      if (apiResponse) {
+        result.response = {
+          url: surface.metadata.url || page.url(),
+          status: apiResponse.status,
+          body: apiResponse.body,
+          headers: apiResponse.headers,
+          timing: endTime - startTime,
+        };
+      } else {
+        // 4. Wait for response and capture
+        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+        
+        result.response = {
+          url: page.url(),
+          status: 200, // Will be updated from network monitoring
+          body: await page.content(),
+          headers: {},
+          timing: endTime - startTime,
+        };
+      }
 
     } catch (error) {
-      result.error = String(error);
-      this.logger.debug(`Injection skipped (element unavailable): ${error}`);
+      const errorMsg = String(error);
+      // Silently skip closed page errors (test was aborted)
+      if (errorMsg.includes('closed') || errorMsg.includes('Target closed')) {
+        this.logger.debug(`Injection aborted (page closed): ${surface.name}`);
+      } else {
+        this.logger.debug(`Injection skipped (element unavailable): ${error}`);
+      }
+      result.error = errorMsg;
     }
 
     return result;
+  }
+
+  /**
+   * Inject into API Request (XHR/Fetch)
+   */
+  private async injectIntoApiRequest(
+    page: Page,
+    surface: AttackSurface,
+    payload: string
+  ): Promise<{ body: string; status: number; headers: Record<string, string> }> {
+    const url = surface.metadata.url;
+    if (!url) {
+      throw new Error('URL missing in attack surface metadata');
+    }
+    
+    const method = (surface.metadata['method'] as string) || 'GET';
+    
+    let response;
+    
+    if (surface.type === AttackSurfaceType.API_PARAM) {
+      const apiUrl = new URL(url);
+      apiUrl.searchParams.set(surface.name, payload);
+      response = await page.request.fetch(apiUrl.toString(), {
+        method,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } else if (surface.type === AttackSurfaceType.JSON_BODY) {
+      const originalBody = surface.metadata['originalBody'];
+      if (!originalBody) {
+        throw new Error('Original body missing for JSON injection');
+      }
+
+      const body = JSON.parse(JSON.stringify(originalBody)); // Deep clone
+      const key = surface.metadata['originalKey'] as string;
+      
+      if (key) {
+        this.setNestedValue(body, key, payload);
+      }
+      
+      response = await page.request.fetch(url, {
+        method,
+        data: body,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (!response) throw new Error('Failed to send API request');
+
+    return {
+      body: await response.text(),
+      status: response.status(),
+      headers: response.headers(),
+    };
+  }
+
+  /**
+   * Helper to set nested JSON value
+   */
+  private setNestedValue(obj: any, path: string, value: any) {
+    const keys = path.split('.');
+    let current = obj;
+    for (let i = 0; i < keys.length - 1; i++) {
+      const key = keys[i];
+      if (key) {
+        if (!current[key]) current[key] = {};
+        current = current[key];
+      }
+    }
+    const lastKey = keys[keys.length - 1];
+    if (lastKey) {
+      current[lastKey] = value;
+    }
   }
 
   /**
@@ -268,6 +383,19 @@ export class PayloadInjector {
     payload: string,
     submit: boolean
   ): Promise<void> {
+    // Bypass client-side validation by modifying DOM
+    if (surface.element) {
+      await surface.element.evaluate((el: any) => {
+        el.removeAttribute('required');
+        el.removeAttribute('pattern');
+        el.removeAttribute('minlength');
+        el.removeAttribute('maxlength');
+        if (el.type === 'email' || el.type === 'url' || el.type === 'number') {
+          el.type = 'text'; // Force to text to accept any payload
+        }
+      }).catch(() => {});
+    }
+
     // Prioritize selector to avoid detached elements after reload
     if (surface.selector) {
       await page.fill(surface.selector, payload);
@@ -281,6 +409,12 @@ export class PayloadInjector {
       // Find and click submit button
       const submitBtn = await page.$('button[type="submit"], input[type="submit"]');
       if (submitBtn) {
+        // Force enable button
+        await submitBtn.evaluate((el: any) => {
+          el.removeAttribute('disabled');
+          el.classList.remove('disabled');
+        }).catch(() => {});
+        
         await submitBtn.click({ timeout: 1000 }).catch(() => {});
       }
     }

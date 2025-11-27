@@ -4,6 +4,7 @@ import { Vulnerability } from '../../types/vulnerability';
 import { ScanResult, ScanStatistics, VulnerabilitySummary } from '../../types/scan-result';
 import { LogLevel, ScanStatus, VulnerabilitySeverity, ScannerType } from '../../types/enums';
 import { DomExplorer, AttackSurfaceType } from './DomExplorer';
+import { Request } from 'playwright';
 
 /**
  * Configurare ActiveScanner
@@ -94,86 +95,205 @@ export class ActiveScanner extends BaseScanner {
   public async execute(): Promise<ScanResult> {
     const context = this.getContext();
     const { page, config } = context;
-    const targetUrl = config.target.url;
+    
+    // In SPA mode, use current page URL as starting point; otherwise use config target URL
+    const currentUrl = page.url();
+    const targetUrl = currentUrl && currentUrl !== 'about:blank' ? currentUrl : config.target.url;
 
     context.logger.info(`Starting active scan on: ${targetUrl}`);
     const allVulnerabilities: Vulnerability[] = [];
-
-    try {
-      // Add target to crawl queue
-      this.crawlQueue.push(targetUrl);
-
-      // Crawl and scan pages
-      let depth = 0;
-      while (this.crawlQueue.length > 0 && depth < this.config.maxDepth!) {
-        const url = this.crawlQueue.shift()!;
-
-        if (this.visitedUrls.has(url) || this.visitedUrls.size >= this.config.maxPages!) {
-          continue;
-        }
-
+    
+    // Add target to crawl queue
+    this.crawlQueue.push(targetUrl);
+    
+    const clickedElements = new Set<string>(); // Track clicked elements to avoid loops
+    
+    // Process queue
+    // Note: Real concurrency requires multiple pages/contexts. 
+    // Here we optimize the inner loop but stay single-threaded for the main page to keep context consistent.
+    // For true parallel crawling, ScanEngine needs to spawn multiple ActiveScanners or workers.
+    
+    let depth = 0;
+    
+    while (this.crawlQueue.length > 0 && depth < this.config.maxDepth!) {
+      const batchSize = 1; // Processing one URL at a time for safety in this architecture
+      const batch = this.crawlQueue.splice(0, batchSize);
+      
+      for (const url of batch) {
+        if (this.visitedUrls.has(url) || this.visitedUrls.size >= this.config.maxPages!) continue;
+        
         context.logger.info(`Scanning page [${this.visitedUrls.size + 1}/${this.config.maxPages}]: ${url}`);
-
-        // Navigate to page
-        try {
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-        } catch (error) {
-          context.logger.warn(`Failed to navigate to ${url}: ${error}`);
-          continue;
-        }
-
         this.visitedUrls.add(url);
 
+        // Capture requests
+        const capturedRequests: Request[] = [];
+        const requestListener = (request: Request) => {
+          if (['xhr', 'fetch', 'document'].includes(request.resourceType())) {
+            capturedRequests.push(request);
+          }
+        };
+        page.on('request', requestListener);
+
+        // Only navigate if not already on the target page (SPA mode check)
+        const currentPageUrl = page.url();
+        const needsNavigation = currentPageUrl !== url;
+        
+        if (needsNavigation) {
+          try {
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+          } catch (error) {
+            context.logger.warn(`Failed to navigate to ${url}: ${error}`);
+            page.off('request', requestListener);
+            continue;
+          }
+        } else {
+          context.logger.info('Already on target page, skipping navigation (SPA mode)');
+        }
+
+        page.off('request', requestListener);
+
+        // Detect SPA framework and handle hash routes
+        await this.domExplorer.detectSPAFramework(page);
+        const hashRoutes = await this.domExplorer.extractHashRoutes(page);
+        
+        // Add hash routes to crawl queue
+        if (hashRoutes.length > 0) {
+          context.logger.info(`Found ${hashRoutes.length} hash routes`);
+          const baseUrl = page.url().split('#')[0];
+          hashRoutes.forEach(route => {
+            const fullUrl = baseUrl + route;
+            if (!this.visitedUrls.has(fullUrl)) {
+              this.crawlQueue.push(fullUrl);
+            }
+          });
+        }
+
         // Discover attack surfaces
-        const allSurfaces = await this.domExplorer.explore(page);
-        // Only keep supported types for injection
-        const supportedTypes = [AttackSurfaceType.FORM_INPUT, AttackSurfaceType.URL_PARAMETER, AttackSurfaceType.COOKIE];
-        const attackSurfaces = allSurfaces.filter(s => supportedTypes.includes(s.type));
+        const allSurfaces = await this.domExplorer.explore(page, capturedRequests);
+        
+        // Filter surfaces for testing
+        const attackSurfaces = allSurfaces.filter(s => 
+          [AttackSurfaceType.FORM_INPUT, AttackSurfaceType.URL_PARAMETER, AttackSurfaceType.COOKIE, AttackSurfaceType.API_PARAM, AttackSurfaceType.JSON_BODY, AttackSurfaceType.BUTTON].includes(s.type)
+        );
+        
         context.logger.info(`Found ${attackSurfaces.length} supported attack surfaces on ${url}`);
 
-        // Run all active detectors
+        // 1. Handle Clickables (SPA Crawling) - Limited to avoids loops
+        const clickables = attackSurfaces.filter(s => s.type === AttackSurfaceType.BUTTON);
+        let clickCount = 0;
+        const MAX_CLICKS_PER_PAGE = 5;
+
+        for (const clickable of clickables) {
+          if (clickCount >= MAX_CLICKS_PER_PAGE) break;
+          
+          const clickId = `${url}-${clickable.name}-${clickable.metadata['text']}`;
+          if (clickedElements.has(clickId)) continue;
+          
+          if (clickable.element) {
+            try {
+              context.logger.debug(`Clicking element: ${clickable.name}`);
+              
+              // Smart Form Filling: If this is a submit button, try to fill the form first
+              // to trigger the actual API call (bypassing required fields)
+              const type = await clickable.element.getAttribute('type').catch(() => '');
+              if (type === 'submit') {
+                 // Heuristic: Find inputs preceding this button or in the same container
+                 // This is a simplification; ideally we'd navigate the DOM tree up to the form
+                 const inputs = await page.$$('input:visible');
+                 for (const input of inputs) {
+                    const inputType = await input.getAttribute('type').catch(() => 'text');
+                    const inputId = await input.getAttribute('id').catch(() => '');
+                    
+                    try {
+                        if (inputType === 'email' || (inputId && inputId.toLowerCase().includes('email'))) {
+                            await input.fill('admin@juice-sh.op');
+                        } else if (inputType === 'password') {
+                            await input.fill('Password123');
+                        } else if (inputType === 'text') {
+                            await input.fill('test');
+                        }
+                    } catch (e) { /* input might be hidden or disabled */ }
+                 }
+              }
+
+              clickedElements.add(clickId);
+              clickCount++;
+              
+              const clickRequests: Request[] = [];
+              const clickListener = (req: Request) => { if (['xhr', 'fetch'].includes(req.resourceType())) clickRequests.push(req); };
+              page.on('request', clickListener);
+
+              await clickable.element.click({ timeout: 1000 }).catch(() => {});
+              
+              // Wait for XHR to complete (SPA-aware)
+              await this.domExplorer.waitForNetworkIdle(page, 2000);
+              
+              page.off('request', clickListener);
+
+              // Check for new URL
+              const newUrl = page.url();
+              if (newUrl !== url && !this.visitedUrls.has(newUrl) && this.isValidUrl(newUrl, targetUrl)) {
+                this.crawlQueue.push(newUrl);
+              }
+
+              // Add new API surfaces found via click
+              if (clickRequests.length > 0) {
+                context.logger.info(`Captured ${clickRequests.length} requests from interaction`);
+                const newSurfaces = await this.domExplorer.explore(page, clickRequests);
+                const newApis = newSurfaces.filter(s => [AttackSurfaceType.API_PARAM, AttackSurfaceType.JSON_BODY].includes(s.type));
+                
+                if (newApis.length > 0) {
+                    context.logger.info(`Discovered ${newApis.length} new API attack surfaces`);
+                    attackSurfaces.push(...newApis);
+                }
+              }
+              
+              // Restore if navigated away
+              if (page.url() !== url) await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+            } catch (e) { /* ignore */ }
+          }
+        }
+
+        // 2. Run Active Detectors (Sequential execution for stability)
+        // Only run on data surfaces (not buttons)
+        const testableSurfaces = attackSurfaces.filter(s => s.type !== AttackSurfaceType.BUTTON);
+        
         for (const [name, detector] of this.detectors) {
-          context.logger.info(`Running detector: ${name}`);
-
           try {
-            const vulns = await detector.detect({
-              page,
-              attackSurfaces,
-              baseUrl: url,
-            });
-
+            context.logger.debug(`Running detector: ${name}`);
+            const vulns = await detector.detect({ page, attackSurfaces: testableSurfaces, baseUrl: url });
+            
             if (vulns.length > 0) {
               context.logger.info(`Detector ${name} found ${vulns.length} vulnerabilities`);
               allVulnerabilities.push(...vulns);
-              // Emit vulnerabilities immediately
-              vulns.forEach(vuln => context.emitVulnerability?.(vuln));
+              vulns.forEach(v => context.emitVulnerability?.(v));
             }
           } catch (error) {
             context.logger.error(`Detector ${name} failed: ${error}`);
+            // Attempt to restore state if detector crashed page
+            try {
+               if (page.url() !== url) await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+            } catch (e) { /* ignore */ }
           }
-
-          await this.delay(this.config.delayBetweenRequests!);
         }
 
-        // Discover new links for crawling
+        // 3. Discover new links
         const links = attackSurfaces.filter(s => s.type === AttackSurfaceType.LINK);
-        
         for (const link of links) {
           if (link.value && !this.visitedUrls.has(link.value) && this.isValidUrl(link.value, targetUrl)) {
             this.crawlQueue.push(link.value);
           }
         }
-
-        depth++;
-        await this.delay(this.config.delayBetweenRequests!);
       }
-
-      context.logger.info(`Active scan completed. Found ${allVulnerabilities.length} vulnerabilities`);
-    } catch (error) {
-      context.logger.error(`Active scan failed: ${error}`);
+      depth++;
     }
 
+    context.logger.info(`Active scan completed. Found ${allVulnerabilities.length} vulnerabilities`);
+    
+    // ... (return result logic)
+    
     const endTime = new Date();
     const duration = endTime.getTime() - this.startTime!.getTime();
 
@@ -191,9 +311,9 @@ export class ActiveScanner extends BaseScanner {
     const statistics: ScanStatistics = {
       totalRequests: this.visitedUrls.size,
       totalResponses: this.visitedUrls.size,
-      totalElements: 0, // Will be populated by detectors
-      totalInputs: 0, // Will be populated by detectors
-      totalPayloads: 0, // Will be populated by detectors
+      totalElements: 0, 
+      totalInputs: 0,
+      totalPayloads: 0,
       pagesCrawled: this.visitedUrls.size,
       vulnerabilitiesBySeverity: {
         critical: summary.critical,
@@ -256,10 +376,6 @@ export class ActiveScanner extends BaseScanner {
     } catch (error) {
       return false;
     }
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   public getDetectorCount(): number {

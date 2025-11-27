@@ -31,12 +31,22 @@ export class ScanEngine extends EventEmitter {
   private startTime: number = 0;
   private endTime: number = 0;
   private reporters: IReporter[] = [];
+  private existingPage: Page | null = null;  // For SPA support
 
   constructor() {
     super();
     this.logger = new Logger(LogLevel.INFO, 'ScanEngine');
     this.browserManager = BrowserManager.getInstance();
     this.configManager = ConfigurationManager.getInstance();
+  }
+
+  /**
+   * Set an existing page for SPA support
+   * When set, the scanner will use this page instead of creating a new browser
+   */
+  public setExistingPage(page: Page): void {
+    this.existingPage = page;
+    this.logger.info('Using existing page for SPA scan');
   }
 
   /**
@@ -110,15 +120,21 @@ export class ScanEngine extends EventEmitter {
     let page: Page | null = null;
 
     try {
-      // 1. Inițializare browser
-      this.logger.info('Initializing browser');
-      await this.browserManager.initialize(config.browser);
+      // 1. Initialize browser (skip if using existing page for SPA)
+      if (this.existingPage) {
+        this.logger.info('Using existing page (SPA mode)');
+        page = this.existingPage;
+        browserContext = page.context();
+      } else {
+        this.logger.info('Initializing browser');
+        await this.browserManager.initialize(config.browser);
 
-      // 2. Creează context și pagină
-      browserContext = await this.browserManager.createContext(this.scanId);
-      page = await this.browserManager.createPage(this.scanId);
+        // 2. Create context and page
+        browserContext = await this.browserManager.createContext(this.scanId);
+        page = await this.browserManager.createPage(this.scanId);
+      }
 
-      // 3. Creează scan context pentru scanners
+      // 3. Create scan context for scanners
       const scanContext: ScanContext = {
         page,
         browserContext,
@@ -139,23 +155,37 @@ export class ScanEngine extends EventEmitter {
           this.emit('scannerStarted', { scannerType: type });
           await Promise.all(this.reporters.map((r) => r.onScannerStarted(String(type))));
 
-          // Per-scanner context and page
-          const subContextId = `${this.scanId}-${String(type)}`;
-          const subBrowserContext = await this.browserManager.createContext(subContextId);
-          const subPage = await this.browserManager.createPage(subContextId);
+          let ctx: ScanContext;
+          let subContextId: string | null = null;
 
-          const ctx: ScanContext = {
-            ...scanContext,
-            page: subPage,
-            browserContext: subBrowserContext,
-            emitVulnerability: (v) => this.handleVulnerability(v as Vulnerability),
-          };
+          // In SPA mode, reuse existing page; otherwise create new context per scanner
+          if (this.existingPage) {
+            ctx = {
+              ...scanContext,
+              emitVulnerability: (v) => this.handleVulnerability(v as Vulnerability),
+            };
+          } else {
+            // Per-scanner context and page
+            subContextId = `${this.scanId}-${String(type)}`;
+            const subBrowserContext = await this.browserManager.createContext(subContextId);
+            const subPage = await this.browserManager.createPage(subContextId);
+
+            ctx = {
+              ...scanContext,
+              page: subPage,
+              browserContext: subBrowserContext,
+              emitVulnerability: (v) => this.handleVulnerability(v as Vulnerability),
+            };
+          }
 
           await scanner.initialize(ctx);
           await scanner.execute();
           await scanner.cleanup();
 
-          await this.browserManager.closeContext(subContextId);
+          // Only close context if we created one
+          if (subContextId) {
+            await this.browserManager.closeContext(subContextId);
+          }
 
           this.emit('scannerCompleted', { scannerType: type });
           await Promise.all(this.reporters.map((r) => r.onScannerCompleted(String(type))));
@@ -188,8 +218,8 @@ export class ScanEngine extends EventEmitter {
       this.emit('scanFailed', { error });
       throw error;
     } finally {
-      // Cleanup browser resources
-      if (this.scanId) {
+      // Cleanup browser resources (but not if using existing page)
+      if (this.scanId && !this.existingPage) {
         await this.browserManager.closeContext(this.scanId);
       }
     }

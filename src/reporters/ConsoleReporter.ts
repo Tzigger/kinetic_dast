@@ -1,9 +1,11 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import { BaseReporter } from './base/IReporter';
+
+import { ScanResult, ScanConfiguration } from '../types';
 import { ReportFormat } from '../types/enums';
 import { Vulnerability } from '../types/vulnerability';
-import { ScanResult } from '../types/scan-result';
+
+import { BaseReporter } from './base/IReporter';
 
 export class ConsoleReporter extends BaseReporter {
   private spinner = ora({ spinner: 'dots' });
@@ -13,8 +15,9 @@ export class ConsoleReporter extends BaseReporter {
     return ReportFormat.CONSOLE;
   }
 
-  override async onScanStarted(scanId: string): Promise<void> {
-    this.spinner.start(`Starting scan ${scanId} on ${this.config.target.url}`);
+  override async onScanStarted(scanId: string, config: ScanConfiguration): Promise<void> {
+    this.config = config; // Store config for later use
+    this.spinner.start(`Starting scan ${scanId} on ${config.target.url}`);
   }
 
   override async onScannerStarted(scannerType: string): Promise<void> {

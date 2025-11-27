@@ -4,13 +4,43 @@ This directory contains examples showing how to use the Playwright Security Fram
 
 ## 📁 Files
 
+- **`simple-test.ts`** - Standalone example showing basic security scanning
+- **`simple-security-check.spec.ts`** - Playwright test spec with multiple examples
+- **`playwright-test-integration.spec.ts`** - Advanced Playwright integration patterns
 - **`dast.config.json`** - Example configuration file for CLI scanning
-- **`playwright-test-integration.spec.ts`** - Playwright test integration examples
 - **`github-actions-ci.yml`** - GitHub Actions CI/CD workflow
 
 ## 🚀 Quick Start
 
-### 1. CLI Scanning with Config File
+### 1. Standalone Script (simple-test.ts)
+
+Run a basic security scan without Playwright test framework:
+
+```bash
+npx ts-node examples/simple-test.ts
+```
+
+This example shows:
+- Creating a scan engine
+- Registering scanners and detectors
+- Running a scan
+- Processing results
+
+### 2. Playwright Test Spec (simple-security-check.spec.ts)
+
+Run security checks as Playwright tests:
+
+```bash
+npx playwright test examples/simple-security-check.spec.ts --project=chromium
+```
+
+Includes examples for:
+- Basic security scans
+- Checking for specific security headers
+- Severity filtering
+- Generating detailed reports
+
+### 3. CLI Scanning with Config File
 
 ```bash
 # Use the example config
@@ -18,22 +48,6 @@ dast-scan --config examples/dast.config.json
 
 # Override specific settings
 dast-scan --config examples/dast.config.json https://example.com --parallel 4
-```
-
-### 2. Playwright Test Integration
-
-```typescript
-import { test, expect } from '@playwright/test';
-import { runSecurityScan, VulnerabilitySeverity } from 'playwright_security';
-
-test('login should be secure', async ({ page }) => {
-  await page.goto('https://myapp.com/login');
-  
-  const vulns = await runSecurityScan(page.url());
-  
-  const critical = vulns.filter(v => v.severity === VulnerabilitySeverity.CRITICAL);
-  expect(critical).toHaveLength(0);
-});
 ```
 
 ### 3. CI/CD Integration (GitHub Actions)

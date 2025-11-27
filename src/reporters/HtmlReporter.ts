@@ -1,9 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
+
 import Handlebars from 'handlebars';
-import { BaseReporter } from './base/IReporter';
+
 import { ReportFormat } from '../types/enums';
 import { ScanResult } from '../types/scan-result';
+
+import { BaseReporter } from './base/IReporter';
 
 export class HtmlReporter extends BaseReporter {
   private template?: Handlebars.TemplateDelegate;

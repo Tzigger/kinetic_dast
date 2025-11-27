@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+
+import { ConfigurationManager } from '../core/config/ConfigurationManager';
 import { ScanEngine } from '../core/engine/ScanEngine';
-import { ActiveScanner } from '../scanners/active/ActiveScanner';
+import { ErrorBasedDetector } from '../detectors/active/ErrorBasedDetector';
 import { SqlInjectionDetector } from '../detectors/active/SqlInjectionDetector';
 import { XssDetector } from '../detectors/active/XssDetector';
-import { ErrorBasedDetector } from '../detectors/active/ErrorBasedDetector';
+import { ActiveScanner } from '../scanners/active/ActiveScanner';
 import { ScanConfiguration } from '../types/config';
 import { AggressivenessLevel, AuthType, BrowserType, LogLevel, ReportFormat, VerbosityLevel } from '../types/enums';
-import { ConfigurationManager } from '../core/config/ConfigurationManager';
 
 const program = new Command();
 
@@ -94,7 +95,7 @@ program
           viewport: { width: 1280, height: 800 },
         },
         reporting: {
-          formats: formats as ReportFormat[],
+          formats: formats,
           outputDir: options.output,
           verbosity: VerbosityLevel.NORMAL,
         },

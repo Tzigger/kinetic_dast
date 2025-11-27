@@ -1,6 +1,6 @@
-import { Vulnerability } from './vulnerability';
 import { ScanConfiguration } from './config';
 import { ScannerType, ScanStatus } from './enums';
+import { Vulnerability } from './vulnerability';
 
 /**
  * Vulnerability summary interface

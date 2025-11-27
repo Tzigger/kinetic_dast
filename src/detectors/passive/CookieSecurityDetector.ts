@@ -5,6 +5,7 @@ import { Logger } from '../../utils/logger/Logger';
 import { InterceptedRequest, InterceptedResponse } from '../../scanners/passive/NetworkInterceptor';
 import { mapVulnerabilityToCWE } from '../../utils/cwe/cwe-mapping';
 import { v4 as uuidv4 } from 'uuid';
+import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 
 /**
  * Context pentru detectori pasivi
@@ -196,6 +197,8 @@ export class CookieSecurityDetector implements IPassiveDetector {
     cwe: string,
     cookieHeader: string
   ): Vulnerability {
+    const owasp = getOWASP2025Category(cwe) || 'A07:2021 - Identification and Authentication Failures';
+
     const vulnerability: Vulnerability = {
       id: uuidv4(),
       category: VulnerabilityCategory.BROKEN_AUTHENTICATION,
@@ -219,7 +222,7 @@ export class CookieSecurityDetector implements IPassiveDetector {
         'https://owasp.org/www-community/HttpOnly',
       ],
       cwe,
-      owasp: 'A07:2021 - Identification and Authentication Failures',
+      owasp,
       timestamp: Date.now(),
     };
 

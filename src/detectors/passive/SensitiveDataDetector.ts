@@ -16,6 +16,7 @@ import {
   SSN_PATTERNS,
 } from '../../utils/patterns/sensitive-data-patterns';
 import { v4 as uuidv4 } from 'uuid';
+import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 
 /**
  * Context pentru detectori pasivi
@@ -117,6 +118,8 @@ export class SensitiveDataDetector implements IPassiveDetector {
     }
 
     if (urlFindings.length > 0) {
+      const owasp = getOWASP2025Category('CWE-598') || 'A04:2025';
+
       const vulnerability: Vulnerability = {
         id: uuidv4(),
         category: VulnerabilityCategory.INFORMATION_DISCLOSURE,
@@ -138,7 +141,7 @@ export class SensitiveDataDetector implements IPassiveDetector {
           'https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url',
         ],
         cwe: 'CWE-598',
-        owasp: 'A01:2021 - Broken Access Control',
+        owasp,
         timestamp: Date.now(),
       };
 
@@ -159,6 +162,8 @@ export class SensitiveDataDetector implements IPassiveDetector {
       }
 
       if (postDataFindings.length > 0) {
+        const owasp = getOWASP2025Category('CWE-319') || 'A04:2025';
+
         const vulnerability: Vulnerability = {
           id: uuidv4(),
           category: VulnerabilityCategory.BROKEN_AUTHENTICATION,
@@ -178,7 +183,7 @@ export class SensitiveDataDetector implements IPassiveDetector {
           remediation: 'Ensure credentials are transmitted over HTTPS with proper encryption.',
           references: ['https://owasp.org/www-project-web-security-testing-guide/'],
           cwe: 'CWE-319',
-          owasp: 'A02:2021 - Cryptographic Failures',
+          owasp,
           timestamp: Date.now(),
         };
 
@@ -218,6 +223,8 @@ export class SensitiveDataDetector implements IPassiveDetector {
     severity: VulnerabilitySeverity,
     findings: string[]
   ): Vulnerability {
+    const owasp = getOWASP2025Category('CWE-200') || 'A04:2025';
+
     const vulnerability: Vulnerability = {
       id: uuidv4(),
       category: VulnerabilityCategory.INFORMATION_DISCLOSURE,
@@ -240,7 +247,7 @@ export class SensitiveDataDetector implements IPassiveDetector {
         'https://cwe.mitre.org/data/definitions/200.html',
       ],
       cwe: 'CWE-200', // Will be mapped properly
-      owasp: 'A02:2021 - Cryptographic Failures',
+      owasp,
       timestamp: Date.now(),
     };
 

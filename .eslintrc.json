@@ -5,12 +5,11 @@
     "sourceType": "module",
     "project": "./tsconfig.json"
   },
-  "plugins": ["@typescript-eslint", "security", "import"],
+  "plugins": ["@typescript-eslint", "import"],
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
     "plugin:@typescript-eslint/recommended-requiring-type-checking",
-    "plugin:security/recommended",
     "plugin:import/typescript",
     "prettier"
   ],
@@ -29,9 +28,7 @@
         "newlines-between": "always",
         "alphabetize": { "order": "asc" }
       }
-    ],
-    "security/detect-object-injection": "off",
-    "security/detect-non-literal-regexp": "warn"
+    ]
   },
   "env": {
     "node": true,

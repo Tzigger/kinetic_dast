@@ -57,18 +57,47 @@ npm install @tzigger/playwright-security --save-dev
 Use in your Playwright tests:
 
 ```typescript
-import { test } from '@playwright/test';
-import { runSecurityScan, assertNoVulnerabilities } from '@tzigger/playwright-security/testing';
+import { test, expect } from '@playwright/test';
+import { 
+  runActiveSecurityScan, 
+  runPassiveSecurityScan,
+  assertNoVulnerabilities,
+  VulnerabilitySeverity 
+} from '@tzigger/playwright-security/testing';
 
-test('login page security', async ({ page }) => {
-  await page.goto('https://myapp.com/login');
+// Example 1: Quick passive scan for security headers
+test('should have security headers', async () => {
+  const vulnerabilities = await runPassiveSecurityScan('https://myapp.com', {
+    detectors: 'headers'
+  });
   
-  const vulnerabilities = await runSecurityScan(page.url(), {
-    detectors: 'all',
+  // Assert no high/critical issues
+  assertNoVulnerabilities(vulnerabilities, VulnerabilitySeverity.HIGH);
+});
+
+// Example 2: Active scan for SQL injection
+test('login should not have SQL injection', async () => {
+  const vulnerabilities = await runActiveSecurityScan('https://myapp.com/login', {
+    detectors: 'sql',
     maxPages: 1
   });
   
-  assertNoVulnerabilities(vulnerabilities);
+  expect(vulnerabilities).toHaveLength(0);
+});
+
+// Example 3: Comprehensive security check
+test('full security scan', async () => {
+  // Fast passive scan first
+  const passiveVulns = await runPassiveSecurityScan('https://myapp.com');
+  
+  // Then deeper active scan
+  const activeVulns = await runActiveSecurityScan('https://myapp.com', {
+    aggressiveness: 'medium',
+    maxPages: 3
+  });
+  
+  const allVulns = [...passiveVulns, ...activeVulns];
+  expect(allVulns.filter(v => v.severity === 'critical')).toHaveLength(0);
 });
 ```
 
@@ -269,6 +298,53 @@ export class CustomDetector extends BaseDetector {
 ```
 
 ## 🧪 Testing
+
+### Helper Functions
+
+The framework provides two focused helper functions for easy integration into your Playwright tests:
+
+#### `runActiveSecurityScan(url, options?)`
+Tests for **injection vulnerabilities** (SQL injection, XSS, command injection, etc.)
+
+```typescript
+const vulnerabilities = await runActiveSecurityScan('https://myapp.com/search', {
+  detectors: 'sql',           // 'all', 'sql', 'xss', or 'errors'
+  aggressiveness: 'low',      // 'low', 'medium', or 'high'
+  maxPages: 2,                // Number of pages to scan
+  headless: true              // Run browser in headless mode
+});
+```
+
+**Use when:** Testing forms, search boxes, login pages, or any user input
+
+**Performance:** 30-120s depending on aggressiveness and pages
+
+#### `runPassiveSecurityScan(url, options?)`
+Analyzes **traffic patterns** (headers, data exposure, cookies, transmission security)
+
+```typescript
+const vulnerabilities = await runPassiveSecurityScan('https://myapp.com', {
+  detectors: 'headers',       // 'all', 'headers', 'transmission', 'data', or 'cookies'
+  headless: true              // Run browser in headless mode
+});
+```
+
+**Use when:** Checking security headers, HTTPS usage, sensitive data leaks, cookie security
+
+**Performance:** 3-5s (very fast)
+
+#### `assertNoVulnerabilities(vulnerabilities, maxSeverity?)`
+Assertion helper to fail tests if vulnerabilities are found
+
+```typescript
+// Fail if ANY vulnerabilities found
+assertNoVulnerabilities(vulnerabilities);
+
+// Fail only if HIGH or CRITICAL vulnerabilities found
+assertNoVulnerabilities(vulnerabilities, VulnerabilitySeverity.HIGH);
+```
+
+### Running Tests
 
 ```bash
 # Run all tests

@@ -1,6 +1,6 @@
 import { Logger } from '../../utils/logger/Logger';
 import { LogLevel } from '../../types/enums';
-import { Page } from 'playwright';
+import { Page, Request } from 'playwright';
 
 /**
  * Tipuri de elemente care pot fi atacate
@@ -13,6 +13,7 @@ export enum AttackSurfaceType {
   COOKIE = 'cookie',
   HEADER = 'header',
   JSON_BODY = 'json-body',
+  API_PARAM = 'api-param',
 }
 
 /**
@@ -66,18 +67,87 @@ export interface FormInfo {
  * - Descoperă parametri URL
  * - Găsește link-uri pentru crawling
  * - Detectează context de injecție
+ * - Analizează traficul de rețea pentru endpoint-uri API
  */
 export class DomExplorer {
   private logger: Logger;
+  private spaFramework: string | null = null;
 
   constructor(logLevel: LogLevel = LogLevel.INFO) {
     this.logger = new Logger(logLevel, 'DomExplorer');
   }
 
   /**
+   * Detectează dacă aplicația este un SPA și ce framework folosește
+   */
+  public async detectSPAFramework(page: Page): Promise<void> {
+    try {
+      const hasHash = page.url().includes('#/');
+      // Use string-based evaluate to avoid TypeScript DOM type issues
+      const detectionResult = await page.evaluate(`(() => {
+        const angularDetected = !!window.angular || 
+               !!document.querySelector('[ng-app]') || 
+               !!document.querySelector('[ng-controller]') ||
+               !!document.querySelector('.ng-scope');
+        const reactDetected = !!window.React || !!window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+        const vueDetected = !!window.__VUE__ || !!window.Vue;
+        
+        return { angularDetected, reactDetected, vueDetected };
+      })()`) as { angularDetected: boolean; reactDetected: boolean; vueDetected: boolean };
+
+      if (hasHash || detectionResult.angularDetected || detectionResult.reactDetected || detectionResult.vueDetected) {
+        if (detectionResult.angularDetected) this.spaFramework = 'Angular';
+        else if (detectionResult.reactDetected) this.spaFramework = 'React';
+        else if (detectionResult.vueDetected) this.spaFramework = 'Vue';
+        else this.spaFramework = 'Unknown SPA';
+        
+        this.logger.info(`SPA detected: ${this.spaFramework}`);
+      }
+    } catch (error) {
+      this.logger.debug(`Error detecting SPA framework: ${error}`);
+    }
+  }
+
+  /**
+   * Așteaptă ca cereri XHR/Fetch să se finalizeze (pentru SPA-uri)
+   */
+  public async waitForNetworkIdle(page: Page, timeout: number = 3000): Promise<void> {
+    try {
+      await page.waitForLoadState('networkidle', { timeout });
+    } catch (error) {
+      // Timeout acceptable pentru network idle
+      this.logger.debug(`Network idle timeout: ${error}`);
+    }
+  }
+
+  /**
+   * Extrage hash routes din pagină (pentru SPA-uri)
+   */
+  public async extractHashRoutes(page: Page): Promise<string[]> {
+    const routes: string[] = [];
+    try {
+      const links = await page.$$eval('a[href*="#/"]', (elements) =>
+        elements.map((el: any) => el.href)
+      );
+      routes.push(...links.map(link => {
+        try {
+          return new URL(link).hash;
+        } catch {
+          return link;
+        }
+      }));
+      
+      this.logger.debug(`Extracted ${routes.length} hash routes`);
+    } catch (error) {
+      this.logger.debug(`Error extracting hash routes: ${error}`);
+    }
+    return [...new Set(routes)]; // Deduplicate
+  }
+
+  /**
    * Explorează pagina pentru toate suprafețele de atac
    */
-  public async explore(page: Page): Promise<AttackSurface[]> {
+  public async explore(page: Page, collectedRequests: Request[] = []): Promise<AttackSurface[]> {
     this.logger.info('Starting DOM exploration');
     const surfaces: AttackSurface[] = [];
 
@@ -98,12 +168,188 @@ export class DomExplorer {
       const cookieSurfaces = await this.discoverCookies(page);
       surfaces.push(...cookieSurfaces);
 
+      // 5. Analizează traficul API (Smart Exploration)
+      if (collectedRequests.length > 0) {
+        const apiSurfaces = await this.discoverApiEndpoints(collectedRequests);
+        surfaces.push(...apiSurfaces);
+      }
+
+      // 6. Descoperă elemente clickabile (pentru SPA crawling)
+      const clickables = await this.discoverClickables(page);
+      surfaces.push(...clickables);
+
       this.logger.info(`DOM exploration completed. Found ${surfaces.length} attack surfaces`);
     } catch (error) {
       this.logger.error(`Error during DOM exploration: ${error}`);
     }
 
     return surfaces;
+  }
+
+  /**
+   * Descoperă elemente clickabile (buttons, div-uri interactive)
+   */
+  private async discoverClickables(page: Page): Promise<AttackSurface[]> {
+    const surfaces: AttackSurface[] = [];
+    try {
+      // Selectează butoane și elemente care par interactive
+      const elements = await page.$$('button, div[role="button"], a:not([href]), a[href="#"], span[onclick]');
+      
+      for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+        if (!el) continue;
+        
+        const text = (await el.textContent())?.trim() || 'unknown';
+        const isVisible = await el.isVisible();
+        
+        if (isVisible) {
+          surfaces.push({
+            id: `clickable-${i}`,
+            type: AttackSurfaceType.BUTTON,
+            element: el,
+            selector: `clickable-${i}`, // Selector placeholder, better to use unique selectors if possible
+            name: text.substring(0, 20), // Nume scurt
+            value: 'click',
+            context: InjectionContext.HTML,
+            metadata: {
+              text,
+              tagName: await el.evaluate((e: any) => e.tagName.toLowerCase())
+            }
+          });
+        }
+      }
+      this.logger.debug(`Discovered ${surfaces.length} clickable elements`);
+    } catch (error) {
+      this.logger.error(`Error discovering clickables: ${error}`);
+    }
+    return surfaces;
+  }
+
+  /**
+   * Calculează scor de prioritate pentru un endpoint
+   */
+  private calculateEndpointPriority(url: URL, paramName: string): number {
+    let score = 0;
+    
+    // High-value endpoints
+    if (url.pathname.includes('/rest/')) score += 10;
+    if (url.pathname.includes('/api/')) score += 10;
+    if (url.pathname.includes('/graphql')) score += 15;
+    
+    // High-value parameters
+    const highValueParams = ['q', 'id', 'search', 'query', 'email', 'orderId', 'userId', 'productId'];
+    if (highValueParams.includes(paramName.toLowerCase())) score += 5;
+    
+    // Low-value endpoints (skip these)
+    if (url.pathname.includes('/assets/')) score -= 20;
+    if (url.pathname.includes('/i18n/')) score -= 20;
+    if (url.pathname.includes('/static/')) score -= 20;
+    
+    return score;
+  }
+
+  /**
+   * Analizează cererile capturate pentru a identifica endpoint-uri API și parametri JSON
+   */
+  private async discoverApiEndpoints(requests: Request[]): Promise<AttackSurface[]> {
+    const surfaces: AttackSurface[] = [];
+    this.logger.debug(`Analyzing ${requests.length} captured requests for API endpoints`);
+
+    for (const request of requests) {
+      try {
+        const url = new URL(request.url());
+        const method = request.method();
+        const resourceType = request.resourceType();
+
+        // Ignoră resursele statice
+        if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) continue;
+        
+        // Skip low-priority endpoints
+        if (url.pathname.includes('/assets/') || 
+            url.pathname.includes('/i18n/') || 
+            url.pathname.includes('/static/')) continue;
+
+        // 1. Parametri din Query String pentru cereri API
+        if (resourceType === 'xhr' || resourceType === 'fetch') {
+          url.searchParams.forEach((value, key) => {
+            const priority = this.calculateEndpointPriority(url, key);
+            surfaces.push({
+              id: `api-query-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              type: AttackSurfaceType.API_PARAM,
+              name: key,
+              value: value,
+              context: InjectionContext.URL,
+              metadata: {
+                url: request.url(),
+                method,
+                parameterType: 'query',
+                resourceType,
+                priority
+              }
+            });
+          });
+        }
+
+        // 2. JSON Body pentru POST/PUT/PATCH
+        if (['POST', 'PUT', 'PATCH'].includes(method) && request.postData()) {
+          const postData = request.postDataJSON();
+          if (postData) {
+            const flattened = this.flattenJson(postData);
+            
+            for (const [key, value] of Object.entries(flattened)) {
+              // Ignoră valori complexe sau nule
+              if (typeof value === 'object' || value === null) continue;
+
+              const priority = this.calculateEndpointPriority(url, key);
+              surfaces.push({
+                id: `api-json-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                type: AttackSurfaceType.JSON_BODY,
+                name: key,
+                value: String(value),
+                context: InjectionContext.JSON,
+                metadata: {
+                  url: request.url(),
+                  method,
+                  parameterType: 'json',
+                  resourceType,
+                  originalKey: key, // Păstrăm cheia originală (dot notation)
+                  originalBody: postData, // Store original body for reconstruction
+                  priority
+                }
+              });
+            }
+          }
+        }
+      } catch (error) {
+        // Ignorăm erorile de parsing pentru cereri individuale
+      }
+    }
+
+    this.logger.debug(`Discovered ${surfaces.length} API attack surfaces`);
+    return surfaces;
+  }
+
+  /**
+   * Helper pentru a aplatiza un obiect JSON (nested keys -> dot notation)
+   */
+  private flattenJson(data: any, prefix = ''): Record<string, any> {
+    let result: Record<string, any> = {};
+
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        const newKey = prefix ? `${prefix}.${key}` : key;
+        const value = data[key];
+
+        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          const flattened = this.flattenJson(value, newKey);
+          result = { ...result, ...flattened };
+        } else {
+          result[newKey] = value;
+        }
+      }
+    }
+
+    return result;
   }
 
   /**

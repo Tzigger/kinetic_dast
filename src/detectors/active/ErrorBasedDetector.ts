@@ -3,6 +3,7 @@ import { IActiveDetector, ActiveDetectorContext } from '../../core/interfaces/IA
 import { Vulnerability } from '../../types/vulnerability';
 import { VulnerabilitySeverity, VulnerabilityCategory } from '../../types/enums';
 import { PayloadInjector, InjectionResult, PayloadEncoding } from '../../scanners/active/PayloadInjector';
+import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 
 /**
  * Error Type Classification
@@ -220,17 +221,26 @@ export class ErrorBasedDetector implements IActiveDetector {
       /mysql_fetch_array\(\)/i,
       /pg_query\(\)/i,
       /sqlite3?_/i,
+      /SQLITE_ERROR/i,
+      /SQLITE_CONSTRAINT/i,
+      /SequelizeDatabaseError/i,
+      /Sequelize/i,
       /ORA-\d{5}/i, // Oracle error codes
       /SQL Server.*Error/i,
       /Microsoft.*ODBC.*Driver/i,
       /PostgreSQL.*ERROR/i,
       /MySQL.*Warning/i,
+      /You have an error in your SQL syntax/i,
       /Database\s+connection\s+failed/i,
       /Could\s+not\s+connect\s+to\s+database/i,
       /mysqli?::query/i,
       /PDOException/i,
       /Doctrine\\DBAL/i,
       /InvalidQuery/i,
+      /TypeORM/i,
+      /Prisma/i,
+      /KnexTimeoutError/i,
+      /Unclosed quotation mark/i,
     ];
 
     return dbErrorPatterns.some((pattern) => pattern.test(content));
@@ -281,6 +291,7 @@ export class ErrorBasedDetector implements IActiveDetector {
   async analyzeInjectionResult(result: InjectionResult): Promise<Vulnerability[]> {
     const vulnerabilities: Vulnerability[] = [];
     const content = result.response?.body || '';
+    const owasp = getOWASP2025Category('CWE-209') || 'A04:2021';
 
     // Check for different error types
     if (this.hasStackTrace(content)) {
@@ -291,7 +302,7 @@ export class ErrorBasedDetector implements IActiveDetector {
         severity: VulnerabilitySeverity.MEDIUM,
         category: VulnerabilityCategory.INFORMATION_DISCLOSURE,
         cwe: 'CWE-209',
-        owasp: 'A04:2021',
+        owasp,
         evidence: {
           request: { body: result.payload },
           response: { body: content.substring(0, 1000) },
@@ -313,7 +324,7 @@ export class ErrorBasedDetector implements IActiveDetector {
         severity: VulnerabilitySeverity.MEDIUM,
         category: VulnerabilityCategory.INFORMATION_DISCLOSURE,
         cwe: 'CWE-209',
-        owasp: 'A04:2021',
+        owasp,
         evidence: {
           request: { body: result.payload },
           response: { body: content.substring(0, 1000) },
@@ -363,6 +374,8 @@ export class ErrorBasedDetector implements IActiveDetector {
       [ErrorType.EXCEPTION]: VulnerabilitySeverity.MEDIUM,
     };
 
+    const owasp = getOWASP2025Category('CWE-209') || 'A04:2021';
+
     return {
       id: `error-${errorType}-${Date.now()}`,
       title,
@@ -370,7 +383,7 @@ export class ErrorBasedDetector implements IActiveDetector {
       severity: severityMap[errorType],
       category: VulnerabilityCategory.INFORMATION_DISCLOSURE,
       cwe: 'CWE-209',
-      owasp: 'A04:2021',
+      owasp,
       references: [
         'https://cwe.mitre.org/data/definitions/209.html',
         'https://owasp.org/www-community/Improper_Error_Handling',

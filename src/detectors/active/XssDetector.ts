@@ -4,6 +4,7 @@ import { Vulnerability } from '../../types/vulnerability';
 import { VulnerabilitySeverity, VulnerabilityCategory } from '../../types/enums';
 import { AttackSurface, InjectionContext, AttackSurfaceType } from '../../scanners/active/DomExplorer';
 import { PayloadInjector, InjectionResult, PayloadEncoding } from '../../scanners/active/PayloadInjector';
+import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 
 /**
  * XSS Detection Types
@@ -42,11 +43,24 @@ export class XssDetector implements IActiveDetector {
         surface.context === InjectionContext.HTML ||
         surface.context === InjectionContext.HTML_ATTRIBUTE ||
         surface.context === InjectionContext.JAVASCRIPT ||
-        surface.context === InjectionContext.URL
+        surface.context === InjectionContext.URL ||
+        surface.context === InjectionContext.JSON || // Add JSON context
+        surface.type === AttackSurfaceType.API_PARAM ||
+        surface.type === AttackSurfaceType.JSON_BODY
     );
 
     for (const surface of xssTargets) {
       try {
+        // Test JSON XSS for API surfaces
+        if (surface.type === AttackSurfaceType.API_PARAM || surface.type === AttackSurfaceType.JSON_BODY || surface.context === InjectionContext.JSON) {
+          const jsonXss = await this.testJsonXss(page, surface, baseUrl);
+          if (jsonXss) vulnerabilities.push(jsonXss);
+          
+          // Test Angular template injection for SPAs
+          const angularXss = await this.testAngularTemplateInjection(page, surface, baseUrl);
+          if (angularXss) vulnerabilities.push(angularXss);
+        }
+
         // For URL parameters, we don't know the reflection context, so we should try multiple strategies.
         // DomExplorer assigns 'URL' context to parameters by default, but they often reflect in HTML body or attributes.
         if (surface.type === AttackSurfaceType.URL_PARAMETER) {
@@ -140,6 +154,103 @@ export class XssDetector implements IActiveDetector {
     }
 
     return null;
+  }
+
+  /**
+   * Test for XSS in JSON responses
+   */
+  private async testJsonXss(page: Page, surface: AttackSurface, baseUrl: string): Promise<Vulnerability | null> {
+    const jsonPayloads = [
+      '<script>alert("XSS")</script>',
+      '<img src=x onerror=alert("XSS")>',
+      '"><script>alert("XSS")</script>',
+      '\"><img src=x onerror=alert("XSS")>',
+    ];
+
+    for (const payload of jsonPayloads) {
+      try {
+        const result = await this.injector.inject(page, surface, payload, {
+          encoding: PayloadEncoding.NONE,
+          submit: true,
+          baseUrl,
+        });
+
+        // Check if payload appears unescaped in JSON response
+        if (this.isPayloadUnescapedInJson(result, payload)) {
+          return this.createVulnerability(surface, result, XssType.REFLECTED, baseUrl, payload);
+        }
+      } catch (error) {
+        console.error(`Error testing JSON XSS with payload ${payload}:`, error);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Test for Angular template injection
+   */
+  private async testAngularTemplateInjection(page: Page, surface: AttackSurface, baseUrl: string): Promise<Vulnerability | null> {
+    const angularPayloads = [
+      '{{7*7}}',
+      '${7*7}',
+      '{{constructor.constructor("alert(1)")()}}',
+      '{{$on.constructor("alert(1)")()}}',
+    ];
+
+    for (const payload of angularPayloads) {
+      try {
+        const result = await this.injector.inject(page, surface, payload, {
+          encoding: PayloadEncoding.NONE,
+          submit: true,
+          baseUrl,
+        });
+
+        // Check if template is evaluated (49 for {{7*7}})
+        const body = result.response?.body || '';
+        if (body.includes('49') || body.includes('alert(1)')) {
+          return this.createVulnerability(surface, result, XssType.DOM_BASED, baseUrl, payload);
+        }
+
+        // Also check DOM for evaluation
+        try {
+          const pageContent = await page.content();
+          if (pageContent.includes('49')) {
+            return this.createVulnerability(surface, result, XssType.DOM_BASED, baseUrl, payload);
+          }
+        } catch (e) {
+          // Ignore DOM check errors
+        }
+      } catch (error) {
+        console.error(`Error testing Angular template injection with payload ${payload}:`, error);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if payload appears unescaped in JSON response
+   */
+  private isPayloadUnescapedInJson(result: InjectionResult, payload: string): boolean {
+    const body = result.response?.body || '';
+    
+    try {
+      const json = JSON.parse(body);
+      const jsonStr = JSON.stringify(json);
+      
+      // Check if payload appears unescaped (not as &lt; or \\u003c)
+      if (jsonStr.includes(payload)) {
+        // Verify it's not HTML-encoded in the JSON string
+        const escaped = payload.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return !jsonStr.includes(escaped);
+      }
+    } catch (e) {
+      // Not JSON, fallback to string check
+      return body.includes(payload);
+    }
+    
+    return false;
   }
 
   /**
@@ -285,14 +396,17 @@ export class XssDetector implements IActiveDetector {
     const vulnerabilities: Vulnerability[] = [];
     
     if (this.isPayloadExecuted(result, result.payload)) {
+      const cwe = 'CWE-79';
+      const owasp = getOWASP2025Category(cwe) || 'A03:2021';
+
       vulnerabilities.push({
         id: `xss-${result.surface.name}-${Date.now()}`,
         title: 'Cross-Site Scripting (XSS)',
         description: `XSS vulnerability detected in ${result.surface.type} '${result.surface.name}'`,
         severity: VulnerabilitySeverity.HIGH,
         category: VulnerabilityCategory.XSS,
-        cwe: 'CWE-79',
-        owasp: 'A03:2021',
+        cwe,
+        owasp,
         evidence: {
           request: { body: result.payload },
           response: { body: result.response?.body?.substring(0, 500) || '' },
@@ -355,14 +469,17 @@ export class XssDetector implements IActiveDetector {
       [XssType.DOM_BASED]: VulnerabilitySeverity.HIGH,
     };
 
+    const cwe = 'CWE-79';
+    const owasp = getOWASP2025Category(cwe) || 'A03:2021';
+
     return {
       id: `xss-${xssType}-${surface.name}-${Date.now()}`,
       title: `Cross-Site Scripting (${xssType})`,
       description: typeDescriptions[xssType] + ` in ${surface.type} '${surface.name}'`,
       severity: severityMap[xssType],
       category: VulnerabilityCategory.XSS,
-      cwe: 'CWE-79',
-      owasp: 'A03:2021',
+      cwe,
+      owasp,
       url: result.response?.url || baseUrl,
       evidence: {
         request: { body: payload },

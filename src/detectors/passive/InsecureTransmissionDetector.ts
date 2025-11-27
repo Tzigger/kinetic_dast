@@ -5,6 +5,7 @@ import { Logger } from '../../utils/logger/Logger';
 import { InterceptedRequest, InterceptedResponse } from '../../scanners/passive/NetworkInterceptor';
 import { mapVulnerabilityToCWE } from '../../utils/cwe/cwe-mapping';
 import { v4 as uuidv4 } from 'uuid';
+import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 
 /**
  * Context pentru detectori pasivi
@@ -101,6 +102,8 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
       });
 
       if (sensitiveParams.length > 0) {
+        const owasp = getOWASP2025Category('CWE-598') || 'A04:2025';
+
         const vulnerability: Vulnerability = {
           id: uuidv4(),
           category: VulnerabilityCategory.INSECURE_COMMUNICATION,
@@ -124,7 +127,7 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
             'https://cwe.mitre.org/data/definitions/598.html',
           ],
           cwe: 'CWE-598',
-          owasp: 'A02:2021 - Cryptographic Failures',
+          owasp,
           timestamp: Date.now(),
         };
 
@@ -154,6 +157,8 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
                        request.resourceType === 'document';
 
     if (shouldFlag) {
+      const owasp = getOWASP2025Category('CWE-319') || 'A04:2025';
+
       const vulnerability: Vulnerability = {
         id: uuidv4(),
         category: VulnerabilityCategory.INSECURE_COMMUNICATION,
@@ -177,7 +182,7 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
           'https://cwe.mitre.org/data/definitions/319.html',
         ],
         cwe: 'CWE-319',
-        owasp: 'A02:2021 - Cryptographic Failures',
+        owasp,
         timestamp: Date.now(),
       };
 
@@ -209,6 +214,7 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
 
     if (httpResources.length > 0) {
       const resourceTypes = [...new Set(httpResources.map((r) => r.resourceType))];
+      const owasp = getOWASP2025Category('CWE-311') || 'A04:2025';
 
       const vulnerability: Vulnerability = {
         id: uuidv4(),
@@ -232,7 +238,7 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
           'https://cwe.mitre.org/data/definitions/311.html',
         ],
         cwe: 'CWE-311',
-        owasp: 'A02:2021 - Cryptographic Failures',
+        owasp,
         timestamp: Date.now(),
       };
 
