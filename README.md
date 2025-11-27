@@ -105,36 +105,65 @@ test('full security scan', async () => {
 
 ---
 
-### For Framework Development
+### Using the CLI Tool
 
-Clone and setup the repository:
+To use the `dast-scan` command globally:
 
 ```bash
+# Clone and setup
 git clone https://github.com/Tzigger/playwright_security.git
 cd playwright_security
 npm install
+
+# Build the project
+npm run build
+
+# Link the CLI globally (may require sudo on macOS/Linux)
+npm link
+# or
+sudo npm link
+
+# Now you can use dast-scan anywhere
+dast-scan --help
 ```
+
+Run scans with the CLI:
+
+```bash
+# Passive scan (fast, non-intrusive)
+dast-scan https://example.com --scan-type passive
+
+# Active scan (comprehensive)
+dast-scan https://example.com --scan-type active
+
+# Both passive and active
+dast-scan https://example.com --scan-type both
+
+# With custom output and formats
+dast-scan https://example.com --output ./my-reports --formats html,json,sarif
+
+# Use a configuration file
+dast-scan --config ./config/default.config.json
+
+# Use a profile
+dast-scan https://example.com --config ./config/profiles/aggressive.json
+```
+
+---
+
+### For Framework Development
 
 Run development commands:
 
 ```bash
-# Build the project
-npm run build
-
 # Run tests
 npm test
 
-# Run a development scan
-npm run dev -- scan --url https://example.com
+# Run a development scan (without installing globally)
+npm run dev -- https://example.com --scan-type passive
 
-# Use a configuration file
-npm run dev -- scan --config ./config/default.config.json
-
-# Use a profile
-npm run dev -- scan --url https://example.com --profile aggressive
-
-# Passive scan only
-npm run dev -- scan --url https://example.com --profile passive-only
+# Use npm start for the built CLI
+npm start -- https://example.com --scan-type active
 ```
 
 ### Programmatic Usage

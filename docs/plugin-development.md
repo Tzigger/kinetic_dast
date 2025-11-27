@@ -138,12 +138,12 @@ test('use custom detector', async ({ page }) => {
 ```typescript
 import { runActiveSecurityScan } from '../src/testing/helpers';
 
-// Unfortunately, helper functions use predefined detectors
+// Helper functions use predefined detectors by default
 // For custom detectors, use the full ScanEngine approach above
 // OR create a custom wrapper:
 
-export async function runCustomSecurityScan(
-  page: Page,
+export async function runCustomActiveSecurityScan(
+  targetUrl: string,
   options?: any
 ): Promise<Vulnerability[]> {
   const engine = new ScanEngine();
@@ -155,10 +155,9 @@ export async function runCustomSecurityScan(
   ]);
   
   engine.registerScanner(scanner);
-  engine.setExistingPage(page);
   
   await engine.loadConfiguration({
-    target: { url: page.url() },
+    target: { url: targetUrl },
     scanners: {
       active: {
         enabled: true,
@@ -176,6 +175,134 @@ export async function runCustomSecurityScan(
   return result.vulnerabilities;
 }
 ```
+
+## Creating a Custom Passive Detector
+
+### 1. Basic Structure
+
+```typescript
+import { IPassiveDetector, PassiveDetectorContext } from '../src/core/interfaces/IPassiveDetector';
+import { Vulnerability, VulnerabilitySeverity, VulnerabilityCategory } from '../src/types';
+import { getOWASP2025Category } from '../src/utils/cwe/owasp-2025-mapping';
+
+export class MyCustomPassiveDetector implements IPassiveDetector {
+  readonly name = 'My Custom Passive Detector';
+  readonly description = 'Detects custom security issues via network analysis';
+  readonly version = '1.0.0';
+  
+  async detect(context: PassiveDetectorContext): Promise<Vulnerability[]> {
+    const vulnerabilities: Vulnerability[] = [];
+    const { requests, responses, page } = context;
+    
+    // Analyze network traffic
+    for (const response of responses) {
+      const vuln = await this.analyzeResponse(response);
+      if (vuln) vulnerabilities.push(vuln);
+    }
+    
+    return vulnerabilities;
+  }
+
+  private async analyzeResponse(response: any): Promise<Vulnerability | null> {
+    const headers = response.headers();
+    const body = await response.text();
+    
+    // Example: Check for custom API token exposure
+    const tokenPattern = /custom[-_]token["']?\s*[:=]\s*["']([a-zA-Z0-9]{32,})/gi;
+    const matches = body.match(tokenPattern);
+    
+    if (matches && matches.length > 0) {
+      const cwe = 'CWE-798';
+      const owasp = getOWASP2025Category(cwe);
+      
+      return {
+        id: `custom-passive-${Date.now()}`,
+        title: 'Custom API Token Exposed',
+        description: `Custom API token found in response from ${response.url()}`,
+        severity: VulnerabilitySeverity.HIGH,
+        category: VulnerabilityCategory.SENSITIVE_DATA_EXPOSURE,
+        cwe,
+        owasp: owasp || 'A02:2021',
+        url: response.url(),
+        evidence: {
+          response: {
+            headers,
+            body: body.substring(0, 500),
+          },
+          matches: matches.slice(0, 3), // First 3 matches
+        },
+        remediation: 'Remove API tokens from client-side responses. Use server-side proxies.',
+        references: ['https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password'],
+        timestamp: new Date(),
+      };
+    }
+    
+    return null;
+  }
+}
+```
+
+### 2. Registration and Usage
+
+```typescript
+import { test } from '@playwright/test';
+import { ScanEngine } from '../src/core/engine/ScanEngine';
+import { PassiveScanner } from '../src/scanners/passive/PassiveScanner';
+import { MyCustomPassiveDetector } from './MyCustomPassiveDetector';
+
+test('use custom passive detector', async ({ page }) => {
+  await page.goto('https://example.com');
+  
+  const engine = new ScanEngine();
+  const scanner = new PassiveScanner();
+  
+  // Register your custom passive detector
+  scanner.registerDetectors([new MyCustomPassiveDetector()]);
+  engine.registerScanner(scanner);
+  
+  await engine.loadConfiguration({
+    target: { url: 'https://example.com' },
+    scanners: { passive: { enabled: true } },
+  } as any);
+  
+  const result = await engine.scan();
+  console.log(`Found ${result.vulnerabilities.length} vulnerabilities`);
+});
+```
+
+### 3. Custom Passive Scan Helper
+
+```typescript
+import { runPassiveSecurityScan } from '../src/testing/helpers';
+
+// Create a custom passive scan wrapper
+export async function runCustomPassiveSecurityScan(
+  targetUrl: string,
+  options?: any
+): Promise<Vulnerability[]> {
+  const engine = new ScanEngine();
+  const scanner = new PassiveScanner();
+  
+  scanner.registerDetectors([
+    new MyCustomPassiveDetector(),
+    // ... other passive detectors if needed
+  ]);
+  
+  engine.registerScanner(scanner);
+  
+  await engine.loadConfiguration({
+    target: { url: targetUrl },
+    scanners: {
+      passive: { enabled: true },
+    },
+  });
+  
+  const result = await engine.scan();
+  return result.vulnerabilities;
+}
+```
+
+---
 
 ## Creating a Custom Reporter
 
@@ -330,6 +457,7 @@ test('custom detector integration', async ({ page }) => {
 
 ## Best Practices
 
+### Active Detectors
 1. **Error Handling**: Always wrap detection logic in try-catch blocks
 2. **Performance**: Avoid expensive operations; use caching where possible
 3. **Payload Selection**: Choose context-appropriate payloads
@@ -340,6 +468,22 @@ test('custom detector integration', async ({ page }) => {
 8. **Type Safety**: Use TypeScript strict mode
 9. **Evidence**: Collect comprehensive evidence (request, response, description)
 10. **Remediation**: Provide actionable remediation guidance
+
+### Passive Detectors
+1. **Network Efficiency**: Passive detectors should be lightweight and fast
+2. **Pattern Matching**: Use efficient regex patterns to avoid performance issues
+3. **Response Analysis**: Parse JSON/XML safely with try-catch blocks
+4. **Header Inspection**: Check both request and response headers
+5. **Privacy**: Don't log sensitive data from responses
+6. **Scope**: Only analyze responses from target domain
+7. **Batching**: Analyze multiple responses efficiently
+8. **Memory**: Limit response body analysis to first N bytes if needed
+
+### General
+1. **Versioning**: Use semantic versioning for your plugins
+2. **Dependencies**: Minimize external dependencies
+3. **Compatibility**: Test against multiple framework versions
+4. **Documentation**: Provide clear examples and API documentation
 
 ## Attack Surface Filtering
 
@@ -398,7 +542,9 @@ const encoded = await injector.inject(page, surface, "<script>alert(1)</script>"
 
 ## Common Patterns
 
-### Pattern: Baseline Comparison
+### Active Detector Patterns
+
+#### Pattern: Baseline Comparison
 
 ```typescript
 // Measure baseline response
@@ -461,21 +607,130 @@ if (result.response?.body) {
 }
 ```
 
-## Package Structure (for NPM publishing)
+### Passive Detector Patterns
+
+#### Pattern: Header Analysis
+
+```typescript
+for (const response of responses) {
+  const headers = response.headers();
+  
+  // Check for missing security headers
+  if (!headers['strict-transport-security']) {
+    vulnerabilities.push(createMissingHeaderVuln('HSTS', response.url()));
+  }
+  
+  if (!headers['content-security-policy']) {
+    vulnerabilities.push(createMissingHeaderVuln('CSP', response.url()));
+  }
+  
+  // Check for information disclosure
+  if (headers['server']) {
+    vulnerabilities.push(createServerDisclosureVuln(headers['server'], response.url()));
+  }
+}
+```
+
+#### Pattern: Response Body Pattern Matching
+
+```typescript
+for (const response of responses) {
+  const body = await response.text();
+  const url = response.url();
+  
+  // Define patterns to search for
+  const patterns = [
+    { regex: /api[_-]?key['"\s:=]+([a-zA-Z0-9]{32,})/gi, type: 'API Key' },
+    { regex: /password['"\s:=]+([^\s"']+)/gi, type: 'Password' },
+    { regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, type: 'Email' },
+  ];
+  
+  for (const pattern of patterns) {
+    const matches = body.match(pattern.regex);
+    if (matches && matches.length > 0) {
+      vulnerabilities.push(createDataExposureVuln(pattern.type, matches, url));
+    }
+  }
+}
+```
+
+#### Pattern: Cookie Security Analysis
+
+```typescript
+for (const response of responses) {
+  const cookies = await response.headerValue('set-cookie');
+  
+  if (cookies) {
+    const cookieList = cookies.split(',');
+    
+    for (const cookie of cookieList) {
+      const isSecure = cookie.toLowerCase().includes('secure');
+      const isHttpOnly = cookie.toLowerCase().includes('httponly');
+      const hasSameSite = cookie.toLowerCase().includes('samesite');
+      
+      if (!isSecure) {
+        vulnerabilities.push(createInsecureCookieVuln('Missing Secure flag', response.url()));
+      }
+      
+      if (!isHttpOnly) {
+        vulnerabilities.push(createInsecureCookieVuln('Missing HttpOnly flag', response.url()));
+      }
+      
+      if (!hasSameSite) {
+        vulnerabilities.push(createInsecureCookieVuln('Missing SameSite attribute', response.url()));
+      }
+    }
+  }
+}
+```
+
+#### Pattern: Network Traffic Analysis
+
+```typescript
+for (const request of requests) {
+  const url = request.url();
+  const method = request.method();
+  
+  // Check for sensitive data in URLs
+  if (method === 'GET' && /password|token|secret/i.test(url)) {
+    vulnerabilities.push(createSensitiveDataInUrlVuln(url));
+  }
+  
+  // Check for HTTP vs HTTPS
+  if (url.startsWith('http://')) {
+    vulnerabilities.push(createInsecureTransmissionVuln(url));
+  }
+  
+  // Check for mixed content
+  const pageUrl = await page.url();
+  if (pageUrl.startsWith('https://') && url.startsWith('http://')) {
+    vulnerabilities.push(createMixedContentVuln(url, pageUrl));
+  }
+}
+```
+
+---
 
 ```
-my-custom-detector/
+my-custom-detectors/
 ├── package.json
 ├── tsconfig.json
 ├── README.md
 ├── LICENSE
 ├── src/
 │   ├── index.ts
-│   └── MyCustomDetector.ts
+│   ├── active/
+│   │   └── MyCustomActiveDetector.ts
+│   └── passive/
+│       └── MyCustomPassiveDetector.ts
 ├── tests/
-│   └── MyCustomDetector.test.ts
+│   ├── active/
+│   │   └── MyCustomActiveDetector.test.ts
+│   └── passive/
+│       └── MyCustomPassiveDetector.test.ts
 └── examples/
-    └── usage-example.ts
+    ├── active-usage.ts
+    └── passive-usage.ts
 ```
 
 ### package.json

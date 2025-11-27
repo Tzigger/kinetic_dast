@@ -92,14 +92,19 @@ async function scanWebsite(url: string) {
 
 ```typescript
 import { test, expect } from '@playwright/test';
-import { runSecurityScan, assertNoVulnerabilities, VulnerabilitySeverity } from '@tzigger/playwright-security/testing';
+import { 
+  runActiveSecurityScan, 
+  runPassiveSecurityScan,
+  assertNoVulnerabilities, 
+  VulnerabilitySeverity 
+} from '@tzigger/playwright-security/testing';
 
 test.describe('Security Tests', () => {
-  test('login form should be secure', async ({ page }) => {
+  test('login form should be secure - active scan', async ({ page }) => {
     await page.goto('https://myapp.com/login');
     
-    // Run security scan
-    const vulnerabilities = await runSecurityScan(page.url(), {
+    // Run active security scan (tests for injection vulnerabilities)
+    const vulnerabilities = await runActiveSecurityScan(page.url(), {
       detectors: 'all',
       maxPages: 1,
       headless: true
@@ -109,10 +114,21 @@ test.describe('Security Tests', () => {
     assertNoVulnerabilities(vulnerabilities, VulnerabilitySeverity.HIGH);
   });
   
+  test('app should have security headers - passive scan', async () => {
+    // Run passive security scan (fast, non-intrusive)
+    const vulnerabilities = await runPassiveSecurityScan('https://myapp.com', {
+      detectors: 'headers',
+      headless: true
+    });
+    
+    // Assert no high-severity header issues
+    assertNoVulnerabilities(vulnerabilities, VulnerabilitySeverity.HIGH);
+  });
+  
   test('checkout page should not have XSS', async ({ page }) => {
     await page.goto('https://myapp.com/checkout');
     
-    const vulnerabilities = await runSecurityScan(page.url(), {
+    const vulnerabilities = await runActiveSecurityScan(page.url(), {
       detectors: 'xss',
       maxPages: 1
     });
@@ -254,6 +270,47 @@ engine.registerScanner(scanner);
 
 ---
 
+### PassiveScanner
+
+Performs passive security analysis via network traffic interception.
+
+```typescript
+class PassiveScanner implements IScanner {
+  readonly type = 'passive';
+  
+  // Detector Management
+  registerDetector(detector: IDetector): void;
+  registerDetectors(detectors: IDetector[]): void;
+  
+  // Scanning
+  scan(context: ScanContext): Promise<Vulnerability[]>;
+}
+```
+
+#### Usage Example
+
+```typescript
+import { 
+  PassiveScanner, 
+  SensitiveDataDetector, 
+  HeaderSecurityDetector,
+  CookieSecurityDetector,
+  InsecureTransmissionDetector
+} from '@tzigger/playwright-security';
+
+const scanner = new PassiveScanner();
+scanner.registerDetectors([
+  new SensitiveDataDetector(),
+  new HeaderSecurityDetector(),
+  new CookieSecurityDetector(),
+  new InsecureTransmissionDetector()
+]);
+
+engine.registerScanner(scanner);
+```
+
+---
+
 ### Built-in Detectors
 
 #### SqlInjectionDetector
@@ -310,6 +367,85 @@ class ErrorBasedDetector extends BaseDetector {
 }
 ```
 
+#### SensitiveDataDetector (Passive)
+
+Detects sensitive data exposure in network traffic.
+
+```typescript
+class SensitiveDataDetector extends BaseDetector {
+  readonly id = 'sensitive-data-exposure';
+  readonly category = VulnerabilityCategory.SENSITIVE_DATA_EXPOSURE;
+  
+  detect(data: unknown): Promise<Vulnerability[]>;
+  getPatterns(): RegExp[];
+}
+```
+
+**Detection Patterns**:
+- Email addresses
+- Phone numbers
+- API tokens and keys
+- Credit card numbers
+- Social security numbers
+
+#### HeaderSecurityDetector (Passive)
+
+Detects missing or misconfigured security headers.
+
+```typescript
+class HeaderSecurityDetector extends BaseDetector {
+  readonly id = 'header-security';
+  readonly category = VulnerabilityCategory.SECURITY_MISCONFIGURATION;
+  
+  detect(data: unknown): Promise<Vulnerability[]>;
+}
+```
+
+**Checks For**:
+- Missing HSTS (Strict-Transport-Security)
+- Missing CSP (Content-Security-Policy)
+- Missing X-Frame-Options
+- Missing X-Content-Type-Options
+- Missing X-XSS-Protection
+- Server/technology disclosure
+
+#### CookieSecurityDetector (Passive)
+
+Detects insecure cookie configurations.
+
+```typescript
+class CookieSecurityDetector extends BaseDetector {
+  readonly id = 'cookie-security';
+  readonly category = VulnerabilityCategory.SECURITY_MISCONFIGURATION;
+  
+  detect(data: unknown): Promise<Vulnerability[]>;
+}
+```
+
+**Checks For**:
+- Missing Secure flag
+- Missing HttpOnly flag
+- Missing SameSite attribute
+- Overly broad cookie domains
+
+#### InsecureTransmissionDetector (Passive)
+
+Detects insecure data transmission.
+
+```typescript
+class InsecureTransmissionDetector extends BaseDetector {
+  readonly id = 'insecure-transmission';
+  readonly category = VulnerabilityCategory.INSECURE_COMMUNICATION;
+  
+  detect(data: unknown): Promise<Vulnerability[]>;
+}
+```
+
+**Checks For**:
+- HTTP instead of HTTPS
+- Mixed content (HTTP resources on HTTPS pages)
+- Sensitive data over unencrypted connections
+
 ---
 
 ### Reporters
@@ -355,18 +491,19 @@ engine.registerReporter(reporter);
 
 The framework provides specialized helpers for Playwright tests.
 
-#### `runSecurityScan(url, options)`
+#### `runActiveSecurityScan(url, options)`
 
-Runs a security scan on a URL.
+Runs an active security scan (tests for injection vulnerabilities).
 
 ```typescript
-function runSecurityScan(
+function runActiveSecurityScan(
   targetUrl: string,
-  options?: SecurityScanOptions
+  options?: ActiveScanOptions
 ): Promise<Vulnerability[]>
 
-interface SecurityScanOptions {
+interface ActiveScanOptions {
   detectors?: 'all' | 'sql' | 'xss' | 'errors';
+  aggressiveness?: 'low' | 'medium' | 'high';
   maxPages?: number;
   headless?: boolean;
 }
@@ -375,11 +512,12 @@ interface SecurityScanOptions {
 **Example**:
 
 ```typescript
-import { runSecurityScan } from '@tzigger/playwright-security/testing';
+import { runActiveSecurityScan } from '@tzigger/playwright-security/testing';
 
-test('API endpoint security', async () => {
-  const vulns = await runSecurityScan('https://api.myapp.com/v1/users', {
+test('API endpoint security - active', async () => {
+  const vulns = await runActiveSecurityScan('https://api.myapp.com/v1/users', {
     detectors: 'sql',
+    aggressiveness: 'medium',
     maxPages: 1,
     headless: true
   });
@@ -387,6 +525,41 @@ test('API endpoint security', async () => {
   expect(vulns).toHaveLength(0);
 });
 ```
+
+**Performance**: 30-120 seconds depending on aggressiveness and pages.
+
+#### `runPassiveSecurityScan(url, options)`
+
+Runs a passive security scan (analyzes traffic patterns).
+
+```typescript
+function runPassiveSecurityScan(
+  targetUrl: string,
+  options?: PassiveScanOptions
+): Promise<Vulnerability[]>
+
+interface PassiveScanOptions {
+  detectors?: 'all' | 'headers' | 'transmission' | 'data' | 'cookies';
+  headless?: boolean;
+}
+```
+
+**Example**:
+
+```typescript
+import { runPassiveSecurityScan } from '@tzigger/playwright-security/testing';
+
+test('security headers check - passive', async () => {
+  const vulns = await runPassiveSecurityScan('https://myapp.com', {
+    detectors: 'headers',
+    headless: true
+  });
+  
+  expect(vulns.filter(v => v.severity === 'critical')).toHaveLength(0);
+});
+```
+
+**Performance**: 3-5 seconds (very fast).
 
 #### `assertNoVulnerabilities(vulnerabilities, maxSeverity)`
 
@@ -418,7 +591,11 @@ test('no critical vulnerabilities', async ({ page }) => {
 
 ```typescript
 import { test } from '@playwright/test';
-import { runSecurityScan, assertNoVulnerabilities } from '@tzigger/playwright-security/testing';
+import { 
+  runActiveSecurityScan, 
+  runPassiveSecurityScan,
+  assertNoVulnerabilities 
+} from '@tzigger/playwright-security/testing';
 
 test.describe('Page Security', () => {
   const pages = [
@@ -429,10 +606,22 @@ test.describe('Page Security', () => {
   ];
   
   for (const pagePath of pages) {
-    test(`${pagePath} should be secure`, async ({ page }) => {
+    test(`${pagePath} should be secure - passive`, async () => {
+      // Fast passive scan first (3-5 seconds)
+      const vulns = await runPassiveSecurityScan(`https://myapp.com${pagePath}`, {
+        detectors: 'all'
+      });
+      assertNoVulnerabilities(vulns);
+    });
+    
+    test(`${pagePath} should be secure - active`, async ({ page }) => {
       await page.goto(`https://myapp.com${pagePath}`);
       
-      const vulns = await runSecurityScan(page.url());
+      // Deeper active scan (30-120 seconds)
+      const vulns = await runActiveSecurityScan(page.url(), {
+        detectors: 'all',
+        maxPages: 2
+      });
       assertNoVulnerabilities(vulns);
     });
   }
@@ -444,26 +633,39 @@ test.describe('Page Security', () => {
 ```typescript
 // security.spec.ts
 import { test, expect } from '@playwright/test';
-import { runSecurityScan, VulnerabilitySeverity } from '@tzigger/playwright-security/testing';
+import { 
+  runActiveSecurityScan, 
+  runPassiveSecurityScan,
+  VulnerabilitySeverity 
+} from '@tzigger/playwright-security/testing';
 import * as fs from 'fs/promises';
 
-test('comprehensive security scan', async ({ page }) => {
+test('comprehensive security scan', async () => {
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
   
-  const vulnerabilities = await runSecurityScan(baseUrl, {
+  // Fast passive scan first (3-5 seconds)
+  const passiveVulns = await runPassiveSecurityScan(baseUrl, {
+    detectors: 'all'
+  });
+  
+  // Deeper active scan (30-120 seconds)
+  const activeVulns = await runActiveSecurityScan(baseUrl, {
     detectors: 'all',
+    aggressiveness: 'medium',
     maxPages: 10
   });
+  
+  const allVulnerabilities = [...passiveVulns, ...activeVulns];
   
   // Save results for CI artifacts
   await fs.writeFile(
     'security-report.json',
-    JSON.stringify(vulnerabilities, null, 2)
+    JSON.stringify(allVulnerabilities, null, 2)
   );
   
   // Count by severity
-  const critical = vulnerabilities.filter(v => v.severity === VulnerabilitySeverity.CRITICAL);
-  const high = vulnerabilities.filter(v => v.severity === VulnerabilitySeverity.HIGH);
+  const critical = allVulnerabilities.filter(v => v.severity === VulnerabilitySeverity.CRITICAL);
+  const high = allVulnerabilities.filter(v => v.severity === VulnerabilitySeverity.HIGH);
   
   // Fail build on critical/high
   expect(critical, 'Critical vulnerabilities found').toHaveLength(0);
@@ -482,10 +684,26 @@ test('authenticated pages security', async ({ page }) => {
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard');
   
-  // Now scan authenticated pages
-  const vulns = await runSecurityScan(page.url(), {
+  // Now scan authenticated pages with active scanner
+  const vulns = await runActiveSecurityScan(page.url(), {
     detectors: 'all',
+    aggressiveness: 'low',
     maxPages: 5
+  });
+  
+  assertNoVulnerabilities(vulns);
+});
+
+test('authenticated API security headers', async ({ request }) => {
+  // Get auth token
+  const loginResponse = await request.post('https://api.myapp.com/login', {
+    data: { username: 'testuser', password: 'testpass' }
+  });
+  const { token } = await loginResponse.json();
+  
+  // Passive scan with authentication
+  const vulns = await runPassiveSecurityScan('https://api.myapp.com/dashboard', {
+    detectors: 'headers'
   });
   
   assertNoVulnerabilities(vulns);
@@ -975,7 +1193,12 @@ test.describe('E2E Security Testing', () => {
 
 ```typescript
 import { test } from '@playwright/test';
-import { runSecurityScan, assertNoVulnerabilities } from '@tzigger/playwright-security/testing';
+import { 
+  runActiveSecurityScan, 
+  runPassiveSecurityScan,
+  assertNoVulnerabilities,
+  VulnerabilitySeverity
+} from '@tzigger/playwright-security/testing';
 
 test.describe('API Security', () => {
   const baseUrl = 'https://api.myapp.com/v1';
@@ -988,9 +1211,20 @@ test.describe('API Security', () => {
   ];
   
   for (const endpoint of endpoints) {
-    test(`${endpoint.method} ${endpoint.path} should be secure`, async () => {
-      const vulns = await runSecurityScan(`${baseUrl}${endpoint.path}`, {
+    test(`${endpoint.method} ${endpoint.path} - passive scan`, async () => {
+      // Fast passive scan for headers, transmission security
+      const vulns = await runPassiveSecurityScan(`${baseUrl}${endpoint.path}`, {
+        detectors: 'all'
+      });
+      
+      assertNoVulnerabilities(vulns, VulnerabilitySeverity.HIGH);
+    });
+    
+    test(`${endpoint.method} ${endpoint.path} - active scan`, async () => {
+      // Active scan for SQL injection
+      const vulns = await runActiveSecurityScan(`${baseUrl}${endpoint.path}`, {
         detectors: 'sql',
+        aggressiveness: 'low',
         maxPages: 1
       });
       
@@ -1084,6 +1318,19 @@ engine.registerScanner(scanner);
 await engine.scan(); // Works
 ```
 
+#### Issue: "runSecurityScan is not a function"
+
+```typescript
+// ❌ Old API (deprecated)
+import { runSecurityScan } from '@tzigger/playwright-security/testing';
+
+// ✅ New API (use specific scan types)
+import { 
+  runActiveSecurityScan,   // For injection testing
+  runPassiveSecurityScan   // For traffic analysis
+} from '@tzigger/playwright-security/testing';
+```
+
 #### Issue: "Configuration not loaded"
 
 ```typescript
@@ -1104,6 +1351,61 @@ browser: {
   timeout: 60000, // 60 seconds
 }
 ```
+
+---
+
+## CLI Tool Usage
+
+### Installation
+
+To use the `dast-scan` CLI command:
+
+```bash
+# Clone and setup
+git clone https://github.com/Tzigger/playwright_security.git
+cd playwright_security
+npm install
+
+# Build the project
+npm run build
+
+# Link globally (may require sudo on macOS/Linux)
+npm link
+# or
+sudo npm link
+```
+
+### Basic Usage
+
+```bash
+# Passive scan (fast, 3-5 seconds)
+dast-scan https://myapp.com --scan-type passive
+
+# Active scan (comprehensive, 30-120 seconds)
+dast-scan https://myapp.com --scan-type active
+
+# Both passive and active
+dast-scan https://myapp.com --scan-type both
+
+# With custom output
+dast-scan https://myapp.com --output ./reports --formats html,json,sarif
+
+# Using a configuration file
+dast-scan --config ./config/default.config.json
+```
+
+### Available Flags
+
+- `--scan-type <type>` - Scan type: active, passive, or both (default: active)
+- `--passive` - Enable passive scanning
+- `--active` - Enable active scanning (default: true)
+- `-o, --output <dir>` - Output directory (default: ./reports)
+- `-f, --formats <list>` - Report formats: console,json,html,sarif
+- `-c, --config <file>` - Load configuration from file
+- `--headless` - Run headless browser (default: true)
+- `--parallel <n>` - Number of parallel scanners (default: 2)
+
+See [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md) for more CLI details.
 
 ---
 

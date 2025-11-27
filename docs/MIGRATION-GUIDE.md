@@ -12,10 +12,32 @@ This guide helps you migrate your code when upgrading to new versions of the fra
 
 ### From Scratch (New Installation)
 
-If you're installing the framework for the first time, simply:
+If you're installing the framework for the first time:
 
+**Option 1: Framework Integration (for testing)**
 ```bash
 npm install @tzigger/playwright-security --save-dev
+```
+
+**Option 2: CLI Tool (for standalone scanning)**
+```bash
+# Clone the repository
+git clone https://github.com/Tzigger/playwright_security.git
+cd playwright_security
+
+# Install dependencies
+npm install
+
+# Build the project
+npm run build
+
+# Link the CLI globally (may require sudo on macOS/Linux)
+npm link
+# or
+sudo npm link
+
+# Now you can use dast-scan anywhere
+dast-scan --help
 ```
 
 See [Developer Guide](./DEVELOPER-GUIDE.md) for complete setup instructions.
@@ -54,8 +76,17 @@ import { ScanEngine } from '@tzigger/playwright-security';
 
 **After** (v0.1.0-beta.1):
 ```typescript
-import { runSecurityScan, assertNoVulnerabilities } from '@tzigger/playwright-security/testing';
+import { 
+  runActiveSecurityScan, 
+  runPassiveSecurityScan,
+  assertNoVulnerabilities,
+  VulnerabilitySeverity 
+} from '@tzigger/playwright-security/testing';
 ```
+
+**Note**: The framework now provides separate helpers for active and passive scanning:
+- `runActiveSecurityScan()` - Tests for injection vulnerabilities (SQLi, XSS, etc.)
+- `runPassiveSecurityScan()` - Analyzes traffic patterns (headers, cookies, data exposure)
 
 #### 2. Scanner Registration
 
@@ -93,9 +124,11 @@ const config = {
 ### Planned for v0.2.0
 
 **Expected changes** (subject to change):
-- Passive scanner implementation
-- Additional detector types
-- Enhanced reporter options
+- ✅ Passive scanner (COMPLETED in v0.1.0-beta.1)
+- SPA (Single Page Application) detection improvements
+- Additional active detectors (CSRF, Path Traversal, Command Injection)
+- Authentication support (OAuth, session-based)
+- Multi-browser support (Firefox, WebKit)
 - Performance improvements
 
 **Migration difficulty**: Low to Medium
@@ -233,10 +266,16 @@ Module '"@tzigger/playwright-security"' has no exported member 'runSecurityScan'
 ```
 
 **Solution**:
-Use correct import path for testing helpers:
+Use correct import path and function names for testing helpers:
 ```typescript
-import { runSecurityScan } from '@tzigger/playwright-security/testing';
+import { 
+  runActiveSecurityScan,
+  runPassiveSecurityScan,
+  assertNoVulnerabilities 
+} from '@tzigger/playwright-security/testing';
 ```
+
+**Note**: `runSecurityScan()` was split into `runActiveSecurityScan()` and `runPassiveSecurityScan()` for better control.
 
 ### Issue 3: Type Errors
 
@@ -299,4 +338,55 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
 
 ---
 
-**Last Updated**: November 24, 2025 (v0.1.0-beta.1)
+## CLI Tool Usage
+
+### Using dast-scan Command
+
+After installation via `npm link`, you can use the `dast-scan` command:
+
+```bash
+# Passive scan (fast, 3-5 seconds)
+dast-scan https://example.com --scan-type passive
+
+# Active scan (comprehensive, 30-120 seconds)
+dast-scan https://example.com --scan-type active
+
+# Both passive and active
+dast-scan https://example.com --scan-type both
+
+# Custom output and formats
+dast-scan https://example.com --output ./reports --formats html,json,sarif
+
+# Use a configuration file
+dast-scan --config ./config/default.config.json
+
+# Use a profile
+dast-scan https://example.com --config ./config/profiles/aggressive.json
+```
+
+### CLI Flags Reference
+
+| Flag | Description | Default |
+|------|-------------|----------|
+| `--scan-type <type>` | Scan type: `active`, `passive`, or `both` | `active` |
+| `--passive` | Enable passive scanning | `false` |
+| `--active` | Enable active scanning | `true` |
+| `-o, --output <dir>` | Output directory for reports | `./reports` |
+| `-f, --formats <list>` | Report formats (console,json,html,sarif) | `console,json,html` |
+| `-c, --config <file>` | Load configuration from file | - |
+| `--headless` | Run headless browser | `true` |
+| `--parallel <n>` | Number of parallel scanners | `2` |
+
+### Unlinking the CLI
+
+If you need to uninstall the global `dast-scan` command:
+
+```bash
+npm unlink -g @tzigger/playwright-security
+# or
+sudo npm unlink -g @tzigger/playwright-security
+```
+
+---
+
+**Last Updated**: November 27, 2025 (v0.1.0-beta.1)
