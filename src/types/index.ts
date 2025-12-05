@@ -16,3 +16,12 @@ export * from './config';
 
 // Scan result types
 export type { ScanResult, VulnerabilitySummary, AggregatedScanResult } from './scan-result';
+
+// Verification types (v0.2)
+export * from './verification';
+
+// Timeout types (v0.2)
+export * from './timeout';
+
+// Page scan types (v0.2)
+export * from './page-scan';

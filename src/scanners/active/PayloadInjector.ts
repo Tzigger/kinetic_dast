@@ -101,6 +101,20 @@ export class PayloadInjector {
         // For robustness, we always reload for form inputs as they likely caused navigation
         if (surface.type === AttackSurfaceType.FORM_INPUT || currentUrl !== options.baseUrl) {
            await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+           
+           // Wait for SPA to load and elements to be available
+           if (surface.selector) {
+             // Wait for the specific element to be visible (with shorter timeout)
+             await page.waitForSelector(surface.selector, { 
+               state: 'visible', 
+               timeout: 5000 
+             }).catch(() => {
+               this.logger.debug(`Selector ${surface.selector} not found after reload`);
+             });
+           } else {
+             // Generic wait for SPA initialization
+             await page.waitForTimeout(1000);
+           }
         }
       } catch (error) {
         // Check if error is due to closed page/context
@@ -164,8 +178,8 @@ export class PayloadInjector {
           timing: endTime - startTime,
         };
       } else {
-        // 4. Wait for response and capture
-        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+        // 4. Wait for response and capture (with short timeout)
+        await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
         
         result.response = {
           url: page.url(),
@@ -396,6 +410,22 @@ export class PayloadInjector {
       }).catch(() => {});
     }
 
+    // Also try to modify via selector if element is not available
+    if (surface.selector) {
+      await page.evaluate((selector) => {
+        const el = document.querySelector(selector) as HTMLInputElement;
+        if (el) {
+          el.removeAttribute('required');
+          el.removeAttribute('pattern');
+          el.removeAttribute('minlength');
+          el.removeAttribute('maxlength');
+          if (el.type === 'email' || el.type === 'url' || el.type === 'number') {
+            el.type = 'text';
+          }
+        }
+      }, surface.selector).catch(() => {});
+    }
+
     // Prioritize selector to avoid detached elements after reload
     if (surface.selector) {
       await page.fill(surface.selector, payload);
@@ -405,17 +435,63 @@ export class PayloadInjector {
       throw new Error('No element or selector available for injection');
     }
 
-    if (submit && surface.metadata?.formAction) {
-      // Find and click submit button
-      const submitBtn = await page.$('button[type="submit"], input[type="submit"]');
-      if (submitBtn) {
-        // Force enable button
-        await submitBtn.evaluate((el: any) => {
-          el.removeAttribute('disabled');
-          el.classList.remove('disabled');
-        }).catch(() => {});
-        
-        await submitBtn.click({ timeout: 1000 }).catch(() => {});
+    // Submit the form if requested
+    if (submit) {
+      // Try multiple methods to submit
+      let submitted = false;
+
+      // Method 1: Click submit button (various selectors)
+      const submitSelectors = [
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'button:has-text("Log in")',
+        'button:has-text("Login")',
+        'button:has-text("Sign in")',
+        'button:has-text("Submit")',
+        'button[id*="login"]',
+        'button[id*="submit"]',
+        '#loginButton',
+        'mat-card-actions button', // Angular Material
+        'form button:not([type="button"])',
+      ];
+
+      for (const selector of submitSelectors) {
+        try {
+          const submitBtn = await page.$(selector);
+          if (submitBtn && await submitBtn.isVisible()) {
+            // Force enable button
+            await submitBtn.evaluate((el: any) => {
+              el.removeAttribute('disabled');
+              el.classList.remove('disabled');
+            }).catch(() => {});
+            
+            await submitBtn.click({ timeout: 2000 });
+            submitted = true;
+            this.logger.debug(`Submitted form using selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // Try next selector
+        }
+      }
+
+      // Method 2: Press Enter on the input
+      if (!submitted) {
+        try {
+          if (surface.selector) {
+            await page.press(surface.selector, 'Enter');
+            submitted = true;
+            this.logger.debug('Submitted form using Enter key');
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+
+      // Wait for form submission to complete
+      if (submitted) {
+        await page.waitForTimeout(300); // Brief wait for SPA state update
+        await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
       }
     }
   }

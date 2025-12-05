@@ -19,8 +19,15 @@ export * from './testing/helpers';
 
 // Scanners
 export { ActiveScanner } from './scanners/active/ActiveScanner';
+export { VerifiedScanner } from './scanners/active/VerifiedScanner';
+export { PageScanner } from './scanners/active/PageScanner';
 
 // Detectors
 export { SqlInjectionDetector } from './detectors/active/SqlInjectionDetector';
 export { XssDetector } from './detectors/active/XssDetector';
 export { ErrorBasedDetector } from './detectors/active/ErrorBasedDetector';
+export { PathTraversalDetector } from './detectors/active/PathTraversalDetector';
+
+// Verification
+export { VerificationEngine } from './core/verification/VerificationEngine';
+export * from './types/verification';

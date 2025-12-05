@@ -33,52 +33,111 @@ export class SqlInjectionDetector implements IActiveDetector {
   }
 
   /**
+   * Helper: Run a promise with timeout
+   */
+  private async withTimeout<T>(
+    promise: Promise<T>, 
+    timeoutMs: number, 
+    label: string
+  ): Promise<T | null> {
+    const timeoutPromise = new Promise<null>((resolve) => {
+      setTimeout(() => {
+        console.log(`[SqlInjectionDetector] ${label} timed out after ${timeoutMs}ms`);
+        resolve(null);
+      }, timeoutMs);
+    });
+    
+    return Promise.race([promise, timeoutPromise]);
+  }
+
+  /**
    * Detect SQL injection vulnerabilities
    */
   async detect(context: ActiveDetectorContext): Promise<Vulnerability[]> {
     const vulnerabilities: Vulnerability[] = [];
     const { page, attackSurfaces, baseUrl } = context;
 
-    // Filter for SQL injection targets
-    const sqlTargets = attackSurfaces.filter(
-      (surface) =>
-        surface.context === InjectionContext.SQL ||
-        surface.context === InjectionContext.JSON ||
-        surface.name.toLowerCase().includes('id') ||
-        surface.name.toLowerCase().includes('search') ||
-        surface.name.toLowerCase().includes('query')
-    );
+    // Filter for SQL injection targets - include all form inputs, API params, and specific patterns
+    const sqlTargets = attackSurfaces.filter((surface) => {
+      const nameLower = surface.name.toLowerCase();
+      
+      // Include form inputs that could be SQL injectable
+      const isFormInput = surface.type === AttackSurfaceType.FORM_INPUT;
+      const isApiParam = surface.type === AttackSurfaceType.API_PARAM;
+      const isJsonBody = surface.type === AttackSurfaceType.JSON_BODY;
+      const isUrlParam = surface.type === AttackSurfaceType.URL_PARAMETER;
+      
+      // Context-based inclusion
+      const isSqlContext = surface.context === InjectionContext.SQL;
+      const isJsonContext = surface.context === InjectionContext.JSON;
+      
+      // Name-based inclusion for SQL-injectable fields
+      const hasIdPattern = nameLower.includes('id');
+      const hasSearchPattern = nameLower.includes('search') || nameLower.includes('query') || nameLower.includes('q');
+      const hasAuthPattern = nameLower.includes('email') || nameLower.includes('user') || 
+                             nameLower.includes('login') || nameLower.includes('username');
+      const hasOrderPattern = nameLower.includes('order') || nameLower.includes('sort');
+      
+      // Skip non-injectable types
+      const skipTypes = ['checkbox', 'radio', 'submit', 'button', 'file', 'image'];
+      if (surface.metadata?.['inputType'] && skipTypes.includes(surface.metadata['inputType'] as string)) {
+        return false;
+      }
+      
+      return (isFormInput && (hasIdPattern || hasSearchPattern || hasAuthPattern || hasOrderPattern || isSqlContext)) ||
+             isApiParam || isJsonBody || isUrlParam || isSqlContext || isJsonContext;
+    });
 
     for (const surface of sqlTargets) {
       try {
-        // Test different SQL injection techniques
-        const errorBasedVuln = await this.testErrorBased(page, surface, baseUrl);
-        if (errorBasedVuln) vulnerabilities.push(errorBasedVuln);
-
-        const booleanBasedVuln = await this.testBooleanBased(page, surface, baseUrl);
-        if (booleanBasedVuln) vulnerabilities.push(booleanBasedVuln);
-
-        const timeBasedVuln = await this.testTimeBased(page, surface, baseUrl);
-        if (timeBasedVuln) vulnerabilities.push(timeBasedVuln);
-
-        const unionBasedVuln = await this.testUnionBased(page, surface, baseUrl);
-        if (unionBasedVuln) vulnerabilities.push(unionBasedVuln);
-
-        // API-specific SQLi checks for JSON bodies and query params
-        const apiBoolean = await this.testApiBooleanBased(page, surface, baseUrl);
-        if (apiBoolean) vulnerabilities.push(apiBoolean);
-
-        const apiTime = await this.testApiTimeBased(page, surface, baseUrl);
-        if (apiTime) vulnerabilities.push(apiTime);
-
-        // Test for Authentication Bypass (Login SQLi)
+        // Priority 1: Test for Authentication Bypass (Login SQLi) - fastest and most impactful
         if (
           (surface.type === 'form-input' || surface.type === 'json-body' || surface.type === 'api-param') && 
           (surface.name.includes('email') || surface.name.includes('user') || surface.name.includes('login'))
         ) {
            const authBypassVuln = await this.testAuthBypass(page, surface, baseUrl);
-           if (authBypassVuln) vulnerabilities.push(authBypassVuln);
+           if (authBypassVuln) {
+             vulnerabilities.push(authBypassVuln);
+             continue; // Found vulnerability, skip other tests for this surface
+           }
         }
+        
+        // Priority 2: Test error-based (quick response-based check)
+        const errorBasedVuln = await this.withTimeout(
+          this.testErrorBased(page, surface, baseUrl), 
+          15000, 
+          'testErrorBased'
+        );
+        if (errorBasedVuln) {
+          vulnerabilities.push(errorBasedVuln);
+          continue; // Found vulnerability, skip other tests
+        }
+
+        // Priority 3: Boolean-based (may take longer)
+        const booleanBasedVuln = await this.withTimeout(
+          this.testBooleanBased(page, surface, baseUrl),
+          20000,
+          'testBooleanBased'
+        );
+        if (booleanBasedVuln) {
+          vulnerabilities.push(booleanBasedVuln);
+          continue;
+        }
+
+        // Priority 4: Time-based (slowest - intentional delays)
+        // Skip time-based for form inputs on login pages (too slow)
+        if (surface.type !== 'form-input') {
+          const timeBasedVuln = await this.withTimeout(
+            this.testTimeBased(page, surface, baseUrl),
+            30000,
+            'testTimeBased'
+          );
+          if (timeBasedVuln) vulnerabilities.push(timeBasedVuln);
+        }
+
+        // Skip UNION-based for now (complex, many payloads)
+        // const unionBasedVuln = await this.testUnionBased(page, surface, baseUrl);
+        
       } catch (error) {
         console.error(`Error testing SQL injection on ${surface.name}:`, error);
       }
@@ -133,12 +192,28 @@ export class SqlInjectionDetector implements IActiveDetector {
       };
       page.on('response', responseListener);
 
-      const result = await this.injector.inject(page, surface, payload, {
+      // Use Promise.race to add timeout
+      const injectPromise = this.injector.inject(page, surface, payload, {
         encoding: PayloadEncoding.NONE,
         submit: true,
         baseUrl,
       });
+      
+      const timeoutPromise = new Promise<any>((_, reject) => 
+        setTimeout(() => reject(new Error('Injection timeout')), 10000)
+      );
+      
+      let result;
+      try {
+        result = await Promise.race([injectPromise, timeoutPromise]);
+      } catch (e) {
+        page.off('response', responseListener);
+        continue; // Try next payload
+      }
 
+      // Wait briefly for response listener to capture the response
+      await page.waitForTimeout(500);
+      
       page.off('response', responseListener);
 
       // Check 1: URL Redirect

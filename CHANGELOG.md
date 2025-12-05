@@ -5,6 +5,101 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-12-04
+
+### 🎯 Focus: Reducerea False Positives/Negatives
+
+Această versiune se concentrează pe îmbunătățirea acurateței prin Active Verification și stabilizarea execuției pe aplicații SPA.
+
+### ✨ Added
+
+#### Active Verification System (v0.2)
+- **VerificationEngine**: Orchestrator pentru verificarea vulnerabilităților
+  - Suport pentru 4 nivele de verificare: NONE, BASIC, STANDARD, FULL
+  - Confidence scoring (0-1) bazat pe rezultatele verificării
+  - Filtrare automată a false positives
+  
+- **TimeBasedVerifier**: Verificare prin timing analysis
+  - Măsurare baseline cu multiple samples
+  - Detecție statistică a delay-urilor (SQL SLEEP, Command injection sleep)
+  - Reducerea false positives pentru time-based SQLi
+
+- **ResponseDiffVerifier**: Verificare prin compararea răspunsurilor
+  - Boolean-based payload pairs (true/false conditions)
+  - Error pattern detection
+  - XSS reflection verification
+
+- **ReplayVerifier**: Verificare de bază prin re-executare payload
+
+#### Timeout Handling System (v0.2)
+- **TimeoutManager**: Management inteligent al timeout-urilor
+  - Strategii: FIXED, ADAPTIVE, SPA_AWARE
+  - Adaptive learning din pattern-urile de răspuns
+  - Per-operation timeout configuration
+  - Progress tracking cu callbacks
+  - Abort controller pentru operații long-running
+
+- **SPAWaitStrategy**: Strategii specifice pentru SPA frameworks
+  - Detecție automată framework: Angular, React, Vue, Svelte
+  - Angular: Zone.js stability detection
+  - React: Scheduler idle / requestIdleCallback
+  - Vue: Vue.nextTick completion
+  - DOM mutation observer fallback
+
+#### New Types
+- `verification.ts`: Tipuri pentru sistemul de verificare
+  - VerificationLevel, VerificationStatus, VerificationConfig
+  - VerificationResult, VerificationAttempt
+  - IVulnerabilityVerifier interface
+
+- `timeout.ts`: Tipuri pentru timeout handling
+  - TimeoutStrategy, OperationType, SPAFramework
+  - TimeoutConfig, AdaptiveTimeoutState
+  - SPAStabilityResult, SPAWaitCondition
+
+### 📊 Îmbunătățiri Metrici Țintă
+| Metric | v0.1 | v0.2 Target |
+|--------|------|-------------|
+| False Positive Rate | ~15% | < 5% |
+| Detection Confidence | 50-60% | > 80% |
+| SPA Test Success Rate | ~70% | > 95% |
+| Timeout Rate | ~25% | < 5% |
+
+### 📁 New Files
+```
+src/core/verification/
+├── index.ts
+├── VerificationEngine.ts
+├── BaseVerifier.ts
+└── techniques/
+    ├── TimeBasedVerifier.ts
+    └── ResponseDiffVerifier.ts
+
+src/core/timeout/
+├── index.ts
+├── TimeoutManager.ts
+└── SPAWaitStrategy.ts
+
+src/types/
+├── verification.ts
+└── timeout.ts
+
+docs/
+└── V0.2-VERIFICATION-TIMEOUT.md
+
+tests/unit/
+└── verification-timeout.test.ts
+```
+
+### 🔧 Changed
+- `tsconfig.json`: Adăugat "DOM" la lib pentru suport tipuri browser
+- `src/types/index.ts`: Export-uri pentru noile module
+
+### 📝 Documentation
+- `docs/V0.2-VERIFICATION-TIMEOUT.md`: Ghid complet pentru v0.2
+
+---
+
 ## [0.1.0-beta.1] - 2025-11-24
 
 ### 🎉 Initial Beta Release

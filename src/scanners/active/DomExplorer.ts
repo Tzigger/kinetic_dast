@@ -264,15 +264,24 @@ export class DomExplorer {
         // Ignoră resursele statice
         if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) continue;
         
-        // Skip low-priority endpoints
+        // Skip low-priority endpoints and infrastructure endpoints
         if (url.pathname.includes('/assets/') || 
             url.pathname.includes('/i18n/') || 
-            url.pathname.includes('/static/')) continue;
+            url.pathname.includes('/static/') ||
+            url.pathname.includes('/socket.io') ||  // WebSocket infrastructure
+            url.pathname.includes('/_next/') ||      // Next.js internals
+            url.pathname.includes('/__webpack') ||   // Webpack hot reload
+            url.pathname.includes('/favicon') ||     // Favicons
+            url.pathname.includes('/manifest.json')) continue;
 
         // 1. Parametri din Query String pentru cereri API
         if (resourceType === 'xhr' || resourceType === 'fetch') {
           url.searchParams.forEach((value, key) => {
             const priority = this.calculateEndpointPriority(url, key);
+            
+            // Skip technical/infrastructure parameters
+            if (['EIO', 'transport', 'sid', 't', '__t'].includes(key)) return;
+            
             surfaces.push({
               id: `api-query-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
               type: AttackSurfaceType.API_PARAM,
@@ -416,12 +425,188 @@ export class DomExplorer {
    */
   private async discoverFormInputs(page: Page): Promise<AttackSurface[]> {
     const surfaces: AttackSurface[] = [];
-    const forms = await this.discoverForms(page);
     
+    // 1. Standard HTML forms
+    const forms = await this.discoverForms(page);
     forms.forEach(form => {
       surfaces.push(...form.inputs);
     });
 
+    // 2. SPA Framework inputs (Angular, React, Vue)
+    // These might not be inside <form> tags but are still input vectors
+    const spaInputs = await this.discoverSPAInputs(page);
+    surfaces.push(...spaInputs);
+
+    return surfaces;
+  }
+
+  /**
+   * Descoperă input-uri din framework-uri SPA (Angular, React, Vue)
+   * Aceste input-uri pot să nu fie în tag-uri <form> standard
+   */
+  private async discoverSPAInputs(page: Page): Promise<AttackSurface[]> {
+    const surfaces: AttackSurface[] = [];
+    
+    try {
+      // Angular reactive forms
+      const angularInputs = await page.$$('[formControlName], [formcontrolname]');
+      for (let i = 0; i < angularInputs.length; i++) {
+        const input = angularInputs[i];
+        if (!input) continue;
+        
+        const isVisible = await input.isVisible().catch(() => false);
+        if (!isVisible) continue;
+        
+        const formControlName = await input.getAttribute('formControlName') || 
+                                await input.getAttribute('formcontrolname') || '';
+        const type = await input.getAttribute('type') || 'text';
+        const value = await input.inputValue().catch(() => '');
+        const placeholder = await input.getAttribute('placeholder') || '';
+        
+        if (formControlName && type !== 'submit' && type !== 'button') {
+          surfaces.push({
+            id: `spa-input-angular-${i}`,
+            type: AttackSurfaceType.FORM_INPUT,
+            element: input,
+            selector: `[formControlName="${formControlName}"]`,
+            name: formControlName,
+            value,
+            context: this.determineContext(type, formControlName),
+            metadata: {
+              inputType: type,
+              framework: 'Angular',
+              placeholder,
+            },
+          });
+        }
+      }
+
+      // Angular template-driven forms - use evaluate to find elements with ng* attributes
+      // Note: [(ngModel)] syntax uses bracket notation which isn't valid in CSS selectors
+      const ngModelInputs = await page.evaluate(() => {
+        const inputs: Array<{
+          selector: string;
+          name: string;
+          type: string;
+          value: string;
+          id: string;
+        }> = [];
+        
+        // Find all inputs, textareas, selects
+        const allInputs = document.querySelectorAll('input, textarea, select');
+        allInputs.forEach((el, idx) => {
+          // Check for Angular bindings in attributes
+          const hasNgModel = Array.from(el.attributes).some(attr => 
+            attr.name.includes('ngmodel') || 
+            attr.name.includes('ng-model') ||
+            attr.name === '[(ngmodel)]' ||
+            attr.name === '[ngmodel]'
+          );
+          
+          if (hasNgModel || el.hasAttribute('formControlName') || el.hasAttribute('formcontrolname')) {
+            const name = el.getAttribute('name') || 
+                        el.getAttribute('id') ||
+                        el.getAttribute('formControlName') ||
+                        el.getAttribute('formcontrolname') ||
+                        el.getAttribute('aria-label') ||
+                        `input-${idx}`;
+            const type = el.getAttribute('type') || 'text';
+            const id = el.id || `ng-input-${idx}`;
+            
+            // Build a unique selector
+            let selector = '';
+            if (el.id) {
+              selector = `#${el.id}`;
+            } else if (el.getAttribute('name')) {
+              selector = `[name="${el.getAttribute('name')}"]`;
+            } else {
+              selector = `input:nth-of-type(${idx + 1})`;
+            }
+            
+            inputs.push({
+              selector,
+              name,
+              type,
+              value: (el as HTMLInputElement).value || '',
+              id
+            });
+          }
+        });
+        
+        return inputs;
+      });
+
+      for (const inputInfo of ngModelInputs) {
+        const type = inputInfo.type;
+        if (type !== 'submit' && type !== 'button') {
+          // Check if already captured via formControlName
+          const alreadyCaptured = surfaces.some(s => 
+            s.name === inputInfo.name && s.metadata?.['framework'] === 'Angular'
+          );
+          
+          if (!alreadyCaptured) {
+            const element = await page.$(inputInfo.selector).catch(() => null);
+            surfaces.push({
+              id: `spa-input-ngmodel-${inputInfo.id}`,
+              type: AttackSurfaceType.FORM_INPUT,
+              element,
+              selector: inputInfo.selector,
+              name: inputInfo.name,
+              value: inputInfo.value,
+              context: this.determineContext(inputInfo.type, inputInfo.name),
+              metadata: {
+                inputType: inputInfo.type,
+                framework: 'Angular (ngModel)',
+              },
+            });
+          }
+        }
+      }
+
+      // Generic visible inputs not in standard forms (React, Vue, etc.)
+      const allVisibleInputs = await page.$$('input:visible, textarea:visible, select:visible');
+      for (let i = 0; i < allVisibleInputs.length; i++) {
+        const input = allVisibleInputs[i];
+        if (!input) continue;
+        
+        const isEditable = await input.isEditable().catch(() => false);
+        if (!isEditable) continue;
+        
+        const name = await input.getAttribute('name') || 
+                     await input.getAttribute('id') ||
+                     await input.getAttribute('data-testid') ||
+                     await input.getAttribute('aria-label') ||
+                     `input-${i}`;
+        const type = await input.getAttribute('type') || 'text';
+        const value = await input.inputValue().catch(() => '');
+        
+        // Skip submit/button types and already captured
+        if (type === 'submit' || type === 'button' || type === 'hidden') continue;
+        
+        // Check if already captured
+        const alreadyCaptured = surfaces.some(s => s.name === name);
+        if (alreadyCaptured) continue;
+        
+        surfaces.push({
+          id: `spa-input-generic-${i}`,
+          type: AttackSurfaceType.FORM_INPUT,
+          element: input,
+          selector: name.startsWith('input-') ? `input >> nth=${i}` : `[name="${name}"], #${name}`,
+          name,
+          value,
+          context: this.determineContext(type, name),
+          metadata: {
+            inputType: type,
+            framework: 'Generic SPA',
+          },
+        });
+      }
+
+      this.logger.debug(`Discovered ${surfaces.length} SPA input elements`);
+    } catch (error) {
+      this.logger.debug(`Error discovering SPA inputs: ${error}`);
+    }
+    
     return surfaces;
   }
 
