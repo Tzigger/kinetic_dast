@@ -207,13 +207,16 @@ export class PayloadInjector {
         };
         this.logger.debug(`[Inject] API Response: status=${apiResponse.status}, bodyLen=${apiResponse.body.length}, time=${endTime - startTime}ms`);
       } else {
-        // ENHANCED: Use SPA-aware waiting instead of fixed 3s timeout
-        // Wait for SPA content to stabilize (framework-specific)
-        await this.spaWaiter.waitForContent(page, {
-          framework: this.detectedFramework,
-        }).catch(() => {});
+        // For form inputs, skip SPA waiter since form submission causes navigation
+        // which destroys the execution context. Just wait for network idle.
+        if (surface.type !== AttackSurfaceType.FORM_INPUT) {
+          // ENHANCED: Use SPA-aware waiting for non-form surfaces
+          await this.spaWaiter.waitForContent(page, {
+            framework: this.detectedFramework,
+          }).catch(() => {});
+        }
 
-        // Fallback to network idle with longer timeout
+        // Wait for navigation/network to settle
         await page.waitForLoadState('networkidle', { timeout: PayloadInjector.DEFAULT_NETWORK_TIMEOUT }).catch(() => {});
         
         const body = await page.content();

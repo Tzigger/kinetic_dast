@@ -384,6 +384,7 @@ export class ErrorBasedDetector implements IActiveDetector {
       category: VulnerabilityCategory.INFORMATION_DISCLOSURE,
       cwe: 'CWE-209',
       owasp,
+      confidence: 0.85, // Add confidence at top level
       references: [
         'https://cwe.mitre.org/data/definitions/209.html',
         'https://owasp.org/www-community/Improper_Error_Handling',

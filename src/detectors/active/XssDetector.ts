@@ -1141,6 +1141,7 @@ export class XssDetector implements IActiveDetector {
       category: VulnerabilityCategory.XSS,
       cwe,
       owasp,
+      confidence, // Add confidence at top level
       url: result.response?.url || baseUrl,
       evidence: {
         request: {

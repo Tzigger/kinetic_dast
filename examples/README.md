@@ -1,174 +1,99 @@
-# Kinetic Examples & Integration Patterns
+# Kinetic DAST - Examples
 
-This directory contains examples showing how to use Kinetic Security Scanner in different scenarios.
+This folder contains practical examples to help you get started with Kinetic security scanning.
 
-## 📁 Files
+## 📁 Examples
 
-- **`simple-test.ts`** - Standalone example showing basic security scanning
-- **`simple-security-check.spec.ts`** - Playwright test spec with multiple examples
-- **`playwright-test-integration.spec.ts`** - Advanced Playwright integration patterns
-- **`dast.config.json`** - Example configuration file for CLI scanning
-- **`github-actions-ci.yml`** - GitHub Actions CI/CD workflow
+| File | Description | Run Command |
+|------|-------------|-------------|
+| `01-quick-start.ts` | Simplest way to run a scan | `npx ts-node examples/01-quick-start.ts` |
+| `02-playwright-test-integration.spec.ts` | Integrate into Playwright tests | `npx playwright test examples/02-playwright-test-integration.spec.ts` |
+| `03-bwapp-scan.ts` | Scan a local vulnerable app | `npx ts-node examples/03-bwapp-scan.ts` |
+| `04-cli-usage.ts` | CLI documentation & examples | Read the file for commands |
+| `dast.config.json` | Example configuration file | `npx kinetic --config examples/dast.config.json` |
+| `github-actions-ci.yml` | CI/CD workflow template | Copy to `.github/workflows/` |
 
 ## 🚀 Quick Start
 
-### 1. Standalone Script (simple-test.ts)
-
-Run a basic security scan without Playwright test framework:
+### Option 1: CLI (Easiest)
 
 ```bash
-npx ts-node examples/simple-test.ts
+# Build first
+npm run build
+
+# Run a quick scan
+npx kinetic http://testphp.vulnweb.com --passive
+
+# Run a thorough scan
+npx kinetic http://testphp.vulnweb.com --active --max-pages 3
 ```
 
-This example shows:
-- Creating a scan engine
-- Registering scanners and detectors
-- Running a scan
-- Processing results
-
-### 2. Playwright Test Spec (simple-security-check.spec.ts)
-
-Run security checks as Playwright tests:
+### Option 2: Standalone Script
 
 ```bash
-npx playwright test examples/simple-security-check.spec.ts --project=chromium
+# Run the quick start example
+npx ts-node examples/01-quick-start.ts
 ```
 
-Includes examples for:
-- Basic security scans
-- Checking for specific security headers
-- Severity filtering
-- Generating detailed reports
-
-### 3. CLI Scanning with Config File
+### Option 3: Playwright Test Integration
 
 ```bash
-# Use the example config
-kinetic --config examples/dast.config.json
-
-# Override specific settings
-kinetic --config examples/dast.config.json https://example.com --parallel 4
+# Add security tests to your test suite
+npx playwright test examples/02-playwright-test-integration.spec.ts --project=chromium
 ```
 
-### 3. CI/CD Integration (GitHub Actions)
+## 🧪 Test Targets
 
-Copy `github-actions-ci.yml` to `.github/workflows/security-scan.yml`:
+These are public vulnerable test sites you can safely scan:
 
-```yaml
-name: Security Scan
-on: [push, pull_request]
-jobs:
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm ci
-      - run: npx playwright install chromium
-      - run: npx kinetic $STAGING_URL --formats sarif
-      - uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: reports/*.sarif
-```
+| Site | URL | Best For |
+|------|-----|----------|
+| TestPHP | http://testphp.vulnweb.com | SQLi, XSS, Headers |
+| TestHTML5 | http://testhtml5.vulnweb.com | SPA scanning |
+| bWAPP | http://localhost:8080 | Local testing (Docker) |
 
-## 📊 Use Cases
-
-### Use Case 1: Pre-deployment Security Check
+### Running bWAPP Locally
 
 ```bash
-# Run before deploying to production
-kinetic https://staging.myapp.com \
-  --config dast.config.json \
-  --formats sarif,html \
-  --output ./pre-deploy-scan
+# Start bWAPP container
+docker run -d -p 8080:80 raesene/bwapp
 
-# Check for critical issues
-if grep -q '"severity": "critical"' pre-deploy-scan/*.json; then
-  echo "❌ Critical vulnerabilities found - deployment blocked"
-  exit 1
-fi
+# Initialize database (one time)
+# Open http://localhost:8080/install.php and click "Install"
+
+# Default credentials: bee / bug
 ```
 
-### Use Case 2: Developer Workflow
+## 📖 Choosing the Right Approach
 
-```bash
-# Quick scan during development
-kinetic http://localhost:3000 \
-  --formats console \
-  --parallel 1 \
-  --max-pages 5
-```
+| Use Case | Recommended Approach |
+|----------|---------------------|
+| Quick security check | CLI: `npx kinetic <url> --passive` |
+| CI/CD pipeline | CLI with SARIF: `npx kinetic <url> --formats sarif` |
+| E2E test suite | `02-playwright-test-integration.spec.ts` |
+| Custom scanning logic | `01-quick-start.ts` or `03-bwapp-scan.ts` |
+| Learning/Training | `03-bwapp-scan.ts` with bWAPP |
 
-### Use Case 3: Scheduled Security Audits
+## 🔍 What Gets Detected
 
-```yaml
-# .github/workflows/weekly-audit.yml
-on:
-  schedule:
-    - cron: '0 2 * * 1' # Every Monday at 2 AM
+### Passive Scanning (Fast)
+- Missing security headers (CSP, X-Frame-Options, etc.)
+- Insecure cookies (no HttpOnly, no Secure flag)
+- Sensitive data exposure (API keys, passwords in responses)
+- Insecure transmissions
 
-jobs:
-  audit:
-    runs-on: ubuntu-latest
-    steps:
-      - run: kinetic $PRODUCTION_URL --formats html,sarif
-      - name: Email results
-        run: send-email --attachment reports/*.html
-```
+### Active Scanning (Thorough)
+- SQL Injection (error-based, boolean-based, time-based)
+- Cross-Site Scripting (XSS) - reflected, stored, DOM-based
+- Command Injection
+- Path Traversal
+- Server-Side Request Forgery (SSRF)
+- Insecure Direct Object References (IDOR)
+- Error-based information disclosure
 
-## 🔧 Configuration Tips
+## ⚠️ Important Notes
 
-### Environment-Specific Configs
-
-```bash
-# Development
-kinetic --config dast.dev.config.json
-
-# Staging
-kinetic --config dast.staging.config.json
-
-# Production (less aggressive)
-kinetic --config dast.prod.config.json
-```
-
-### Custom Detector Selection
-
-```json
-{
-  "detectors": {
-    "enabled": ["sql-injection", "xss"],
-    "sensitivity": "high"
-  }
-}
-```
-
-## 📝 Best Practices
-
-1. **Start with low aggressiveness** in production
-2. **Use SARIF format** for CI/CD integration
-3. **Set scan timeouts** appropriately for large apps
-4. **Exclude logout/delete endpoints** from scanning
-5. **Run scans in headless mode** in CI/CD
-6. **Store reports** as artifacts for historical analysis
-
-## 🆘 Troubleshooting
-
-**Scan too slow?**
-- Reduce `maxPages` and `crawlDepth`
-- Increase `parallelism`
-- Enable `skipStaticResources`
-
-**Too many false positives?**
-- Increase `minConfidence` threshold
-- Adjust `sensitivity` to "normal" or "low"
-- Use custom detector configuration
-
-**CI/CD pipeline failing?**
-- Set `continue-on-error: true` initially
-- Review findings and adjust severity thresholds
-- Use `--formats sarif` for integration with security tools
-
-## 📚 Learn More
-
-- [Main Documentation](../README.md)
-- [API Reference](../docs/API.md)
-- [Configuration Guide](../docs/CONFIGURATION.md)
+1. **Only scan applications you have permission to test**
+2. Active scanning modifies inputs - use on test environments
+3. Set appropriate timeouts for your network conditions
+4. Use `--max-pages` to limit scan scope during testing

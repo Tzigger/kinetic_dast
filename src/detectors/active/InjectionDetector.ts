@@ -133,6 +133,7 @@ export class InjectionDetector implements IActiveDetector {
           this.logger.info(`[CmdInject] MATCH on ${surface.name}: payload="${payload}", signatures=[${matchedSignatures.join(', ')}]`);
           const cwe = 'CWE-78';
           const owasp = getOWASP2025Category(cwe) || 'A03:2021';
+          const calculatedConfidence = this.config.permissiveMode ? 0.7 : 1.0;
 
           return {
             id: `cmd-injection-${Date.now()}`,
@@ -142,12 +143,13 @@ export class InjectionDetector implements IActiveDetector {
             category: VulnerabilityCategory.INJECTION,
             cwe,
             owasp,
+            confidence: calculatedConfidence, // Add confidence at top level
             url: result.response?.url || baseUrl,
             evidence: {
               request: { body: payload },
-              response: { body: body.substring(0, 500) },
+              response: { body: body.substring(0, 1000) },
               metadata: {
-                  confidence: this.config.permissiveMode ? 0.7 : 1.0,
+                  confidence: calculatedConfidence,
                   signatures: matchedSignatures
               }
             },
@@ -204,6 +206,7 @@ export class InjectionDetector implements IActiveDetector {
             category: VulnerabilityCategory.INJECTION,
             cwe,
             owasp,
+            confidence: 0.95, // Add confidence at top level
             url: result.response?.url || baseUrl,
             evidence: {
               request: { body: payload },

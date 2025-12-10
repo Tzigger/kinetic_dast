@@ -160,7 +160,8 @@ describe('VerificationEngine', () => {
     const replayVerifier = new ReplayVerifier();
     verificationEngine.registerVerifier(replayVerifier);
 
-    expect(verificationEngine.getVerifierNames()).toContain('Replay Verifier');
+    // Verifier names are returned as identifiers, not display names
+    expect(verificationEngine.getVerifierNames()).toContain('replay');
   });
 
   test('should get global instance', () => {

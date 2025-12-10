@@ -445,7 +445,7 @@ export class SqlInjectionDetector implements IActiveDetector {
    */
   private async testErrorBased(page: Page, surface: AttackSurface, baseUrl: string): Promise<Vulnerability | null> {
     const payloads = this.getUniquePayloads(surface, this.getContextualPayloads(surface, SqlInjectionTechnique.ERROR_BASED));
-    this.logger.debug(`[SQLi] testErrorBased: testing ${payloads.length} payloads on ${surface.name}`);
+    this.logger.info(`[SQLi] testErrorBased: testing ${payloads.length} payloads on ${surface.name}: ${payloads.map(p => `"${p}"`).join(', ')}`);
 
     const results = await this.injector.injectMultiple(page, surface, payloads, {
       encoding: PayloadEncoding.NONE,
@@ -455,10 +455,13 @@ export class SqlInjectionDetector implements IActiveDetector {
       maxConcurrent: 1,
     });
 
-    this.logger.debug(`[SQLi] testErrorBased: got ${results.length} results`);
-    for (const result of results) {
+    this.logger.info(`[SQLi] testErrorBased: got ${results.length} results, checking for SQL errors...`);
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      this.logger.info(`[SQLi] testErrorBased result ${i}: payload="${result.payload}", bodyLen=${result.response?.body?.length || 0}`);
       const errorInfo = this.hasSqlError(result);
       if (errorInfo.hasError) {
+        this.logger.info(`[SQLi] testErrorBased: FOUND SQL ERROR with payload "${result.payload}"`);
         return this.createVulnerability(surface, result, SqlInjectionTechnique.ERROR_BASED, baseUrl, {
           matchedPatterns: errorInfo.patterns,
           confidence: this.getTechniqueConfidence(SqlInjectionTechnique.ERROR_BASED),
@@ -658,9 +661,9 @@ export class SqlInjectionDetector implements IActiveDetector {
     const patterns = this.getMatchedErrorPatterns(result);
     const body = result.response?.body || '';
     const category = categorizeError(body) || undefined;
-    this.logger.debug(`[SQLi] hasSqlError check: payload="${result.payload?.substring(0, 50)}", bodyLen=${body.length}, matchedPatterns=${patterns.length}, category=${category || 'none'}`);
+    this.logger.info(`[SQLi] hasSqlError: payload="${result.payload?.substring(0, 50)}", bodyLen=${body.length}, matchedPatterns=${patterns.length}, category=${category || 'none'}`);
     if (patterns.length > 0) {
-      this.logger.debug(`[SQLi] Matched error patterns: ${patterns.join(', ')}`);
+      this.logger.info(`[SQLi] Matched error patterns: ${patterns.join(', ')}`);
     }
     return { hasError: patterns.length > 0, patterns, category };
   }
@@ -1087,6 +1090,7 @@ export class SqlInjectionDetector implements IActiveDetector {
       category: VulnerabilityCategory.INJECTION,
       cwe,
       owasp,
+      confidence, // Add confidence at top level
       url: result.response?.url || baseUrl,
       evidence: {
         request: {
