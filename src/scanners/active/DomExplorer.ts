@@ -400,6 +400,11 @@ export class DomExplorer {
           const value = await input.getAttribute('value') || '';
           
           if (name && type !== 'submit' && type !== 'button') {
+            // Skip ASP.NET infrastructure fields
+            if (['__VIEWSTATE', '__EVENTVALIDATION', '__EVENTTARGET', '__EVENTARGUMENT', '__VIEWSTATEGENERATOR'].includes(name)) {
+              continue;
+            }
+
             inputs.push({
               id: `form-input-${i}`,
               type: AttackSurfaceType.FORM_INPUT,
