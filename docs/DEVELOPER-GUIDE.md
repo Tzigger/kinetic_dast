@@ -97,7 +97,7 @@ import {
   runPassiveSecurityScan,
   assertNoVulnerabilities, 
   VulnerabilitySeverity 
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 
 test.describe('Security Tests', () => {
   test('login form should be secure - active scan', async ({ page }) => {
@@ -512,7 +512,7 @@ interface ActiveScanOptions {
 **Example**:
 
 ```typescript
-import { runActiveSecurityScan } from '@tzigger/kinetic/testing';
+import { runActiveSecurityScan } from '@tzigger/kinetic';
 
 test('API endpoint security - active', async () => {
   const vulns = await runActiveSecurityScan('https://api.myapp.com/v1/users', {
@@ -547,7 +547,7 @@ interface PassiveScanOptions {
 **Example**:
 
 ```typescript
-import { runPassiveSecurityScan } from '@tzigger/kinetic/testing';
+import { runPassiveSecurityScan } from '@tzigger/kinetic';
 
 test('security headers check - passive', async () => {
   const vulns = await runPassiveSecurityScan('https://myapp.com', {
@@ -575,7 +575,7 @@ function assertNoVulnerabilities(
 **Example**:
 
 ```typescript
-import { assertNoVulnerabilities, VulnerabilitySeverity } from '@tzigger/kinetic/testing';
+import { assertNoVulnerabilities, VulnerabilitySeverity } from '@tzigger/kinetic';
 
 test('no critical vulnerabilities', async ({ page }) => {
   const vulns = await runSecurityScan(page.url());
@@ -595,7 +595,7 @@ import {
   runActiveSecurityScan, 
   runPassiveSecurityScan,
   assertNoVulnerabilities 
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 
 test.describe('Page Security', () => {
   const pages = [
@@ -637,7 +637,7 @@ import {
   runActiveSecurityScan, 
   runPassiveSecurityScan,
   VulnerabilitySeverity 
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 import * as fs from 'fs/promises';
 
 test('comprehensive security scan', async () => {
@@ -1198,7 +1198,7 @@ import {
   runPassiveSecurityScan,
   assertNoVulnerabilities,
   VulnerabilitySeverity
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 
 test.describe('API Security', () => {
   const baseUrl = 'https://api.myapp.com/v1';
@@ -1322,13 +1322,13 @@ await engine.scan(); // Works
 
 ```typescript
 // ❌ Old API (deprecated)
-import { runSecurityScan } from '@tzigger/kinetic/testing';
+import { runSecurityScan } from '@tzigger/kinetic';
 
 // ✅ New API (use specific scan types)
 import { 
   runActiveSecurityScan,   // For injection testing
   runPassiveSecurityScan   // For traffic analysis
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 ```
 
 #### Issue: "Configuration not loaded"

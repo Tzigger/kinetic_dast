@@ -51,7 +51,7 @@
 Install Kinetic in your project:
 
 ```bash
-npm install @tzigger/kinetic --save-dev
+npm install https://github.com/Tzigger/kinetic_dast.git
 ```
 
 Use in your Playwright tests:
@@ -63,7 +63,7 @@ import {
   runPassiveSecurityScan,
   assertNoVulnerabilities,
   VulnerabilitySeverity 
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 
 // Example 1: Quick passive scan for security headers
 test('should have security headers', async () => {

@@ -232,7 +232,7 @@ engine.registerReporter(new ConsoleReporter());
 Tests for injection vulnerabilities (SQLi, XSS, command injection, etc.).
 
 ```typescript
-import { runActiveSecurityScan } from '@tzigger/kinetic/testing';
+import { runActiveSecurityScan } from '@tzigger/kinetic';
 
 const vulns = await runActiveSecurityScan(url, {
   detectors: 'all' | 'sql' | 'xss' | 'errors',
@@ -259,7 +259,7 @@ const vulns = await runActiveSecurityScan(url, {
 Analyzes traffic patterns (headers, data exposure, cookies, transmission security).
 
 ```typescript
-import { runPassiveSecurityScan } from '@tzigger/kinetic/testing';
+import { runPassiveSecurityScan } from '@tzigger/kinetic';
 
 const vulns = await runPassiveSecurityScan(url, {
   detectors: 'all' | 'headers' | 'transmission' | 'data' | 'cookies',
@@ -280,7 +280,7 @@ const vulns = await runPassiveSecurityScan(url, {
 ### assertNoVulnerabilities
 
 ```typescript
-import { assertNoVulnerabilities, VulnerabilitySeverity } from '@tzigger/kinetic/testing';
+import { assertNoVulnerabilities, VulnerabilitySeverity } from '@tzigger/kinetic';
 
 assertNoVulnerabilities(vulnerabilities, VulnerabilitySeverity.MEDIUM);
 ```
@@ -442,7 +442,7 @@ await engine.cleanup();
 
 ```typescript
 import { test } from '@playwright/test';
-import { runActiveSecurityScan, assertNoVulnerabilities } from '@tzigger/kinetic/testing';
+import { runActiveSecurityScan, assertNoVulnerabilities } from '@tzigger/kinetic';
 
 test('security scan - active', async ({ page }) => {
   await page.goto('https://myapp.com');
@@ -458,7 +458,7 @@ test('security scan - active', async ({ page }) => {
 
 ```typescript
 import { test } from '@playwright/test';
-import { runPassiveSecurityScan, assertNoVulnerabilities, VulnerabilitySeverity } from '@tzigger/kinetic/testing';
+import { runPassiveSecurityScan, assertNoVulnerabilities, VulnerabilitySeverity } from '@tzigger/kinetic';
 
 test('security scan - passive', async () => {
   const vulns = await runPassiveSecurityScan('https://myapp.com', {
@@ -476,7 +476,7 @@ import {
   runActiveSecurityScan, 
   runPassiveSecurityScan,
   assertNoVulnerabilities 
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 
 test('full security scan', async () => {
   // Fast passive scan first
@@ -619,7 +619,7 @@ import {
   runPassiveSecurityScan, 
   assertNoVulnerabilities, 
   VulnerabilitySeverity 
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 
 // Types
 import type { 

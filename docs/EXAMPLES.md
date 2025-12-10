@@ -178,7 +178,7 @@ test.describe('Application Security Tests', () => {
 ```typescript
 // tests/multi-page-security.spec.ts
 import { test, expect } from '@playwright/test';
-import { runSecurityScan, VulnerabilitySeverity } from '@tzigger/kinetic/testing';
+import { runSecurityScan, VulnerabilitySeverity } from '@tzigger/kinetic';
 
 test.describe('Multi-Page Security Scan', () => {
   const pages = [
@@ -226,7 +226,7 @@ test.describe('Multi-Page Security Scan', () => {
 ```typescript
 // tests/api-security.spec.ts
 import { test, expect } from '@playwright/test';
-import { runSecurityScan } from '@tzigger/kinetic/testing';
+import { runSecurityScan } from '@tzigger/kinetic';
 
 test.describe('API Security Tests', () => {
   const apiBase = 'https://api.myapp.com/v1';

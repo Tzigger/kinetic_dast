@@ -81,7 +81,7 @@ import {
   runPassiveSecurityScan,
   assertNoVulnerabilities,
   VulnerabilitySeverity 
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 ```
 
 **Note**: The framework now provides separate helpers for active and passive scanning:
@@ -272,7 +272,7 @@ import {
   runActiveSecurityScan,
   runPassiveSecurityScan,
   assertNoVulnerabilities 
-} from '@tzigger/kinetic/testing';
+} from '@tzigger/kinetic';
 ```
 
 **Note**: `runSecurityScan()` was split into `runActiveSecurityScan()` and `runPassiveSecurityScan()` for better control.
