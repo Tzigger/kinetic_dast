@@ -3,15 +3,10 @@ import { Command } from 'commander';
 
 import { ConfigurationManager } from '../core/config/ConfigurationManager';
 import { ScanEngine } from '../core/engine/ScanEngine';
-import { ErrorBasedDetector } from '../detectors/active/ErrorBasedDetector';
-import { SqlInjectionDetector } from '../detectors/active/SqlInjectionDetector';
-import { XssDetector } from '../detectors/active/XssDetector';
-import { CookieSecurityDetector } from '../detectors/passive/CookieSecurityDetector';
-import { HeaderSecurityDetector } from '../detectors/passive/HeaderSecurityDetector';
-import { InsecureTransmissionDetector } from '../detectors/passive/InsecureTransmissionDetector';
-import { SensitiveDataDetector } from '../detectors/passive/SensitiveDataDetector';
 import { ActiveScanner } from '../scanners/active/ActiveScanner';
 import { PassiveScanner } from '../scanners/passive/PassiveScanner';
+import { DetectorRegistry } from '../utils/DetectorRegistry';
+import { registerBuiltInDetectors } from '../utils/builtInDetectors';
 import { ScanConfiguration } from '../types/config';
 import { AggressivenessLevel, AuthType, BrowserType, LogLevel, ReportFormat, VerbosityLevel } from '../types/enums';
 
@@ -184,28 +179,29 @@ program
       configManager.loadFromObject(config);
     }
 
+    // Initialize detector registry with built-in detectors
+    registerBuiltInDetectors();
+    const registry = DetectorRegistry.getInstance();
+    
     const engine = new ScanEngine();
 
-    // Register scanners based on configuration
+    // Register scanners based on configuration with filtered detectors
     if (config.scanners.active?.enabled) {
       const active = new ActiveScanner();
-      active.registerDetectors([
-        new SqlInjectionDetector(),
-        new XssDetector(),
-        new ErrorBasedDetector(),
-      ]);
+      const activeDetectors = registry.getActiveDetectors(config.detectors);
+      active.registerDetectors(activeDetectors);
       engine.registerScanner(active);
+      
+      console.log(`Active scanner: ${activeDetectors.length} detectors enabled`);
     }
 
     if (config.scanners.passive?.enabled) {
       const passive = new PassiveScanner();
-      passive.registerDetectors([
-        new SensitiveDataDetector(),
-        new HeaderSecurityDetector(),
-        new CookieSecurityDetector(),
-        new InsecureTransmissionDetector(),
-      ]);
+      const passiveDetectors = registry.getPassiveDetectors(config.detectors);
+      passive.registerDetectors(passiveDetectors);
       engine.registerScanner(passive);
+      
+      console.log(`Passive scanner: ${passiveDetectors.length} detectors enabled`);
     }
 
     await engine.loadConfiguration(config);

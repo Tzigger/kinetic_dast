@@ -480,6 +480,7 @@ npm run format:check
 ### For Users
 - [Developer Guide](./docs/DEVELOPER-GUIDE.md) - **Complete guide for using the framework in your projects**
 - [API Quick Reference](./docs/API-QUICK-REFERENCE.md) - Quick reference for all APIs and methods
+- [Detector Configuration Guide](./docs/DETECTOR-CONFIG-GUIDE.md) - Configure which detectors run via config files
 
 ### For Contributors
 - [Architecture](./docs/architecture.md) - System design and patterns

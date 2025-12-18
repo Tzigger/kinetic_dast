@@ -143,6 +143,7 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
 
   /**
    * Detectează transmisie non-HTTPS pentru date potențial sensibile
+   * ENHANCEMENT: Context-aware severity - localhost gets INFO instead of CRITICAL
    */
   private detectNonHttpsTransmission(request: InterceptedRequest): Vulnerability[] {
     const vulnerabilities: Vulnerability[] = [];
@@ -157,14 +158,20 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
                        request.resourceType === 'document';
 
     if (shouldFlag) {
+      // FIX: Context-aware severity - downgrade for localhost/127.0.0.1
+      const isLocalhost = this.isLocalhostUrl(request.url);
+      const severity = isLocalhost ? VulnerabilitySeverity.INFO : VulnerabilitySeverity.CRITICAL;
+      
       const owasp = getOWASP2025Category('CWE-319') || 'A04:2025';
 
       const vulnerability: Vulnerability = {
         id: uuidv4(),
         category: VulnerabilityCategory.INSECURE_COMMUNICATION,
-        severity: VulnerabilitySeverity.CRITICAL,
-        title: 'Insecure HTTP Transmission',
-        description: `Data transmitted over unencrypted HTTP connection to ${request.url}`,
+        severity,
+        title: isLocalhost ? 'HTTP Transmission on Localhost' : 'Insecure HTTP Transmission',
+        description: isLocalhost 
+          ? `Development/localhost traffic over HTTP to ${request.url} (informational only)`
+          : `Data transmitted over unencrypted HTTP connection to ${request.url}`,
         url: request.url,
         evidence: {
           request: {
@@ -173,10 +180,13 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
             headers: request.headers,
           },
           source: 'PassiveScanner',
-          description: `${request.method} request sent over HTTP. All data is transmitted in plaintext and can be intercepted.`,
+          description: isLocalhost
+            ? `${request.method} request to localhost/127.0.0.1 over HTTP. This is acceptable for local development but should use HTTPS in production.`
+            : `${request.method} request sent over HTTP. All data is transmitted in plaintext and can be intercepted.`,
         },
-        remediation:
-          'Implement HTTPS across the entire application. Redirect all HTTP traffic to HTTPS. Use HSTS headers to enforce HTTPS.',
+        remediation: isLocalhost
+          ? 'For production: Implement HTTPS across the entire application. Redirect all HTTP traffic to HTTPS. Use HSTS headers to enforce HTTPS.'
+          : 'Implement HTTPS across the entire application. Redirect all HTTP traffic to HTTPS. Use HSTS headers to enforce HTTPS.',
         references: [
           'https://owasp.org/www-community/controls/SecureFlag',
           'https://cwe.mitre.org/data/definitions/319.html',
@@ -253,6 +263,23 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
    */
   private isHttps(url: string): boolean {
     return url.startsWith('https://');
+  }
+
+  /**
+   * Verifică dacă URL este localhost sau 127.0.0.1
+   */
+  private isLocalhostUrl(url: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.toLowerCase();
+      return hostname === 'localhost' || 
+             hostname === '127.0.0.1' || 
+             hostname === '::1' ||
+             hostname.startsWith('127.') ||
+             hostname.endsWith('.localhost');
+    } catch {
+      return false;
+    }
   }
 
   /**

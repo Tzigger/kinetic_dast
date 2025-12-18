@@ -40,10 +40,12 @@ export class ActiveScanner extends BaseScanner {
 
   constructor(config: ActiveScannerConfig = {}) {
     super();
+    // PERFORMANCE FIX: Reduce default delay from 500ms to 100ms
+    // Concurrency is now handled at the injection level (PayloadInjector.injectMultiple)
     this.config = {
       maxDepth: config.maxDepth || 3,
       maxPages: config.maxPages || 20,
-      delayBetweenRequests: config.delayBetweenRequests || 500,
+      delayBetweenRequests: config.delayBetweenRequests ?? 100, // Reduced from 500ms
       followRedirects: config.followRedirects !== false,
       respectRobotsTxt: config.respectRobotsTxt !== false,
       skipStaticResources: config.skipStaticResources !== false,
@@ -158,8 +160,8 @@ export class ActiveScanner extends BaseScanner {
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
             await page.waitForLoadState('networkidle', { timeout: Math.min(timeout, 10000) }).catch(() => {});
             
-            // SPA mitigation: If we just navigated, give it a bit more time if configured or implicit
-            await page.waitForTimeout(2000); 
+            // PERFORMANCE FIX: Reduced from 2000ms to 500ms for SPA hydration
+            await page.waitForTimeout(500); 
           } catch (error) {
             context.logger.warn(`Failed to navigate to ${url}: ${error}`);
             page.off('request', requestListener);
@@ -193,12 +195,12 @@ export class ActiveScanner extends BaseScanner {
         // Retry logic for slow SPAs
         if (allSurfaces.length === 0) {
             context.logger.info('No surfaces found initially, waiting for potential SPA hydration...');
-            await page.waitForTimeout(5000);
+            await page.waitForTimeout(3000); // Reduced from 5000ms
             allSurfaces = await this.domExplorer.explore(page, capturedRequests);
             
             if (allSurfaces.length === 0) {
-                 // Try one more time with a longer wait
-                 await page.waitForTimeout(5000);
+                 // Try one more time with a shorter wait (reduced from 5000ms to 2000ms)
+                 await page.waitForTimeout(2000);
                  allSurfaces = await this.domExplorer.explore(page, capturedRequests);
             }
         }
@@ -257,8 +259,8 @@ export class ActiveScanner extends BaseScanner {
 
               await clickable.element.click({ timeout: 1000 }).catch(() => {});
               
-              // Wait for XHR to complete (SPA-aware)
-              await this.domExplorer.waitForNetworkIdle(page, 2000);
+              // PERFORMANCE FIX: Reduced network idle timeout from 2000ms to 1000ms
+              await this.domExplorer.waitForNetworkIdle(page, 1000);
               
               page.off('request', clickListener);
 

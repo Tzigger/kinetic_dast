@@ -21,7 +21,7 @@
       "aggressiveness": "medium",
       "payloadSets": ["sql-injection", "xss", "command-injection"],
       "maxInputsPerPage": 50,
-      "delayBetweenRequests": 100,
+      "delayBetweenRequests": 50,
       "skipReadOnlyInputs": true,
       "submitForms": false,
       "safeMode": false

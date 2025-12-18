@@ -584,6 +584,26 @@ export class SqlInjectionDetector implements IActiveDetector {
     // JSON-aware comparison for API endpoints
     if (this.isJsonResponse(trueResults[0]) || surface.type === AttackSurfaceType.API_PARAM || surface.type === AttackSurfaceType.JSON_BODY) {
       const jsonDiff = this.compareJsonResponses(trueResults, falseResults);
+      
+      // ENHANCED: Additional validation for search endpoints
+      // If the surface is a search parameter, require additional evidence beyond just data array length differences
+      const isLikelySearchParam = surface.name.toLowerCase().match(/search|query|q|filter|term/);
+      
+      if (isLikelySearchParam && jsonDiff.isSignificant) {
+        // For search parameters, only flag as SQLi if:
+        // 1. There's structural changes (not just data count) OR
+        // 2. Status/HTTP codes differ OR
+        // 3. Confidence is very high (>0.7)
+        const hasStructuralEvidence = jsonDiff.diff?.structureDiff?.length > 0 || 
+                                       jsonDiff.diff?.status?.json?.true !== jsonDiff.diff?.status?.json?.false ||
+                                       jsonDiff.diff?.status?.http?.true !== jsonDiff.diff?.status?.http?.false;
+        
+        if (!hasStructuralEvidence && jsonDiff.confidence < 0.7) {
+          this.logger.debug(`[SQLi] Ignoring likely search behavior for ${surface.name}: confidence=${jsonDiff.confidence}, reason=${jsonDiff.reason}`);
+          return null;
+        }
+      }
+      
       if (jsonDiff.isSignificant && trueResults[0]) {
         return this.createVulnerability(surface, trueResults[0], SqlInjectionTechnique.BOOLEAN_BASED, baseUrl, {
           jsonDiff,

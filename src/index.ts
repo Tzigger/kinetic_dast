@@ -9,6 +9,10 @@ export * from './types';
 export * from './core/interfaces';
 export * from './utils';
 
+// NEW: Detector Registry for config-driven detector management
+export { DetectorRegistry } from './utils/DetectorRegistry';
+export { registerBuiltInDetectors } from './utils/builtInDetectors';
+
 export { ScanEngine } from './core/engine/ScanEngine';
 export { BrowserManager } from './core/browser/BrowserManager';
 export { ConfigurationManager } from './core/config/ConfigurationManager';

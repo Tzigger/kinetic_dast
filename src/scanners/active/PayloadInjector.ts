@@ -245,17 +245,13 @@ export class PayloadInjector {
         };
         this.logger.debug(`[Inject] API Response: status=${apiResponse.status}, bodyLen=${apiResponse.body.length}, time=${endTime - startTime}ms`);
       } else {
-        // For form inputs, skip SPA waiter since form submission causes navigation
-        // which destroys the execution context. Just wait for network idle.
-        if (surface.type !== AttackSurfaceType.FORM_INPUT) {
-          // ENHANCED: Use SPA-aware waiting for non-form surfaces
-          await this.spaWaiter.waitForContent(page, {
-            framework: this.detectedFramework,
-          }).catch(() => {});
-        }
-
-        // Wait for navigation/network to settle
-        await page.waitForLoadState('networkidle', { timeout: PayloadInjector.DEFAULT_NETWORK_TIMEOUT }).catch(() => {});
+        // PERFORMANCE FIX: Use minimal waiting for background requests
+        // Only wait for navigation/network to settle with reduced timeout
+        const isBackgroundRequest = surface.type === AttackSurfaceType.API_PARAM || 
+                                    surface.type === AttackSurfaceType.JSON_BODY;
+        const networkTimeout = isBackgroundRequest ? 2000 : PayloadInjector.DEFAULT_NETWORK_TIMEOUT;
+        
+        await page.waitForLoadState('networkidle', { timeout: networkTimeout }).catch(() => {});
         
         const body = await page.content();
         result.response = {
@@ -321,6 +317,11 @@ export class PayloadInjector {
         this.setNestedValue(body, key, payload);
       }
       
+      // ENHANCEMENT: Log JSON injection details
+      this.logger.debug(`[JSON Injection] URL: ${url}`);
+      this.logger.debug(`[JSON Injection] Key: ${key} = ${payload.substring(0, 50)}...`);
+      this.logger.debug(`[JSON Injection] Body: ${JSON.stringify(body).substring(0, 200)}...`);
+      
       response = await page.request.fetch(url, {
         method,
         data: body,
@@ -358,6 +359,7 @@ export class PayloadInjector {
 
   /**
    * Injectează multiple payload-uri într-o suprafață
+   * PERFORMANCE FIX: Support concurrent injection with proper concurrency control
    */
   public async injectMultiple(
     page: Page,
@@ -375,8 +377,16 @@ export class PayloadInjector {
   ): Promise<InjectionResult[]> {
     this.logger.info(`[InjectMultiple] ${surface.type}:${surface.name} <- ${payloads.length} payloads`);
     const results: InjectionResult[] = [];
-    const delayMs = options.delayMs ?? 100;
-    const maxConcurrent = Math.max(1, options.maxConcurrent ?? 1);
+    
+    // PERFORMANCE FIX: Reduce default delay and increase concurrency
+    // Old default: 100ms delay, 1 concurrent
+    // New default: 50ms delay (or 0 for API requests), higher concurrency for API
+    const isApiRequest = surface.type === AttackSurfaceType.API_PARAM || 
+                        surface.type === AttackSurfaceType.JSON_BODY;
+    const delayMs = options.delayMs ?? (isApiRequest ? 0 : 50);
+    const maxConcurrent = Math.max(1, options.maxConcurrent ?? (isApiRequest ? 3 : 1));
+
+    this.logger.debug(`[InjectMultiple] Concurrency: ${maxConcurrent}, Delay: ${delayMs}ms`);
 
     for (let i = 0; i < payloads.length; i += maxConcurrent) {
       const batch = payloads.slice(i, i + maxConcurrent);

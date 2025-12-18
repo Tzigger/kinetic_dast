@@ -320,6 +320,9 @@ export class DomExplorer {
           if (postData) {
             const flattened = this.flattenJson(postData);
             
+            // ENHANCEMENT: Capture request headers for replay
+            const headers = request.headers();
+            
             for (const [key, value] of Object.entries(flattened)) {
               // Ignoră valori complexe sau nule
               if (typeof value === 'object' || value === null) continue;
@@ -338,6 +341,7 @@ export class DomExplorer {
                   resourceType,
                   originalKey: key, // Păstrăm cheia originală (dot notation)
                   originalBody: postData, // Store original body for reconstruction
+                  headers, // Store headers for proper replay
                   priority
                 }
               });

@@ -76,14 +76,19 @@ export class SPAWaitStrategy {
 
   /**
    * Wait for SPA to be stable
+   * @param context - 'navigation' for page loads, 'api' for XHR/Fetch requests
    */
   public async waitForStability(
     page: Page,
-    maxWait: number = 5000
+    maxWait: number = 5000,
+    context: 'navigation' | 'api' = 'navigation'
   ): Promise<SPAStabilityResult> {
     const startTime = Date.now();
     const passedConditions: string[] = [];
     const failedConditions: string[] = [];
+    
+    // PERFORMANCE FIX: For API requests, use minimal waiting strategy
+    const effectiveMaxWait = context === 'api' ? Math.min(maxWait, 2000) : maxWait;
     
     try {
       // Detect framework if not already done
@@ -91,13 +96,29 @@ export class SPAWaitStrategy {
         await this.detectFramework(page);
       }
       
-      // Get conditions for detected framework
+      // PERFORMANCE FIX: Skip framework-specific checks for API requests
+      if (context === 'api') {
+        // For API requests, only wait for network idle - no need for full SPA stability
+        await this.waitForNetworkIdle(page, Math.min(1000, effectiveMaxWait));
+        passedConditions.push('network-idle-api');
+        
+        const stabilizationTime = Date.now() - startTime;
+        return {
+          isStable: true,
+          framework: this.detectedFramework,
+          stabilizationTime,
+          passedConditions,
+          failedConditions,
+        };
+      }
+      
+      // Get conditions for detected framework (only for navigation)
       const conditions = this.getConditionsForFramework(page);
       
-      // Wait for each condition
+      // Wait for each condition with effective timeout
       for (const condition of conditions) {
         try {
-          const result = await this.waitForCondition(condition, maxWait);
+          const result = await this.waitForCondition(condition, effectiveMaxWait);
           if (result) {
             passedConditions.push(condition.name);
           } else {
@@ -109,8 +130,8 @@ export class SPAWaitStrategy {
         }
       }
       
-      // Also wait for common stability indicators
-      await this.waitForDOMStability(page, Math.min(2000, maxWait / 2));
+      // Also wait for common stability indicators (reduced timeout)
+      await this.waitForDOMStability(page, Math.min(1000, effectiveMaxWait / 2));
       passedConditions.push('dom-stability');
       
       const stabilizationTime = Date.now() - startTime;

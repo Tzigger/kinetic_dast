@@ -24,13 +24,8 @@
 import { Page } from 'playwright';
 
 import { ScanEngine } from '../core/engine/ScanEngine';
-import { ErrorBasedDetector } from '../detectors/active/ErrorBasedDetector';
-import { SqlInjectionDetector } from '../detectors/active/SqlInjectionDetector';
-import { XssDetector } from '../detectors/active/XssDetector';
-import { CookieSecurityDetector } from '../detectors/passive/CookieSecurityDetector';
-import { HeaderSecurityDetector } from '../detectors/passive/HeaderSecurityDetector';
-import { InsecureTransmissionDetector } from '../detectors/passive/InsecureTransmissionDetector';
-import { SensitiveDataDetector } from '../detectors/passive/SensitiveDataDetector';
+import { DetectorRegistry } from '../utils/DetectorRegistry';
+import { registerBuiltInDetectors } from '../utils/builtInDetectors';
 import { ActiveScanner } from '../scanners/active/ActiveScanner';
 import { PassiveScanner } from '../scanners/passive/PassiveScanner';
 import { ScanConfiguration } from '../types/config';
@@ -140,7 +135,10 @@ export async function runActiveSecurityScan(
       },
     },
     detectors: {
-      enabled: [],
+      enabled: options.detectors === 'all' ? ['*'] : 
+               options.detectors === 'sql' ? ['sql-injection'] :
+               options.detectors === 'xss' ? ['xss'] :
+               options.detectors === 'errors' ? ['error-based'] : ['*'],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       sensitivity: 'normal' as any,
       tuning: {
@@ -169,23 +167,15 @@ export async function runActiveSecurityScan(
     },
   };
 
+  // Initialize detector registry
+  registerBuiltInDetectors();
+  const registry = DetectorRegistry.getInstance();
+  
   const engine = new ScanEngine();
   const scanner = new ActiveScanner();
   
-  // Register detectors based on options
-  const detectors = [];
-  const detectorType = options.detectors || 'all';
-  
-  if (detectorType === 'all' || detectorType === 'sql') {
-    detectors.push(new SqlInjectionDetector());
-  }
-  if (detectorType === 'all' || detectorType === 'xss') {
-    detectors.push(new XssDetector());
-  }
-  if (detectorType === 'all' || detectorType === 'errors') {
-    detectors.push(new ErrorBasedDetector());
-  }
-  
+  // Get detectors from registry based on config
+  const detectors = registry.getActiveDetectors(config.detectors);
   scanner.registerDetectors(detectors);
   engine.registerScanner(scanner);
   
@@ -261,7 +251,11 @@ export async function runPassiveSecurityScan(
       },
     },
     detectors: {
-      enabled: [],
+      enabled: options.detectors === 'all' ? ['*'] :
+               options.detectors === 'headers' ? ['header-security'] :
+               options.detectors === 'transmission' ? ['insecure-transmission'] :
+               options.detectors === 'data' ? ['sensitive-data'] :
+               options.detectors === 'cookies' ? ['cookie-security'] : ['*'],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       sensitivity: 'normal' as any,
       tuning: {
@@ -288,26 +282,15 @@ export async function runPassiveSecurityScan(
     },
   };
 
+  // Initialize detector registry
+  registerBuiltInDetectors();
+  const registry = DetectorRegistry.getInstance();
+  
   const engine = new ScanEngine();
   const scanner = new PassiveScanner();
   
-  // Register detectors based on options
-  const detectors = [];
-  const detectorType = options.detectors || 'all';
-  
-  if (detectorType === 'all' || detectorType === 'headers') {
-    detectors.push(new HeaderSecurityDetector());
-  }
-  if (detectorType === 'all' || detectorType === 'transmission') {
-    detectors.push(new InsecureTransmissionDetector());
-  }
-  if (detectorType === 'all' || detectorType === 'data') {
-    detectors.push(new SensitiveDataDetector());
-  }
-  if (detectorType === 'all' || detectorType === 'cookies') {
-    detectors.push(new CookieSecurityDetector());
-  }
-  
+  // Get detectors from registry based on config
+  const detectors = registry.getPassiveDetectors(config.detectors);
   scanner.registerDetectors(detectors);
   engine.registerScanner(scanner);
   
