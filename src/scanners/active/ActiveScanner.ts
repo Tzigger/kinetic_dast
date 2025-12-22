@@ -87,11 +87,12 @@ export class ActiveScanner extends BaseScanner {
     for (const [name, detector] of this.detectors) {
       // Apply configuration if available
       const tuning = context.config.detectors?.tuning;
-      if (tuning && name === 'SqlInjectionDetector' && tuning.sqli) {
+      const sqliTuning = tuning?.['sqli'];
+      if (sqliTuning && name === 'SqlInjectionDetector') {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (typeof (detector as any).updateConfig === 'function') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (detector as any).updateConfig({ tuning: tuning.sqli });
+          (detector as any).updateConfig({ tuning: sqliTuning });
           context.logger.debug(`Applied tuning configuration to ${name}`);
         }
       }
@@ -141,6 +142,10 @@ export class ActiveScanner extends BaseScanner {
         context.logger.info(`Scanning page [${this.visitedUrls.size + 1}/${this.config.maxPages}]: ${url}`);
         this.visitedUrls.add(url);
 
+        // Start Passive-to-Active Monitoring
+        this.domExplorer.clearDynamicSurfaces();
+        this.domExplorer.startMonitoring(page);
+
         // Capture requests
         const capturedRequests: Request[] = [];
         const requestListener = (request: Request) => {
@@ -165,6 +170,7 @@ export class ActiveScanner extends BaseScanner {
           } catch (error) {
             context.logger.warn(`Failed to navigate to ${url}: ${error}`);
             page.off('request', requestListener);
+            this.domExplorer.stopMonitoring(page);
             continue;
           }
         } else {
@@ -172,6 +178,7 @@ export class ActiveScanner extends BaseScanner {
         }
 
         page.off('request', requestListener);
+        this.domExplorer.stopMonitoring(page);
 
         // Detect SPA framework and handle hash routes
         await this.domExplorer.detectSPAFramework(page);
@@ -292,11 +299,13 @@ export class ActiveScanner extends BaseScanner {
         // 2. Run Active Detectors (Sequential execution for stability)
         // Only run on data surfaces (not buttons)
         const testableSurfaces = attackSurfaces.filter(s => s.type !== AttackSurfaceType.BUTTON);
+
+        const safeMode = context.config.scanners.active?.safeMode ?? false;
         
         for (const [name, detector] of this.detectors) {
           try {
             context.logger.debug(`Running detector: ${name}`);
-            const vulns = await detector.detect({ page, attackSurfaces: testableSurfaces, baseUrl: url });
+            const vulns = await detector.detect({ page, attackSurfaces: testableSurfaces, baseUrl: url, safeMode });
             
             if (vulns.length > 0) {
               context.logger.info(`Detector ${name} found ${vulns.length} potential vulnerabilities. Verifying...`);

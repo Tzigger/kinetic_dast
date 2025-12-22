@@ -1,8 +1,9 @@
 import { IActiveDetector } from '../core/interfaces/IActiveDetector';
 import { IPassiveDetector } from '../core/interfaces/IPassiveDetector';
 import { DetectorConfig } from '../types/config';
-import { Logger } from './logger/Logger';
 import { LogLevel } from '../types/enums';
+
+import { Logger } from './logger/Logger';
 
 /**
  * Detector metadata for registration

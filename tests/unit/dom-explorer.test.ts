@@ -49,6 +49,7 @@ describe('DomExplorer Smart Exploration', () => {
         password: "123", 
         config: { debug: true }
       }),
+      headers: () => ({ 'content-type': 'application/json' }),
     } as unknown as Request;
 
     const surfaces = await domExplorer.explore(mockPage, [mockRequest]);

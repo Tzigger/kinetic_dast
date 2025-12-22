@@ -5,8 +5,9 @@
  * safe mode on non-local targets.
  */
 
-import { Logger } from './logger/Logger';
 import { LogLevel } from '../types/enums';
+
+import { Logger } from './logger/Logger';
 
 /**
  * Target environment type

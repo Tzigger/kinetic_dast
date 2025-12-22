@@ -73,9 +73,95 @@ export interface FormInfo {
 export class DomExplorer {
   private logger: Logger;
   private spaFramework: string | null = null;
+  private networkListener: ((request: Request) => void) | null = null;
+  private dynamicApiSurfaces: AttackSurface[] = [];
 
   constructor(logLevel: LogLevel = LogLevel.INFO) {
     this.logger = new Logger(logLevel, 'DomExplorer');
+  }
+
+  /**
+   * Start monitoring network traffic for passive-to-active discovery
+   */
+  public startMonitoring(page: Page): void {
+    if (this.networkListener) return;
+
+    this.logger.debug('Starting passive-to-active network monitoring');
+    this.networkListener = (request: Request) => {
+      this.handleNetworkRequest(request).catch(err => 
+        this.logger.debug(`Error handling network request: ${err}`)
+      );
+    };
+    page.on('request', this.networkListener);
+  }
+
+  /**
+   * Stop network monitoring
+   */
+  public stopMonitoring(page: Page): void {
+    if (this.networkListener) {
+      this.logger.debug('Stopping network monitoring');
+      page.off('request', this.networkListener);
+      this.networkListener = null;
+    }
+  }
+
+  /**
+   * Clear discovered dynamic surfaces
+   */
+  public clearDynamicSurfaces(): void {
+    this.dynamicApiSurfaces = [];
+  }
+
+  /**
+   * Handle captured network request
+   */
+  private async handleNetworkRequest(request: Request): Promise<void> {
+    try {
+      if (request.method() !== 'POST') return;
+      
+      const postData = request.postDataJSON();
+      if (!postData) return;
+
+      const url = new URL(request.url());
+      const flattened = this.flattenJson(postData);
+      const headers = await request.allHeaders(); // Use allHeaders() for better coverage
+
+      for (const [key, value] of Object.entries(flattened)) {
+        if (typeof value === 'object' || value === null) continue;
+
+        const priority = this.calculateEndpointPriority(url, key);
+        
+        // Avoid duplicates
+        if (this.dynamicApiSurfaces.some(s => s.metadata.url === request.url() && s.name === key)) {
+          continue;
+        }
+
+        const surface: AttackSurface = {
+          id: `api-dynamic-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          type: AttackSurfaceType.JSON_BODY,
+          name: key,
+          value: String(value),
+          context: InjectionContext.JSON,
+          metadata: {
+            url: request.url(),
+            method: 'POST',
+            parameterType: 'json',
+            resourceType: request.resourceType(),
+            originalKey: key,
+            originalBody: postData,
+            headers,
+            priority,
+            source: 'passive-monitoring'
+          }
+        };
+
+        this.dynamicApiSurfaces.push(surface);
+        this.logger.debug(`[Passive-to-Active] Discovered new surface: ${key} in ${url.pathname}`);
+      }
+    } catch (error) {
+      // Ignore parsing errors or non-JSON bodies
+    }
   }
 
   /**
@@ -180,8 +266,14 @@ export class DomExplorer {
       if (collectedRequests.length > 0) {
         const apiSurfaces = await this.discoverApiEndpoints(collectedRequests);
         surfaces.push(...apiSurfaces);
-        this.logger.debug(`[DomExplorer] API endpoints discovered: ${apiSurfaces.length}`);
-        apiSurfaces.forEach(s => this.logger.debug(`  - ${s.type}: ${s.name} at ${s.metadata?.url}`));
+        this.logger.debug(`[DomExplorer] API endpoints discovered from history: ${apiSurfaces.length}`);
+      }
+      
+      // 5b. Add dynamic surfaces from passive monitoring
+      if (this.dynamicApiSurfaces.length > 0) {
+        surfaces.push(...this.dynamicApiSurfaces);
+        this.logger.debug(`[DomExplorer] Dynamic API surfaces added: ${this.dynamicApiSurfaces.length}`);
+        this.dynamicApiSurfaces.forEach(s => this.logger.debug(`  - ${s.type}: ${s.name} (dynamic)`));
       }
 
       // 6. Descoperă elemente clickabile (pentru SPA crawling)
@@ -207,15 +299,24 @@ export class DomExplorer {
   private async discoverClickables(page: Page): Promise<AttackSurface[]> {
     const surfaces: AttackSurface[] = [];
     try {
-      // Selectează butoane și elemente care par interactive
-      const elements = await page.$$('button, div[role="button"], a:not([href]), a[href="#"], span[onclick]');
+      // Selectează butoane și elemente care par interactive, inclusiv directive SPA
+      // Note: @click must be escaped as [\\@click] for Playwright/CSS selector parsing
+      const elements = await page.$$('button, div[role="button"], a:not([href]), a[href="#"], span[onclick], [ng-click], [click], [\\@click], [v-on\\:click]');
       
+      const logoutKeywords = ['logout', 'sign out', 'signout', 'log off', 'disconnect', 'exit'];
+
       for (let i = 0; i < elements.length; i++) {
         const el = elements[i];
         if (!el) continue;
         
         const text = (await el.textContent())?.trim() || 'unknown';
         const isVisible = await el.isVisible();
+        
+        // Safety check: Ignore logout buttons
+        if (logoutKeywords.some(kw => text.toLowerCase().includes(kw))) {
+          this.logger.debug(`Skipping potential logout button: "${text}"`);
+          continue;
+        }
         
         if (isVisible) {
           surfaces.push({

@@ -25,6 +25,8 @@ export class PathTraversalDetector implements IActiveDetector {
     const vulnerabilities: Vulnerability[] = [];
     const { page, attackSurfaces, baseUrl } = context;
 
+    this.injector.setSafeMode(context.safeMode ?? false);
+
     // Target only inputs that might deal with files or paths
     // Or generic inputs if we are aggressive
     const targets = attackSurfaces.filter(

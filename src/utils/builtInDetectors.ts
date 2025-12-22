@@ -3,14 +3,15 @@
  * Centralizes all detector instantiation and metadata
  */
 
-import { DetectorRegistry } from './DetectorRegistry';
+import { ErrorBasedDetector } from '../detectors/active/ErrorBasedDetector';
 import { SqlInjectionDetector } from '../detectors/active/SqlInjectionDetector';
 import { XssDetector } from '../detectors/active/XssDetector';
-import { ErrorBasedDetector } from '../detectors/active/ErrorBasedDetector';
-import { SensitiveDataDetector } from '../detectors/passive/SensitiveDataDetector';
-import { HeaderSecurityDetector } from '../detectors/passive/HeaderSecurityDetector';
 import { CookieSecurityDetector } from '../detectors/passive/CookieSecurityDetector';
+import { HeaderSecurityDetector } from '../detectors/passive/HeaderSecurityDetector';
 import { InsecureTransmissionDetector } from '../detectors/passive/InsecureTransmissionDetector';
+import { SensitiveDataDetector } from '../detectors/passive/SensitiveDataDetector';
+
+import { DetectorRegistry } from './DetectorRegistry';
 
 /**
  * Register all built-in detectors to the global registry

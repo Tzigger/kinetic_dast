@@ -24,13 +24,13 @@
 import { Page } from 'playwright';
 
 import { ScanEngine } from '../core/engine/ScanEngine';
-import { DetectorRegistry } from '../utils/DetectorRegistry';
-import { registerBuiltInDetectors } from '../utils/builtInDetectors';
 import { ActiveScanner } from '../scanners/active/ActiveScanner';
 import { PassiveScanner } from '../scanners/passive/PassiveScanner';
 import { ScanConfiguration } from '../types/config';
 import { VulnerabilitySeverity, AuthType, BrowserType, LogLevel, VerbosityLevel, AggressivenessLevel, ReportFormat } from '../types/enums';
 import { Vulnerability } from '../types/vulnerability';
+import { DetectorRegistry } from '../utils/DetectorRegistry';
+import { registerBuiltInDetectors } from '../utils/builtInDetectors';
 
 // Re-export commonly used types for convenience
 export { VulnerabilitySeverity, AggressivenessLevel };
@@ -131,7 +131,6 @@ export async function runActiveSecurityScan(
       active: {
         enabled: true,
         aggressiveness,
-        submitForms: options.submitForms !== false,
       },
     },
     detectors: {
@@ -139,6 +138,7 @@ export async function runActiveSecurityScan(
                options.detectors === 'sql' ? ['sql-injection'] :
                options.detectors === 'xss' ? ['xss'] :
                options.detectors === 'errors' ? ['error-based'] : ['*'],
+      disabled: [],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       sensitivity: 'normal' as any,
       tuning: {
@@ -242,8 +242,7 @@ export async function runPassiveSecurityScan(
     },
     scanners: {
       passive: { 
-        enabled: true,
-        interceptTypes: ['document', 'xhr', 'fetch'] as const
+        enabled: true
       },
       active: { 
         enabled: false,
@@ -256,6 +255,7 @@ export async function runPassiveSecurityScan(
                options.detectors === 'transmission' ? ['insecure-transmission'] :
                options.detectors === 'data' ? ['sensitive-data'] :
                options.detectors === 'cookies' ? ['cookie-security'] : ['*'],
+      disabled: [],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       sensitivity: 'normal' as any,
       tuning: {

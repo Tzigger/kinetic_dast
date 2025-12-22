@@ -38,6 +38,8 @@ export class ErrorBasedDetector implements IActiveDetector {
     const vulnerabilities: Vulnerability[] = [];
     const { page, attackSurfaces, baseUrl } = context;
 
+    this.injector.setSafeMode(context.safeMode ?? false);
+
     // Test all attack surfaces for error disclosure
     for (const surface of attackSurfaces) {
       try {

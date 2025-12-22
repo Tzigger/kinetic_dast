@@ -110,8 +110,14 @@ export class SensitiveDataDetector implements IPassiveDetector {
   }
 
   private applyConfig(): void {
-    if (this.config?.tuning?.sensitiveData) {
-      const { emailAllowlist, skipPaths } = this.config.tuning.sensitiveData;
+    const sensitiveDataTuningRaw = this.config?.tuning?.['sensitiveData'];
+    const sensitiveDataTuning =
+      sensitiveDataTuningRaw && typeof sensitiveDataTuningRaw === 'object'
+        ? (sensitiveDataTuningRaw as { emailAllowlist?: string[]; skipPaths?: string[] })
+        : undefined;
+
+    if (sensitiveDataTuning) {
+      const { emailAllowlist, skipPaths } = sensitiveDataTuning;
       
       if (emailAllowlist) {
         for (const email of emailAllowlist) {

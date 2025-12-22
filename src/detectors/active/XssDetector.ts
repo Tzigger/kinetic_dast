@@ -194,6 +194,8 @@ export class XssDetector implements IActiveDetector {
     const vulnerabilities: Vulnerability[] = [];
     const { page, attackSurfaces, baseUrl } = context;
 
+    this.injector.setSafeMode(context.safeMode ?? false);
+
     this.stats = this.initStats();
     this.testedPayloads.clear();
 
@@ -635,7 +637,12 @@ export class XssDetector implements IActiveDetector {
       const confidence = Math.max(0.95, this.calculateConfidence(XssType.STORED, result, { reflectionAnalysis }));
 
       if (body.includes(marker) || reflectionAnalysis.executionIndicators.length > 0 || reflectionAnalysis.reflected) {
-        return this.createVulnerability(surface, result, XssType.STORED, baseUrl, storedPayload, {
+        const resultWithReloadedHtml: InjectionResult = {
+          ...result,
+          response: safeResponse as any,
+        };
+
+        return this.createVulnerability(surface, resultWithReloadedHtml, XssType.STORED, baseUrl, storedPayload, {
           reflectionAnalysis,
           confidence,
         });

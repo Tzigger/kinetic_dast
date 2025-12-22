@@ -241,40 +241,12 @@ const result = await injector.inject(page, surface, "'; DROP TABLE users--");
 
 ---
 
-## ApiScanner with Safe Mode
+## Active Scanning with Safe Mode
 
-### Constructor with Safe Mode
+Safe mode applies to **active payload injection** (via `PayloadInjector`) and is controlled by `scanners.active.safeMode`.
 
-```typescript
-import { ApiScanner, LogLevel } from '@tzigger/kinetic';
-
-// Safe mode disabled (default)
-const scanner1 = new ApiScanner({}, LogLevel.INFO);
-
-// Safe mode enabled
-const scanner2 = new ApiScanner({}, LogLevel.INFO, true);
-```
-
-### Setting Safe Mode Dynamically
-
-```typescript
-scanner.setSafeMode(true);
-scanner.setSafeMode(false);
-```
-
-### Payload Filtering in Tests
-
-When safe mode is enabled, destructive payloads are automatically filtered:
-
-```typescript
-// With safe mode disabled: uses all SQL_PAYLOADS
-await scanner.testSqlInjection(endpoint);
-
-// With safe mode enabled: filters out destructive payloads
-scanner.setSafeMode(true);
-await scanner.testSqlInjection(endpoint);
-// Only non-destructive SQL injection payloads are tested
-```
+- For non-local targets, `ScanEngine` will auto-enable safe mode if `safeMode` is not explicitly set.
+- When safe mode is enabled, destructive payloads (e.g. `DROP TABLE`, `DELETE FROM`) are blocked at injection time.
 
 ---
 

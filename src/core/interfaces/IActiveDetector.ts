@@ -10,6 +10,9 @@ export interface ActiveDetectorContext {
   page: Page;
   attackSurfaces: AttackSurface[];
   baseUrl: string;
+
+  /** When true, destructive payloads should be filtered */
+  safeMode?: boolean;
 }
 
 /**

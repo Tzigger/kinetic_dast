@@ -63,12 +63,12 @@ export class HtmlReporter extends BaseReporter {
             {{#if timestamp}}<div class="kv"><b>Detected:</b> {{timestamp}}</div>{{/if}}
             {{#if evidence.source}}<div class="kv"><b>Source:</b> {{evidence.source}}</div>{{/if}}
             {{#if evidence.request.method}}<div class="kv"><b>Method:</b> {{evidence.request.method}}</div>{{/if}}
-            <div class=\"kv\"><b>Surface:</b> {{#if evidence.metadata.surfaceName}}{{evidence.metadata.surfaceName}}{{else}}n/a{{/if}}{{#if evidence.metadata.contextInfo.surfaceType}} ({{evidence.metadata.contextInfo.surfaceType}}){{/if}}</div>
-            {{#if evidence.metadata.payload}}<div class=\"kv\"><b>Payload:</b> <span class=\"mono\">{{evidence.metadata.payload}}</span></div>{{else}}{{#if evidence.request.body}}<div class=\"kv\"><b>Payload:</b> <span class=\"mono\">{{evidence.request.body}}</span></div>{{else}}{{#if evidence.element.payload}}<div class=\"kv\"><b>Payload:</b> <span class=\"mono\">{{evidence.element.payload}}</span></div>{{/if}}{{/if}}{{/if}}
+            <div class="kv"><b>Surface:</b> {{#if evidence.metadata.surfaceName}}{{evidence.metadata.surfaceName}}{{else}}n/a{{/if}}{{#if evidence.metadata.contextInfo.surfaceType}} ({{evidence.metadata.contextInfo.surfaceType}}){{/if}}</div>
+            {{#if evidence.metadata.payload}}<div class="kv"><b>Payload:</b> <span class="mono">{{evidence.metadata.payload}}</span></div>{{else}}{{#if evidence.request.body}}<div class="kv"><b>Payload:</b> <span class="mono">{{evidence.request.body}}</span></div>{{else}}{{#if evidence.element.payload}}<div class="kv"><b>Payload:</b> <span class="mono">{{evidence.element.payload}}</span></div>{{/if}}{{/if}}{{/if}}
             {{#if evidence.metadata.contextInfo.injectionContext}}<div class="kv"><b>Context:</b> {{evidence.metadata.contextInfo.injectionContext}}</div>{{/if}}
             {{#if evidence.request.url}}<div class="kv"><b>Request URL:</b> {{evidence.request.url}}</div>{{/if}}
             {{#if evidence.request.body}}<div class="kv"><b>Request Body:</b></div><pre class="block">{{evidence.request.body}}</pre>{{/if}}
-            {{#if evidence.response.snippet}}<div class=\"kv\"><b>Response Snippet:</b></div><pre class=\"block\">{{evidence.response.snippet}}</pre>{{else}}{{#if evidence.response.body}}<div class=\"kv\"><b>Response Body:</b></div><pre class=\"block\">{{evidence.response.body}}</pre>{{/if}}{{/if}}
+            {{#if evidence.response.snippet}}<div class="kv"><b>Response Snippet:</b></div><pre class="block">{{evidence.response.snippet}}</pre>{{else}}{{#if evidence.response.body}}<div class="kv"><b>Response Body:</b></div><pre class="block">{{evidence.response.body}}</pre>{{/if}}{{/if}}
           </div></details></td>
         </tr>
       {{/each}}</tbody></table></body></html>`;

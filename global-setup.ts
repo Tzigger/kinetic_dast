@@ -16,9 +16,9 @@ async function loginToBwapp(baseUrl: string, storageStatePath: string = STORAGE_
   const page = await context.newPage();
 
   await page.goto(`${baseUrl}/login.php`);
-  await page.fill('input[name="login"]', process.env.BWAPP_USER ?? 'bee');
-  await page.fill('input[name="password"]', process.env.BWAPP_PASSWORD ?? 'bug');
-  await page.selectOption('select[name="security_level"]', process.env.BWAPP_SECURITY_LEVEL ?? '0');
+  await page.fill('input[name="login"]', process.env['BWAPP_USER'] ?? 'bee');
+  await page.fill('input[name="password"]', process.env['BWAPP_PASSWORD'] ?? 'bug');
+  await page.selectOption('select[name="security_level"]', process.env['BWAPP_SECURITY_LEVEL'] ?? '0');
   await page.click('[name="form"]');
   await page.waitForURL('**/portal.php');
 
@@ -42,6 +42,6 @@ export async function ensureBwappAuthState(
 }
 
 export default async function globalSetup(_config: FullConfig): Promise<void> {
-  const bwappUrl = process.env.BWAPP_URL ?? DEFAULT_BWAPP_URL;
+  const bwappUrl = process.env['BWAPP_URL'] ?? DEFAULT_BWAPP_URL;
   await ensureBwappAuthState(bwappUrl, STORAGE_STATE_PATH);
 }

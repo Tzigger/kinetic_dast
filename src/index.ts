@@ -26,13 +26,7 @@ export * from './testing/helpers';
 
 // Scanners
 export { ActiveScanner } from './scanners/active/ActiveScanner';
-export { VerifiedScanner } from './scanners/active/VerifiedScanner';
-export { PageScanner } from './scanners/active/PageScanner';
 export { ElementScanner } from './scanners/active/ElementScanner';
-
-// NEW: API Scanner and Endpoint Discovery
-export { ApiScanner, ApiTestCategory, type ApiTestResult, type ApiScannerConfig } from './scanners/active/ApiScanner';
-export { ApiEndpointDiscovery, ApiType, type ApiEndpoint, type ApiParameter, type GraphQLOperation } from './scanners/active/ApiEndpointDiscovery';
 
 // Detectors
 export { SqlInjectionDetector } from './detectors/active/SqlInjectionDetector';

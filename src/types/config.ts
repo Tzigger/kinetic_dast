@@ -1,12 +1,11 @@
 import {
   AggressivenessLevel,
   AuthType,
+  BrowserType,
   LogLevel,
   ReportFormat,
   SensitivityLevel,
   VerbosityLevel,
-  VulnerabilityCategory,
-  VulnerabilitySeverity,
 } from './enums';
 
 /**
@@ -73,43 +72,35 @@ export interface AuthConfig {
     username?: string;
     password?: string;
     token?: string;
+    apiKey?: string;
+    domain?: string;
   };
 
-  /** Login URL for form-based authentication */
-  loginUrl?: string;
-
-  /** Selectors for form-based authentication */
-  loginSelectors?: {
-    username: string;
-    password: string;
-    submit: string;
+  /** Login page configuration */
+  loginPage?: {
+    url: string;
+    usernameSelector: string;
+    passwordSelector: string;
+    submitSelector: string;
+    checkSelector?: string; // Element to check for successful login
   };
 
-  /** Custom authentication function (for programmatic use) */
-  customAuthFn?: () => Promise<void>;
-
-  /** Session validation URL */
-  sessionValidationUrl?: string;
-
-  /** Expected response when session is valid */
-  sessionValidationPattern?: string;
+  /** Custom navigation actions for login */
+  loginActions?: Record<string, unknown>[];
 }
 
 /**
  * Scope configuration
  */
 export interface ScopeConfig {
-  /** Patterns to include (regex) */
-  include: string[];
+  /** URL patterns to include */
+  include?: string[];
 
-  /** Patterns to exclude (regex) */
-  exclude: string[];
+  /** URL patterns to exclude */
+  exclude?: string[];
 
-  /** Whether to follow external links */
-  followExternalLinks?: boolean;
-
-  /** Allowed domains */
-  allowedDomains?: string[];
+  /** Whether to stay within the domain */
+  stayOnDomain?: boolean;
 }
 
 /**
@@ -120,180 +111,70 @@ export interface CookieConfig {
   value: string;
   domain?: string;
   path?: string;
-  expires?: number;
-  httpOnly?: boolean;
   secure?: boolean;
-  sameSite?: 'Strict' | 'Lax' | 'None';
+  httpOnly?: boolean;
 }
 
 /**
  * Scanner configuration
  */
 export interface ScannerConfig {
-  /** Passive scanner configuration */
-  passive: PassiveScannerConfig;
-
   /** Active scanner configuration */
   active: ActiveScannerConfig;
-}
 
-/**
- * Passive scanner configuration
- */
-export interface PassiveScannerConfig {
-  /** Whether passive scanning is enabled */
-  enabled: boolean;
-
-  /** Types of requests to intercept */
-  interceptTypes?: ('xhr' | 'fetch' | 'document' | 'websocket')[];
-
-  /** Maximum response size to analyze (bytes) */
-  maxResponseSize?: number;
-
-  /** Whether to skip static resources (images, CSS, fonts) */
-  skipStaticResources?: boolean;
-
-  /** Whether to analyze responses from cache */
-  analyzeCache?: boolean;
-
-  /** Custom patterns to look for in responses */
-  customPatterns?: CustomPattern[];
+  /** Passive scanner configuration */
+  passive: PassiveScannerConfig;
 }
 
 /**
  * Active scanner configuration
  */
 export interface ActiveScannerConfig {
-  /** Whether active scanning is enabled */
+  /** Whether to enable active scanning */
   enabled: boolean;
 
-  /** Aggressiveness level */
-  aggressiveness: AggressivenessLevel;
-
-  /** Payload sets to use (file paths or names) */
-  payloadSets?: string[];
-
-  /** Maximum number of inputs to test per page */
-  maxInputsPerPage?: number;
-
-  /** Delay between requests (ms) to avoid rate limiting */
-  delayBetweenRequests?: number;
-
-  /** Whether to skip read-only/disabled inputs */
-  skipReadOnlyInputs?: boolean;
-
-  /** Whether to submit forms during testing */
-  submitForms?: boolean;
-
-  /** Custom payloads to include */
-  customPayloads?: string[];
-
-  /** Elements to target (CSS selectors) */
-  targetSelectors?: string[];
-
-  /** Elements to avoid (CSS selectors) */
-  excludeSelectors?: string[];
-
-  /** Safe mode: disable destructive payloads that could damage the target */
+  /** Safe mode (prevents destructive actions) */
   safeMode?: boolean;
+
+  /** Aggressiveness level */
+  aggressiveness?: AggressivenessLevel;
+
+  /** Override: Max depth specifically for active scan */
+  maxDepth?: number;
+
+  /** Override: Max pages specifically for active scan */
+  maxPages?: number;
+
+  /** Specific user agent for active scanner */
+  userAgent?: string;
 }
 
 /**
- * Custom pattern for detection
+ * Passive scanner configuration
  */
-export interface CustomPattern {
-  /** Pattern ID */
-  id: string;
+export interface PassiveScannerConfig {
+  /** Whether to enable passive scanning */
+  enabled: boolean;
 
-  /** Pattern name */
-  name: string;
-
-  /** Regex pattern */
-  pattern: string;
-
-  /** Flags for regex */
-  flags?: string;
-
-  /** Category this pattern belongs to */
-  category: VulnerabilityCategory;
-
-  /** Severity if matched */
-  severity: VulnerabilitySeverity;
-
-  /** Description */
-  description: string;
+  /** Whether to inspect downloaded files */
+  downloads?: boolean;
 }
 
 /**
  * Detector configuration
  */
 export interface DetectorConfig {
-  /** Detector IDs to enable */
+  /** List of detector IDs or patterns to enable */
   enabled: string[];
 
-  /** Detector IDs to explicitly disable */
-  disabled?: string[];
+  /** List of detector IDs to disable */
+  disabled: string[];
 
-  /** Custom detection rules */
-  customRules?: CustomRule[];
+  /** Sensitivity level (Optional - defaults to Medium/Normal) */
+  sensitivity?: SensitivityLevel;
 
-  /** Sensitivity level */
-  sensitivity: SensitivityLevel;
-
-  /** False positive threshold (0-1) */
-  falsePositiveThreshold?: number;
-
-  /** Minimum confidence to report (0-1) */
-  minConfidence?: number;
-
-  /** Tuning options for specific detectors */
-  tuning?: {
-    sqli?: {
-      booleanBased?: {
-        minRowCountDiff?: number;
-        baselineSamples?: number;
-      };
-    };
-    sensitiveData?: {
-      emailAllowlist?: string[];
-      skipPaths?: string[];
-    };
-  };
-}
-
-/**
- * Custom detection rule
- */
-export interface CustomRule {
-  /** Rule ID */
-  id: string;
-
-  /** Rule name */
-  name: string;
-
-  /** Pattern to match (regex) */
-  pattern: string;
-
-  /** Category */
-  category: VulnerabilityCategory;
-
-  /** Severity */
-  severity: VulnerabilitySeverity;
-
-  /** Description */
-  description: string;
-
-  /** Remediation advice */
-  remediation: string;
-
-  /** CWE reference */
-  cwe?: string;
-
-  /** OWASP reference */
-  owasp?: string;
-
-  /** Whether this rule is enabled */
-  enabled?: boolean;
+  /** Detector-specific tuning options */
+  tuning?: Record<string, unknown>;
 }
 
 /**
@@ -301,66 +182,41 @@ export interface CustomRule {
  */
 export interface BrowserConfig {
   /** Browser type */
-  type: 'chromium' | 'firefox' | 'webkit';
+  type: BrowserType;
 
   /** Whether to run in headless mode */
   headless: boolean;
 
-  /** Browser launch timeout in milliseconds */
+  /** Browser launch/navigation timeout (ms) */
   timeout?: number;
 
   /** Additional browser launch arguments */
   args?: string[];
 
-  /** Viewport dimensions */
+  /** Viewport size */
   viewport?: {
     width: number;
     height: number;
   };
 
-  /** Custom user agent */
+  /** User agent string */
   userAgent?: string;
-
-  /** Proxy configuration */
-  proxy?: ProxyConfig;
 
   /** Whether to ignore HTTPS errors */
   ignoreHTTPSErrors?: boolean;
 
-  /** Whether to accept downloads */
-  acceptDownloads?: boolean;
-
-  /** Timezone ID */
-  timezoneId?: string;
-
-  /** Geolocation */
-  geolocation?: {
-    latitude: number;
-    longitude: number;
-    accuracy?: number;
-  };
-
-  /** Permissions to grant */
-  permissions?: string[];
-
-  /** Extra HTTP headers */
-  extraHTTPHeaders?: Record<string, string>;
+  /** Slow motion delay (ms) - useful for debugging */
+  slowMo?: number;
 }
 
 /**
  * Proxy configuration
  */
 export interface ProxyConfig {
-  /** Proxy server URL */
   server: string;
-
-  /** Proxy username */
   username?: string;
-
-  /** Proxy password */
   password?: string;
-
-  /** Bypass proxy for these patterns */
+  /** Comma-separated domains to bypass proxy for */
   bypass?: string;
 }
 

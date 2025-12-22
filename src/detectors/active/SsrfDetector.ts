@@ -23,6 +23,8 @@ export class SsrfDetector implements IActiveDetector {
     const vulnerabilities: Vulnerability[] = [];
     const { page, attackSurfaces, baseUrl } = context;
 
+    this.injector.setSafeMode(context.safeMode ?? false);
+
     // Target inputs that might handle URLs
     const targets = attackSurfaces.filter(s => {
         const name = s.name.toLowerCase();

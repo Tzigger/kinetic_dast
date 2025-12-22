@@ -1,0 +1,114 @@
+src
+├── cli
+│   ├── commands
+│   ├── index.ts
+│   └── ui
+├── core
+│   ├── analysis
+│   │   └── ResponseAnalyzer.ts
+│   ├── browser
+│   │   └── BrowserManager.ts
+│   ├── config
+│   │   └── ConfigurationManager.ts
+│   ├── engine
+│   │   └── ScanEngine.ts
+│   ├── interfaces
+│   │   ├── IActiveDetector.ts
+│   │   ├── IDetector.ts
+│   │   ├── index.ts
+│   │   ├── IPassiveDetector.ts
+│   │   ├── IPlugin.ts
+│   │   ├── IReporter.ts
+│   │   └── IScanner.ts
+│   ├── registry
+│   ├── timeout
+│   │   ├── index.ts
+│   │   ├── SPAWaitStrategy.ts
+│   │   └── TimeoutManager.ts
+│   └── verification
+│       ├── BaseVerifier.ts
+│       ├── index.ts
+│       ├── techniques
+│       │   ├── ResponseDiffVerifier.ts
+│       │   └── TimeBasedVerifier.ts
+│       └── VerificationEngine.ts
+├── detectors
+│   ├── active
+│   │   ├── ErrorBasedDetector.ts
+│   │   ├── InjectionDetector.ts
+│   │   ├── PathTraversalDetector.ts
+│   │   ├── SqlInjectionDetector.ts
+│   │   ├── SsrfDetector.ts
+│   │   └── XssDetector.ts
+│   ├── base
+│   └── passive
+│       ├── CookieSecurityDetector.ts
+│       ├── HeaderSecurityDetector.ts
+│       ├── index.ts
+│       ├── InsecureTransmissionDetector.ts
+│       └── SensitiveDataDetector.ts
+├── index.ts
+├── plugins
+│   └── examples
+├── reporters
+│   ├── base
+│   │   └── IReporter.ts
+│   ├── ConsoleReporter.ts
+│   ├── HtmlReporter.ts
+│   ├── JsonReporter.ts
+│   ├── SarifReporter.ts
+│   └── templates
+│       └── report.hbs
+├── scanners
+│   ├── active
+│   │   ├── ActionHelper.ts
+│   │   ├── ActiveScanner.ts
+│   │   ├── DomExplorer.ts
+│   │   ├── ElementScanner.ts
+│   │   └── PayloadInjector.ts
+│   ├── base
+│   └── passive
+│       ├── NetworkInterceptor.ts
+│       └── PassiveScanner.ts
+├── testing
+│   └── helpers.ts
+├── types
+│   ├── config.ts
+│   ├── element-scan.ts
+│   ├── enums.ts
+│   ├── evidence.ts
+│   ├── index.ts
+│   ├── page-scan.ts
+│   ├── scan-result.ts
+│   ├── timeout.ts
+│   ├── verification.ts
+│   └── vulnerability.ts
+└── utils
+    ├── builtInDetectors.ts
+    ├── cwe
+    │   ├── cwe-mapping.ts
+    │   └── owasp-2025-mapping.ts
+    ├── DetectorRegistry.ts
+    ├── helpers
+    │   ├── common-helpers.ts
+    │   ├── dom-helpers.ts
+    │   ├── index.ts
+    │   ├── network-helpers.ts
+    │   ├── response-comparison.ts
+    │   └── statistical-helpers.ts
+    ├── index.ts
+    ├── logger
+    │   └── Logger.ts
+    ├── patterns
+    │   ├── attack-vectors.ts
+    │   ├── error-patterns.ts
+    │   ├── sensitive-data-patterns.ts
+    │   └── xss-patterns.ts
+    ├── PayloadFilter.ts
+    ├── spa
+    │   └── SPAContentWaiter.ts
+    ├── TargetValidator.ts
+    └── validators
+        └── config-validator.ts
+
+36 directories, 76 files

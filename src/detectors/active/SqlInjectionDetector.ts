@@ -198,6 +198,8 @@ export class SqlInjectionDetector implements IActiveDetector {
   async detect(context: ActiveDetectorContext): Promise<Vulnerability[]> {
     const vulnerabilities: Vulnerability[] = [];
     const { page, attackSurfaces, baseUrl } = context;
+
+    this.injector.setSafeMode(context.safeMode ?? false);
     this.stats = {
       surfacesTested: 0,
       timeouts: 0,
@@ -500,7 +502,7 @@ export class SqlInjectionDetector implements IActiveDetector {
   /**
    * Measure baseline response variance to filter out noise
    */
-  private async measureBaselineVariance(page: Page, surface: AttackSurface, baseUrl: string): Promise<number> {
+  private async measureBaselineVariance(page: Page, surface: AttackSurface, baseUrl: string): Promise<{ variance: number; mean: number }> {
     const samples = this.config.tuning.booleanBased.baselineSamples;
     const lengths: number[] = [];
     
@@ -515,12 +517,12 @@ export class SqlInjectionDetector implements IActiveDetector {
       }
     }
 
-    if (lengths.length < 2) return 0;
+    if (lengths.length < 2) return { variance: 0, mean: 0 };
 
-    const avg = lengths.reduce((a, b) => a + b, 0) / lengths.length;
-    const variance = lengths.reduce((a, b) => a + Math.abs(b - avg), 0) / lengths.length;
+    const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+    const variance = lengths.reduce((a, b) => a + Math.abs(b - mean), 0) / lengths.length;
     
-    return variance;
+    return { variance, mean };
   }
 
   /**
@@ -620,20 +622,55 @@ export class SqlInjectionDetector implements IActiveDetector {
     const avgFalseLength = falseLengths.reduce((a, b) => a + b, 0) / falseLengths.length;
 
     // Measure baseline variance to filter out noise
-    const baselineVariance = await this.measureBaselineVariance(page, surface, baseUrl);
+    const baselineStats = await this.measureBaselineVariance(page, surface, baseUrl);
 
     const diff = Math.abs(avgTrueLength - avgFalseLength);
     
     // Dynamic threshold based on baseline variance
     // We require the difference to be significantly larger than the natural variance
-    const varianceThreshold = baselineVariance * 2 + 100;
+    const varianceThreshold = baselineStats.variance * 2 + 100;
     const percentageThreshold = Math.max(avgTrueLength, avgFalseLength) * (this.config.permissiveMode ? 0.05 : 0.1);
     
     const threshold = Math.max(percentageThreshold, varianceThreshold);
 
     if (diff > threshold && trueResults[0]) {
        // Log metrics for debugging
-       this.logger.debug(`[SQLi] Boolean diff: true=${avgTrueLength}, false=${avgFalseLength}, diff=${diff}, threshold=${threshold}, variance=${baselineVariance}`);
+       this.logger.debug(`[SQLi] Boolean diff: true=${avgTrueLength}, false=${avgFalseLength}, diff=${diff}, threshold=${threshold}, variance=${baselineStats.variance}, baseline=${baselineStats.mean}`);
+
+       // ENHANCED FALSE POSITIVE CHECK FOR SEARCH PARAMETERS
+       // If True payload result equals Baseline (empty/default state), we cannot verify Boolean SQLi.
+       // This commonly occurs when:
+       // - Baseline (empty query) returns "All Results" 
+       // - True payload (' OR '1'='1) also returns "All Results" (same as baseline)
+       // - False payload (' OR '1'='2) returns "No Results"
+       // The difference is real, but it's just search functionality, not SQL injection.
+       const isLikelySearchParam = surface.name.toLowerCase().match(/search|query|q|filter|term|keyword/);
+       if (isLikelySearchParam) {
+          const baselineDiff = Math.abs(avgTrueLength - baselineStats.mean);
+          
+          // If True result is similar to Baseline (within threshold), discard as false positive
+          if (baselineDiff <= threshold) {
+             this.logger.info(`[SQLi] Discarding Boolean FP for search parameter '${surface.name}': True payload (${avgTrueLength}) matches Baseline (${baselineStats.mean}), diff=${baselineDiff} <= threshold=${threshold}`);
+             return null;
+          }
+          
+          // Additional sanity check: compare False to a random string
+          const randomPayload = `XyZ_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+          const randomResult = await this.injector.inject(page, surface, randomPayload, {
+             encoding: PayloadEncoding.NONE,
+             submit: true,
+             baseUrl,
+          });
+          const randomLen = randomResult?.response?.body?.length || 0;
+          const randomDiff = Math.abs(avgFalseLength - randomLen);
+
+          // If False result is indistinguishable from Random result (both are "No Results")
+          if (randomDiff <= threshold) {
+             this.logger.info(`[SQLi] Discarding Boolean FP on search param '${surface.name}': False result matches Random result (likely search behavior).`);
+             return null;
+          }
+       }
+
       return this.createVulnerability(surface, trueResults[0], SqlInjectionTechnique.BOOLEAN_BASED, baseUrl, {
         confidence: this.getTechniqueConfidence(SqlInjectionTechnique.BOOLEAN_BASED),
       });

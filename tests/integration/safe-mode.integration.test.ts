@@ -1,27 +1,7 @@
 import { PayloadInjector } from '@scanners/active/PayloadInjector';
-import { ApiScanner } from '@scanners/active/ApiScanner';
-import { Logger } from '@utils/logger/Logger';
-import { Config } from '@types/config';
 import { LogLevel } from '@types/enums';
 
 describe('Safe Mode Integration Tests', () => {
-  let logger: Logger;
-  let baseConfig: Partial<Config>;
-
-  beforeEach(() => {
-    logger = new Logger(LogLevel.INFO, 'TEST');
-    baseConfig = {
-      target: { url: 'http://localhost:3000' },
-      scanners: {
-        active: {
-          enabled: true,
-          safeMode: false,
-          timeout: 30000,
-        },
-      },
-    };
-  });
-
   describe('PayloadInjector with Safe Mode', () => {
     it('should not block payloads when safe mode is disabled', async () => {
       const injector = new PayloadInjector(LogLevel.INFO, false);
@@ -93,97 +73,6 @@ describe('Safe Mode Integration Tests', () => {
     });
   });
 
-  describe('ApiScanner with Safe Mode', () => {
-    it('should filter SQL payloads in safe mode', async () => {
-      const config = baseConfig as Config;
-      config.scanners.active.safeMode = true;
-      
-      const scanner = new ApiScanner(config.scanners.active, LogLevel.INFO, true);
-      
-      // Scanner should have payload filter active
-      expect(scanner['safeMode']).toBe(true);
-    });
-
-    it('should use all SQL payloads in non-safe mode', async () => {
-      const config = baseConfig as Config;
-      config.scanners.active.safeMode = false;
-      
-      const scanner = new ApiScanner(config.scanners.active, LogLevel.INFO, false);
-      
-      // Scanner should not filter
-      expect(scanner['safeMode']).toBe(false);
-    });
-
-    it('should toggle safe mode for API scanner', async () => {
-      const config = baseConfig as Config;
-      const scanner = new ApiScanner(config.scanners.active, LogLevel.INFO, false);
-      
-      // Initially off
-      expect(scanner['safeMode']).toBe(false);
-      
-      // Toggle on
-      scanner.setSafeMode(true);
-      expect(scanner['safeMode']).toBe(true);
-      
-      // Toggle off
-      scanner.setSafeMode(false);
-      expect(scanner['safeMode']).toBe(false);
-    });
-
-    it('should maintain PayloadFilter consistency across scanners', async () => {
-      const injector = new PayloadInjector(LogLevel.INFO, true);
-      const config = baseConfig as Config;
-      const scanner = new ApiScanner(config.scanners.active, LogLevel.INFO, true);
-      
-      const testPayload = "'; DROP TABLE users--";
-      
-      // Both should agree on safety
-      expect(injector['payloadFilter'].isSafe(testPayload))
-        .toBe(scanner['payloadFilter'].isSafe(testPayload));
-    });
-  });
-
-  describe('Safe Mode Propagation', () => {
-    it('should properly initialize both scanners with same safe mode', async () => {
-      const injector = new PayloadInjector(LogLevel.INFO, true);
-      const config = baseConfig as Config;
-      config.scanners.active.safeMode = true;
-      
-      const scanner = new ApiScanner(config.scanners.active, LogLevel.INFO, true);
-      
-      expect(injector['safeMode']).toBe(true);
-      expect(scanner['safeMode']).toBe(true);
-    });
-
-    it('should handle mismatched safe mode configurations', async () => {
-      const injectorSafe = new PayloadInjector(LogLevel.INFO, true);
-      const config = baseConfig as Config;
-      config.scanners.active.safeMode = false;
-      
-      const scannerNonSafe = new ApiScanner(config.scanners.active, LogLevel.INFO, false);
-      
-      expect(injectorSafe['safeMode']).toBe(true);
-      expect(scannerNonSafe['safeMode']).toBe(false);
-    });
-
-    it('should update both scanners when config changes', async () => {
-      const config = baseConfig as Config;
-      const injector = new PayloadInjector(LogLevel.INFO, false);
-      const scanner = new ApiScanner(config.scanners.active, LogLevel.INFO, false);
-      
-      // Both start disabled
-      expect(injector['safeMode']).toBe(false);
-      expect(scanner['safeMode']).toBe(false);
-      
-      // Enable both
-      injector.setSafeMode(true);
-      scanner.setSafeMode(true);
-      
-      expect(injector['safeMode']).toBe(true);
-      expect(scanner['safeMode']).toBe(true);
-    });
-  });
-
   describe('Safe Mode Edge Cases', () => {
     it('should handle enabling safe mode mid-operation', async () => {
       const injector = new PayloadInjector(LogLevel.INFO, false);
@@ -235,34 +124,6 @@ describe('Safe Mode Integration Tests', () => {
       // Same payload evaluation should remain consistent
       const afterToggle = injector['payloadFilter'].isSafe(testPayload);
       expect(beforeToggle).toBe(afterToggle); // Both false
-    });
-  });
-
-  describe('Configuration-Based Safe Mode', () => {
-    it('should read safe mode from config', async () => {
-      const config = baseConfig as Config;
-      config.scanners.active.safeMode = true;
-      
-      // Scanner should use config value
-      const scanner = new ApiScanner(config.scanners.active, LogLevel.INFO, config.scanners.active.safeMode);
-      expect(scanner['safeMode']).toBe(true);
-    });
-
-    it('should default to false if not specified in config', async () => {
-      const config = baseConfig as Config;
-      delete config.scanners.active.safeMode;
-      
-      const scanner = new ApiScanner(config.scanners.active, LogLevel.INFO, false);
-      expect(scanner['safeMode']).toBe(false);
-    });
-
-    it('should prefer explicit parameter over config', async () => {
-      const config = baseConfig as Config;
-      config.scanners.active.safeMode = false;
-      
-      // Explicit true parameter overrides config false
-      const scanner = new ApiScanner(config.scanners.active, LogLevel.INFO, true);
-      expect(scanner['safeMode']).toBe(true);
     });
   });
 

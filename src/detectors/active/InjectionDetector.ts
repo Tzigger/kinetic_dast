@@ -30,6 +30,8 @@ export class InjectionDetector implements IActiveDetector {
     const vulnerabilities: Vulnerability[] = [];
     const { page, attackSurfaces, baseUrl } = context;
 
+    this.injector.setSafeMode(context.safeMode ?? false);
+
     // Filter targets: Inputs, URL params, API params, Cookies, Headers
     const targets = attackSurfaces.filter(
       (s) => 
