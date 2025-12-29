@@ -28,6 +28,7 @@ export class SqlMapDetector implements IActiveDetector {
     
     // Filter for API endpoints only, as requested
     // Also include URL parameters if they look like API calls (e.g. /rest/, /api/)
+    // Also include FORM_INPUT if the action URL looks like an API
     const apiSurfaces = context.attackSurfaces.filter(s => {
         if (s.type === AttackSurfaceType.API_ENDPOINT) return true;
         
@@ -37,6 +38,14 @@ export class SqlMapDetector implements IActiveDetector {
                 return true;
             }
         }
+
+        if (s.type === AttackSurfaceType.FORM_INPUT) {
+             const action = s.metadata['formAction'] as string;
+             if (action && (action.includes('/rest/') || action.includes('/api/') || action.includes('/v1/'))) {
+                 return true;
+             }
+        }
+
         return false;
     });
 
@@ -45,6 +54,7 @@ export class SqlMapDetector implements IActiveDetector {
     for (const surface of apiSurfaces) {
       let url = '';
       let method = 'GET';
+      let data = '';
 
       if (surface.type === AttackSurfaceType.API_ENDPOINT) {
           const relativeUrl = surface.metadata['url'] as string;
@@ -55,6 +65,15 @@ export class SqlMapDetector implements IActiveDetector {
           url = surface.metadata['url'] as string;
           // For URL parameters, the method is usually GET unless specified otherwise
           method = 'GET'; 
+      } else if (surface.type === AttackSurfaceType.FORM_INPUT) {
+          const action = surface.metadata['formAction'] as string;
+          if (!action) continue;
+          url = new URL(action, context.baseUrl).toString();
+          method = (surface.metadata['formMethod'] as string) || 'POST';
+          // Construct data body for sqlmap
+          // This is a simplification; ideally we'd construct the full form body
+          // For now, we just test the specific input
+          data = `${surface.name}=*`; 
       }
 
       if (!url) continue;
@@ -63,14 +82,20 @@ export class SqlMapDetector implements IActiveDetector {
       const cookies = await context.page.context().cookies(url);
       const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
 
-      const result = await this.sqlmap.scan({
+      const scanOptions: any = {
         url,
         method,
         cookie: cookieString,
         batch: true,
         level: 1, // Keep it fast
         risk: 1
-      });
+      };
+
+      if (data) {
+          scanOptions.data = data;
+      }
+
+      const result = await this.sqlmap.scan(scanOptions);
 
       if (result.vulnerabilities.length > 0) {
         for (const vuln of result.vulnerabilities) {

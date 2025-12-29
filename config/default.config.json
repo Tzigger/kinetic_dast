@@ -30,6 +30,7 @@
   "detectors": {
     "enabled": [
       "sql-injection",
+      "sqlmap",
       "xss",
       "error-based",
       "sensitive-data",

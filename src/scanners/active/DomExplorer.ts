@@ -277,6 +277,8 @@ export class DomExplorer {
     const swaggerPaths = [
       '/swagger.json',
       '/api-docs',
+      '/api-docs/',
+      '/api-docs/swagger-ui-init.js',
       '/v2/api-docs',
       '/v3/api-docs',
       '/openapi.json',
@@ -284,15 +286,43 @@ export class DomExplorer {
     ];
 
     const surfaces: AttackSurface[] = [];
+    const baseUrl = page.url();
 
     for (const path of swaggerPaths) {
       try {
-        const response = await page.request.get(path);
-        if (response.ok() && response.headers()['content-type']?.includes('json')) {
-          this.logger.info(`Found Swagger spec at ${path}`);
-          const spec = await response.json();
+        const fullUrl = new URL(path, baseUrl).toString();
+        this.logger.debug(`Checking for Swagger at ${fullUrl}`);
+        
+        const response = await page.request.get(fullUrl);
+        if (!response.ok()) {
+            this.logger.debug(`Swagger check failed for ${fullUrl}: ${response.status()}`);
+            continue;
+        }
+
+        let spec: any = null;
+        const contentType = response.headers()['content-type'] || '';
+
+        if (contentType.includes('json')) {
+          this.logger.info(`Found Swagger spec at ${fullUrl}`);
+          spec = await response.json();
+        } else if (path.endsWith('.js') || contentType.includes('javascript')) {
+          const text = await response.text();
+          // Extract swaggerDoc from swagger-ui-init.js
+          // Pattern: "swaggerDoc": { ... }, "customOptions"
+          const match = text.match(/"swaggerDoc":\s*({[\s\S]*?}),\s*"customOptions"/);
+          if (match && match[1]) {
+            try {
+              spec = JSON.parse(match[1]);
+              this.logger.info(`Found Swagger spec embedded in ${fullUrl}`);
+            } catch (e) {
+              this.logger.warn(`Failed to parse embedded Swagger spec in ${fullUrl}: ${e}`);
+            }
+          } else {
+             this.logger.debug(`No embedded Swagger spec found in ${fullUrl}`);
+          }
+        }
           
-          if (spec.paths) {
+        if (spec && spec.paths) {
             for (const [endpointPath, methods] of Object.entries(spec.paths)) {
               for (const [method] of Object.entries(methods as any)) {
                 // Convert Swagger path parameters {param} to actual values for testing
@@ -317,7 +347,6 @@ export class DomExplorer {
               }
             }
           }
-        }
       } catch (e) {
         // Ignore 404s and other errors
       }
