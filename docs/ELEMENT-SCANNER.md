@@ -1,110 +1,191 @@
-# ElementScanner
+# Element Scanner
 
-Targeted scanner that uses explicit Playwright locators to test known elements when automatic DOM discovery is unreliable. It complements the config-driven crawl performed by `ActiveScanner`, but operates on user-specified elements, allowing precise, expert-style testing on pages like bWAPP.
+**ElementScanner** is a targeted scanner introduced in Kinetic v0.2.0. Unlike the `ActiveScanner`, which relies on a crawler to discover inputs, the `ElementScanner` operates on a predefined list of Playwright locators.
 
-## When to Use
-- You know the exact control to test (e.g., a login field, search box, API param) and want reliable injection.
-- Auto-discovery misses elements in complex SPAs or heavily styled forms.
-- You want to reproduce a pentester’s focused probe on a single control.
+This is ideal for:
+*   **Integration Tests**: Verifying security of a specific component in isolation.
+*   **Complex UIs**: Scanning elements that the crawler cannot reach (e.g., inside Shadow DOM, complex SPAs).
+*   **Regression**: Re-testing a specific known vulnerability without re-scanning the whole application.
 
-## How It Differs from ActiveScanner
-- **ActiveScanner**: auto-discovers attack surfaces (DOM + captured XHR/fetch), crawls within configured limits, then runs detectors.
-- **ElementScanner**: skips discovery; converts provided locators into `AttackSurface` objects and feeds them to existing detectors.
+## 🚀 Basic Usage
 
-## Configuration (ElementScanConfig)
-- `baseUrl` (string): application base URL.
-- `pageUrl?` (string): page to navigate to before scanning elements.
-- `elements` (ElementTarget[]): list of explicit targets.
-- `pageTimeout?` (number): navigation/action timeout.
-- `delayBetweenElements?` (number): ms delay between element scans.
-- `continueOnError?` (boolean): keep scanning after errors.
-- `authentication?` (PageAuthConfig): login flow (reused from page scans).
-- `preActions?` (PageAction[]): actions before scanning (dismiss banners, etc.).
-
-## ElementTarget
-- `locator` (string): Playwright selector (CSS/XPath/role/data-test-id).
-- `name` (string): human label for reports.
-- `description?` (string): optional notes.
-- `type` (AttackSurfaceType): e.g., `FORM_INPUT`, `URL_PARAMETER`, `API_PARAM`, `JSON_BODY`.
-- `context` (InjectionContext): e.g., `SQL`, `HTML`, `JAVASCRIPT`, `JSON`, `URL`.
-- `testCategories?` ((VulnerabilityCategory|string)[]): limit detectors (matched by detector name substring; falls back to all if none match).
-- `value?` (string): default value to start from.
-- `metadata?` (Record<string, any>): extra hints (formAction, method, API url, original body/key, etc.).
-- `enabled?` (boolean): disable target without removing it.
-
-## Results
-- `ElementScanResult`: per-element status (found/success), vuln count, duration, error if any.
-- `ElementVulnerabilityScanResult`: aggregated totals, success/fail counts, per-element summary.
-- Output mirrors the standard scan result structure (vulnerabilities + severity summary).
-
-## Locator Strategies
-- Prefer stable selectors: `data-test-id`, `aria-label`, roles.
-- Fallbacks: CSS, XPath for legacy pages, text/role selectors for accessibility-friendly apps.
-- Keep locators narrow to avoid hitting multiple elements.
-
-## Attack Surface Types
-- `FORM_INPUT`: classic inputs/textarea/select; captures form action/method when available.
-- `URL_PARAMETER`: query params to mutate.
-- `API_PARAM`: XHR/fetch params; supply `metadata.url` and optional `method`.
-- `JSON_BODY`: JSON key injection; supply `metadata.originalBody` and `originalKey`.
-
-## Injection Contexts
-- `SQL`, `HTML`, `JAVASCRIPT`, `JSON`, `URL`, `HTML_ATTRIBUTE`, `XML` — set the context that best matches the sink.
-
-## Example (bWAPP SQLi search)
-```ts
+```typescript
 import { chromium } from 'playwright';
-import { ElementScanner } from '../src/scanners/active/ElementScanner';
-import { SqlInjectionDetector } from '../src/detectors/active/SqlInjectionDetector';
-import { AttackSurfaceType, InjectionContext } from '../src/scanners/active/DomExplorer';
-import { ElementScanConfig } from '../src/types/element-scan';
+import { ElementScanner } from '@tzigger/kinetic/scanners/active/ElementScanner';
+import { SqlInjectionDetector } from '@tzigger/kinetic/detectors/active/SqlInjectionDetector';
+import { AttackSurfaceType, InjectionContext } from '@tzigger/kinetic/scanners/active/DomExplorer';
 
-const config: ElementScanConfig = {
-  baseUrl: 'http://localhost:8080',
-  pageUrl: '/sqli_1.php',
+// 1. Define Configuration
+const config = {
+  baseUrl: 'http://localhost:3000',
+  pageUrl: '/login', // Optional navigation
   elements: [
     {
-      locator: 'input[name="title"]',
-      name: 'Movie Title Search',
+      name: 'Username Field',
+      locator: 'input[name="user"]',
       type: AttackSurfaceType.FORM_INPUT,
       context: InjectionContext.SQL,
-      testCategories: ['sqli'],
-      metadata: { formAction: '/sqli_1.php', formMethod: 'GET' },
-    },
-  ],
-  authentication: {
-    loginUrl: '/login.php',
-    loginActions: [
-      { type: 'fill', selector: 'input[name="login"]', value: 'bee' },
-      { type: 'fill', selector: 'input[name="password"]', value: 'bug' },
-      { type: 'select', selector: 'select[name="security_level"]', value: '0' },
-      { type: 'click', selector: 'button[name="form"]' },
-    ],
-    successIndicator: { type: 'url', value: 'portal.php' },
-  },
+      testCategories: ['sqli']
+    }
+  ]
 };
 
-(async () => {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  const scanner = new ElementScanner(config);
-  scanner.registerDetector(new SqlInjectionDetector());
-  await scanner.initialize({ page, browserContext: context, config: {} as any, logger: console as any });
-  await scanner.execute();
-  await scanner.cleanup();
-  await browser.close();
-})();
+// 2. Setup Browser
+const browser = await chromium.launch();
+const page = await browser.newPage();
+
+// 3. Initialize & Run
+const scanner = new ElementScanner(config);
+scanner.registerDetector(new SqlInjectionDetector());
+
+await scanner.initialize({ page, ...mockContext }); // Requires ScanContext
+const result = await scanner.execute();
+
+console.log(result.vulnerabilities);
 ```
 
-## Best Practices
-- Use stable locators; avoid brittle nth-child selectors.
-- Set the right `context` to guide payload choice in detectors.
-- Provide `metadata.url/method` for API/JSON targets.
-- Enable `continueOnError` when scanning many elements.
-- Keep authentication and pre-actions minimal but reliable.
+## ⚙️ Configuration Interface
 
-## Troubleshooting
-- **Element not found**: confirm locator, ensure `pageUrl` navigation, add preActions/waits if needed.
-- **No vulnerabilities detected**: verify the target actually sinks input; try different contexts/payloads or run a broader active scan on the same page as a baseline.
-- **Stateful pages**: set `pageTimeout` and consider reloading between elements via preActions if state leaks.
+### `ElementScanConfig`
+
+```typescript
+interface ElementScanConfig {
+  /** Base application URL */
+  baseUrl: string;
+  
+  /** List of elements to test */
+  elements: ElementTarget[];
+  
+  /** Optional: Navigate to this path before scanning */
+  pageUrl?: string;
+  
+  /** Global timeout for operations (ms) */
+  pageTimeout?: number;
+  
+  /** Delay between scanning elements (ms) */
+  delayBetweenElements?: number;
+  
+  /** Authentication configuration (Auto-login) */
+  authentication?: PageAuthConfig;
+  
+  /** Actions to perform before scanning (e.g., dismiss modal) */
+  preActions?: PageAction[];
+}
+```
+
+### `ElementTarget`
+
+Defines exactly what to scan and how.
+
+```typescript
+interface ElementTarget {
+  /** Playwright locator (CSS, XPath, id, etc.) */
+  locator: string;
+  
+  /** Human-readable name for reports */
+  name: string;
+  
+  /** Type of input */
+  type: AttackSurfaceType; // FORM_INPUT, URL_PARAMETER, API_PARAM, JSON_BODY
+  
+  /** Injection Context (Helps detectors choose payloads) */
+  context: InjectionContext; // SQL, HTML, JAVASCRIPT, JSON, URL, COMMAND
+  
+  /** Optional: Limit to specific detectors (matches detector names/categories) */
+  testCategories?: string[]; // e.g. ['xss', 'sql']
+  
+  /** Optional: Default value */
+  value?: string;
+  
+  /** Extra metadata for API targets (method, action, etc.) */
+  metadata?: Record<string, any>;
+}
+```
+
+## 🎯 Target Types & Contexts
+
+### `AttackSurfaceType`
+*   `FORM_INPUT`: Standard HTML `<input>`, `<textarea>`, `<select>`.
+*   `URL_PARAMETER`: Query string parameters.
+*   `JSON_BODY`: JSON keys in API payloads.
+*   `API_PARAM`: API query parameters.
+
+### `InjectionContext`
+This hint tells the `PayloadInjector` which payloads are most effective.
+*   `SQL`: Login forms, search bars, IDs.
+*   `HTML`: Comments, bio fields, inputs reflected in DOM.
+*   `JAVASCRIPT`: Inputs reflected inside `<script>` blocks.
+*   `COMMAND`: Inputs passed to shell commands (e.g., DNS lookup tools).
+
+## 💡 Examples
+
+### 1. Testing a Login Form for SQL Injection
+
+```typescript
+const targets = [
+  {
+    name: 'Login Username',
+    locator: '#username',
+    type: AttackSurfaceType.FORM_INPUT,
+    context: InjectionContext.SQL,
+    testCategories: ['sqli']
+  },
+  {
+    name: 'Login Password',
+    locator: '#password',
+    type: AttackSurfaceType.FORM_INPUT,
+    context: InjectionContext.SQL,
+    testCategories: ['sqli']
+  }
+];
+```
+
+### 2. Testing a Search Bar for XSS
+
+```typescript
+const targets = [
+  {
+    name: 'Search Input',
+    locator: '[data-testid="search-bar"]',
+    type: AttackSurfaceType.FORM_INPUT,
+    context: InjectionContext.HTML,
+    testCategories: ['xss']
+  }
+];
+```
+
+### 3. Testing with Authentication
+
+```typescript
+const config: ElementScanConfig = {
+  baseUrl: 'http://localhost:3000',
+  pageUrl: '/dashboard',
+  authentication: {
+    loginUrl: '/login',
+    loginActions: [
+      { type: 'fill', selector: '#user', value: 'admin' },
+      { type: 'fill', selector: '#pass', value: 'secret' },
+      { type: 'click', selector: '#submit' }
+    ],
+    successIndicator: { type: 'url', value: '/dashboard' }
+  },
+  elements: [ /* ... protected elements ... */ ]
+};
+```
+
+## 📊 Results
+
+The `execute()` method returns a standard `ScanResult`, but you can also access specific element statistics via `getElementResults()`:
+
+```typescript
+const detailedResults = scanner.getElementResults();
+
+console.log(detailedResults.summary);
+// [
+//   { 
+//     elementName: "Search Input", 
+//     status: "success", 
+//     vulnerabilities: 1 
+//   }
+// ]
+```

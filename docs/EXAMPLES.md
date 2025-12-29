@@ -1,11 +1,12 @@
 # Kinetic Practical Examples
 
-> Real-world examples for using Kinetic Security Scanner
+> Real-world examples for using Kinetic Security Scanner (v0.2.0+)
 
 ## Table of Contents
 
-- [Quick Start with Helper Functions](#quick-start-with-helper-functions)
+- [Quick Start Helpers](#quick-start-helpers)
 - [Playwright Test Integration](#playwright-test-integration)
+- [Element Scanner (New)](#element-scanner-targeted-testing)
 - [CI/CD Integration](#cicd-integration)
 - [Custom Detectors](#custom-detectors)
 - [Authentication Scenarios](#authentication-scenarios)
@@ -13,21 +14,25 @@
 
 ---
 
-## Quick Start with Helper Functions
+## Quick Start Helpers
+
+Kinetic provides specific helpers for Active (injection) and Passive (traffic) scanning.
 
 ### Example 1: Passive Security Headers Check
 
+**Use case:** Fast check for CSP, HSTS, and PII leaks. Safe for production.
+
 ```typescript
 import { test, expect } from '@playwright/test';
-import { runPassiveSecurityScan, VulnerabilitySeverity } from '../src/testing/helpers';
+import { runPassiveSecurityScan, VulnerabilitySeverity } from '@tzigger/kinetic/testing';
 
 test('should have proper security headers', async () => {
   const vulnerabilities = await runPassiveSecurityScan('https://myapp.com', {
-    detectors: 'headers',
+    detectors: 'headers', // Only check headers
     headless: true
   });
   
-  // Check for missing HSTS header
+  // Check for missing HSTS header specifically
   const hstsIssues = vulnerabilities.filter(v => 
     v.title.includes('Strict-Transport-Security')
   );
@@ -35,73 +40,51 @@ test('should have proper security headers', async () => {
 });
 ```
 
-### Example 2: SQL Injection Test
+### Example 2: Active SQL Injection Test
+
+**Use case:** Verify a login form is secure against SQLi.
 
 ```typescript
 import { test } from '@playwright/test';
-import { runActiveSecurityScan, assertNoVulnerabilities } from '../src/testing/helpers';
+import { runActiveSecurityScan, assertNoVulnerabilities } from '@tzigger/kinetic/testing';
 
-test('login form should not have SQL injection', async () => {
-  const vulnerabilities = await runActiveSecurityScan('https://myapp.com/login', {
-    detectors: 'sql',
-    aggressiveness: 'medium',
-    maxPages: 1
+test('login form should not have SQL injection', async ({ page }) => {
+  // 1. Go to page
+  await page.goto('https://myapp.com/login');
+
+  // 2. Run Active Scan on current page state
+  const vulnerabilities = await runActiveSecurityScan(page, {
+    detectors: 'sql',           // Focus on SQLi
+    aggressiveness: 'medium',   // Standard payload set
+    maxPages: 1                 // Do not crawl away from login
   });
   
-  // Fail test if any vulnerabilities found
+  // 3. Fail test if any vulnerabilities found
   assertNoVulnerabilities(vulnerabilities);
 });
 ```
 
-### Example 3: Combined Active + Passive Scan
+### Example 3: SPA Security Testing
+
+**Use case:** Testing Angular/React apps where elements load asynchronously.
 
 ```typescript
 import { test, expect } from '@playwright/test';
-import { 
-  runActiveSecurityScan, 
-  runPassiveSecurityScan,
-  VulnerabilitySeverity 
-} from '../src/testing/helpers';
+import { runActiveSecurityScan } from '@tzigger/kinetic/testing';
 
-test('comprehensive security check', async () => {
-  // Fast passive scan first (3-5s)
-  const passiveVulns = await runPassiveSecurityScan('https://myapp.com');
-  console.log(`Passive: ${passiveVulns.length} issues`);
+test('SPA dashboard security', async ({ page }) => {
+  // 1. Navigate and wait for SPA hydration
+  await page.goto('https://myapp.com/#/dashboard');
+  await page.waitForLoadState('networkidle');
   
-  // Then active scan for injections (30-120s)
-  const activeVulns = await runActiveSecurityScan('https://myapp.com', {
-    aggressiveness: 'low',
-    maxPages: 3
+  // 2. Pass the hydrated page to Kinetic
+  // The engine automatically detects Angular/React/Vue and waits for stability
+  const vulnerabilities = await runActiveSecurityScan(page, {
+    detectors: 'xss',
+    maxPages: 3 // Allow crawling hash routes (e.g. #/settings)
   });
-  console.log(`Active: ${activeVulns.length} issues`);
   
-  // Combine and check severity
-  const allVulns = [...passiveVulns, ...activeVulns];
-  const critical = allVulns.filter(v => v.severity === VulnerabilitySeverity.CRITICAL);
-  expect(critical).toHaveLength(0);
-});
-```
-
-### Example 4: SPA Security Testing
-
-```typescript
-import { test, expect } from '@playwright/test';
-import { runPassiveSecurityScan } from '../src/testing/helpers';
-
-test('SPA should not leak sensitive data', async () => {
-  const vulnerabilities = await runPassiveSecurityScan(
-    'https://myapp.com/#/dashboard',
-    {
-      detectors: 'data', // Focus on data exposure
-      headless: true
-    }
-  );
-  
-  // Check for exposed phone numbers, emails, etc.
-  const dataLeaks = vulnerabilities.filter(v => 
-    v.category === 'sensitive-data-exposure'
-  );
-  expect(dataLeaks).toHaveLength(0);
+  expect(vulnerabilities).toHaveLength(0);
 });
 ```
 
@@ -109,161 +92,87 @@ test('SPA should not leak sensitive data', async () => {
 
 ## Playwright Test Integration
 
-### Example 5: Basic Security Test Suite
+### Example 4: Full E2E Security Suite
 
 ```typescript
 // tests/security.spec.ts
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 import { 
   runActiveSecurityScan,
   runPassiveSecurityScan,
   assertNoVulnerabilities, 
   VulnerabilitySeverity 
-} from '../src/testing/helpers';
+} from '@tzigger/kinetic/testing';
 
-test.describe('Application Security Tests', () => {
+test.describe('Security Regression Suite', () => {
   
-  test('home page should have no critical vulnerabilities', async () => {
-    const vulnerabilities = await runPassiveSecurityScan('https://myapp.com', {
-      detectors: 'all',
-      headless: true
+  test('public pages should be secure (Passive)', async () => {
+    const vulns = await runPassiveSecurityScan('https://myapp.com', {
+      detectors: 'all'
     });
-    
-    // No critical or high severity allowed
-    assertNoVulnerabilities(vulnerabilities, VulnerabilitySeverity.MEDIUM);
+    // Strict check: No issues allowed above LOW severity
+    assertNoVulnerabilities(vulns, VulnerabilitySeverity.LOW);
   });
   
-  test('login form should be protected against SQL injection', async () => {
-    const vulnerabilities = await runActiveSecurityScan('https://myapp.com/login', {
-      detectors: 'sql',
-      maxPages: 1
-    });
-    
-    const sqlVulns = vulnerabilities.filter(v => v.category === 'injection');
-    expect(sqlVulns).toHaveLength(0);
-    expect(sqlVulns, 'No SQL injection vulnerabilities allowed').toHaveLength(0);
-  });
-  
-  test('search functionality should be protected against XSS', async ({ page }) => {
+  test('search bar XSS check (Active)', async ({ page }) => {
     await page.goto('https://myapp.com/search');
     
-    const vulnerabilities = await runSecurityScan(page.url(), {
+    const vulns = await runActiveSecurityScan(page, {
       detectors: 'xss',
-      maxPages: 1
+      maxDepth: 1
     });
     
-    const xssVulns = vulnerabilities.filter(v => v.category === 'xss');
-    expect(xssVulns, 'No XSS vulnerabilities allowed').toHaveLength(0);
+    assertNoVulnerabilities(vulns);
   });
   
-  test('should not expose sensitive error messages', async ({ page }) => {
-    await page.goto('https://myapp.com');
-    
-    const vulnerabilities = await runSecurityScan(page.url(), {
-      detectors: 'errors',
-      maxPages: 3
+  test('API endpoints should validate input', async ({ request }) => {
+    // Note: You can also point Kinetic at API endpoints
+    const vulns = await runActiveSecurityScan('https://api.myapp.com/v1/users', {
+      detectors: 'sql',
+      aggressiveness: 'medium'
     });
-    
-    const errorVulns = vulnerabilities.filter(v => 
-      v.category === 'information-disclosure'
-    );
-    
-    expect(errorVulns, 'No error disclosure allowed').toHaveLength(0);
+    assertNoVulnerabilities(vulns);
   });
 });
 ```
 
-### Example 2: Multi-Page Security Test
+---
+
+## Element Scanner (Targeted Testing)
+
+**New in v0.2.0**: The `ElementScanner` allows you to target specific Playwright locators instead of crawling the whole page.
+
+### Example 5: Testing a Specific Component
 
 ```typescript
-// tests/multi-page-security.spec.ts
 import { test, expect } from '@playwright/test';
-import { runSecurityScan, VulnerabilitySeverity } from '@tzigger/kinetic';
+import { ElementScanner } from '@tzigger/kinetic/scanners/active/ElementScanner';
+import { SqlInjectionDetector } from '@tzigger/kinetic/detectors/active/SqlInjectionDetector';
+import { AttackSurfaceType, InjectionContext } from '@tzigger/kinetic/scanners/active/DomExplorer';
 
-test.describe('Multi-Page Security Scan', () => {
-  const pages = [
-    { name: 'Home', url: '/' },
-    { name: 'Login', url: '/login' },
-    { name: 'Signup', url: '/signup' },
-    { name: 'Products', url: '/products' },
-    { name: 'Checkout', url: '/checkout' },
-  ];
-  
-  for (const pageInfo of pages) {
-    test(`${pageInfo.name} page security`, async ({ page }) => {
-      const fullUrl = `https://myapp.com${pageInfo.url}`;
-      await page.goto(fullUrl);
-      
-      const vulnerabilities = await runSecurityScan(page.url(), {
-        detectors: 'all',
-        maxPages: 1,
-        headless: true
-      });
-      
-      // Generate detailed report
-      const report = {
-        page: pageInfo.name,
-        url: fullUrl,
-        total: vulnerabilities.length,
-        critical: vulnerabilities.filter(v => v.severity === VulnerabilitySeverity.CRITICAL).length,
-        high: vulnerabilities.filter(v => v.severity === VulnerabilitySeverity.HIGH).length,
-        medium: vulnerabilities.filter(v => v.severity === VulnerabilitySeverity.MEDIUM).length,
-        low: vulnerabilities.filter(v => v.severity === VulnerabilitySeverity.LOW).length,
-      };
-      
-      console.log(`Security Report for ${pageInfo.name}:`, report);
-      
-      // Fail on critical or high
-      expect(report.critical, `Critical vulnerabilities on ${pageInfo.name}`).toBe(0);
-      expect(report.high, `High severity vulnerabilities on ${pageInfo.name}`).toBe(0);
-    });
-  }
-});
-```
+test('complex search component SQLi check', async ({ page }) => {
+  await page.goto('https://myapp.com/advanced-search');
 
-### Example 3: API Endpoint Security
-
-```typescript
-// tests/api-security.spec.ts
-import { test, expect } from '@playwright/test';
-import { runSecurityScan } from '@tzigger/kinetic';
-
-test.describe('API Security Tests', () => {
-  const apiBase = 'https://api.myapp.com/v1';
-  
-  const endpoints = [
-    '/users',
-    '/users/1',
-    '/products',
-    '/products/search',
-    '/orders',
-    '/orders/123'
-  ];
-  
-  test('all API endpoints should be secure', async () => {
-    const results = [];
-    
-    for (const endpoint of endpoints) {
-      const vulns = await runSecurityScan(`${apiBase}${endpoint}`, {
-        detectors: 'sql',
-        maxPages: 1,
-        headless: true
-      });
-      
-      results.push({
-        endpoint,
-        vulnerabilities: vulns.length,
-        critical: vulns.filter(v => v.severity === 'critical').length
-      });
-    }
-    
-    // Print summary
-    console.table(results);
-    
-    // Assert no critical vulnerabilities in any endpoint
-    const criticalTotal = results.reduce((sum, r) => sum + r.critical, 0);
-    expect(criticalTotal, 'API endpoints should have no critical vulnerabilities').toBe(0);
+  // Configure specific element
+  const scanner = new ElementScanner({
+    baseUrl: 'https://myapp.com',
+    elements: [
+      {
+        name: 'Advanced Filter Input',
+        locator: '[data-testid="filter-input"]', // Precise targeting
+        type: AttackSurfaceType.FORM_INPUT,
+        context: InjectionContext.SQL,
+        testCategories: ['sqli']
+      }
+    ]
   });
+
+  // Register detector & run
+  scanner.registerDetector(new SqlInjectionDetector());
+  await scanner.initialize({ page, ...mockContext }); // *Requires ScanContext setup
+  const result = await scanner.execute();
+
+  expect(result.vulnerabilities).toHaveLength(0);
 });
 ```
 
@@ -271,664 +180,191 @@ test.describe('API Security Tests', () => {
 
 ## CI/CD Integration
 
-### Example 4: GitHub Actions Workflow
+### Example 6: GitHub Actions Workflow
 
 ```yaml
 # .github/workflows/security-scan.yml
-name: Security Scan
+name: Nightly Security Scan
 
 on:
-  pull_request:
-    branches: [main, develop]
-  push:
-    branches: [main]
   schedule:
-    # Run daily at 2 AM
-    - cron: '0 2 * * *'
+    - cron: '0 2 * * *' # Daily at 2 AM
 
 jobs:
-  security-scan:
+  kinetic-scan:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with: { node-version: '18' }
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-      
-      - name: Run security tests
-        run: npx playwright test tests/security.spec.ts
-        env:
-          BASE_URL: ${{ secrets.STAGING_URL }}
-          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
-          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
-      
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: playwright-results
-          path: test-results/
-          retention-days: 30
-      
-      - name: Upload security reports
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: security-reports
-          path: security-reports/
-          retention-days: 90
+      - name: Install Kinetic
+        run: npm install -g @tzigger/kinetic
+        
+      - name: Run Active Scan
+        run: |
+          kinetic https://staging.myapp.com \
+            --scan-type active \
+            --formats sarif,json \
+            --output ./security-reports
       
       - name: Upload SARIF to GitHub Security
-        if: always()
         uses: github/codeql-action/upload-sarif@v2
+        if: always()
         with:
-          sarif_file: security-reports/scan.sarif
-          category: kinetic
-      
-      - name: Comment PR with results
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const fs = require('fs');
-            const report = JSON.parse(fs.readFileSync('security-reports/scan.json', 'utf8'));
-            const comment = `## 🔒 Security Scan Results
-            
-            - **Total Vulnerabilities**: ${report.vulnerabilities.length}
-            - **Critical**: ${report.vulnerabilities.filter(v => v.severity === 'critical').length}
-            - **High**: ${report.vulnerabilities.filter(v => v.severity === 'high').length}
-            - **Medium**: ${report.vulnerabilities.filter(v => v.severity === 'medium').length}
-            - **Low**: ${report.vulnerabilities.filter(v => v.severity === 'low').length}
-            
-            View full report in the artifacts.`;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-```
-
-### Example 5: GitLab CI Pipeline
-
-```yaml
-# .gitlab-ci.yml
-stages:
-  - test
-  - security
-
-security-scan:
-  stage: security
-  image: mcr.microsoft.com/playwright:v1.40.0-jammy
-  before_script:
-    - npm ci
-  script:
-    - npx playwright test tests/security.spec.ts
-  artifacts:
-    when: always
-    paths:
-      - security-reports/
-    reports:
-      junit: test-results/junit.xml
-    expire_in: 30 days
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-```
-
-### Example 6: Jenkins Pipeline
-
-```groovy
-// Jenkinsfile
-pipeline {
-    agent any
-    
-    environment {
-        BASE_URL = credentials('staging-url')
-        TEST_CREDENTIALS = credentials('test-credentials')
-    }
-    
-    stages {
-        stage('Install') {
-            steps {
-                sh 'npm ci'
-                sh 'npx playwright install --with-deps chromium'
-            }
-        }
-        
-        stage('Security Scan') {
-            steps {
-                sh 'npx playwright test tests/security.spec.ts'
-            }
-        }
-    }
-    
-    post {
-        always {
-            archiveArtifacts artifacts: 'security-reports/**/*', fingerprint: true
-            publishHTML([
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'security-reports',
-                reportFiles: 'scan.html',
-                reportName: 'Security Scan Report'
-            ])
-        }
-    }
-}
+          sarif_file: security-reports/scan-results.sarif
+          category: kinetic-dast
 ```
 
 ---
 
 ## Custom Detectors
 
-### Example 7: API Key Leakage Detector
+### Example 7: Custom Logic Detector
 
 ```typescript
-// detectors/ApiKeyDetector.ts
+// detectors/BusinessLogicDetector.ts
 import { 
-  BaseDetector, 
-  Vulnerability, 
-  VulnerabilityCategory, 
-  VulnerabilitySeverity 
+  IActiveDetector, 
+  ActiveDetectorContext, 
+  Vulnerability,
+  VulnerabilitySeverity,
+  VulnerabilityCategory 
 } from '@tzigger/kinetic';
 
-export class ApiKeyDetector extends BaseDetector {
-  readonly id = 'api-key-leakage';
-  readonly name = 'API Key Leakage Detector';
-  readonly version = '1.0.0';
-  readonly category = VulnerabilityCategory.SENSITIVE_DATA_EXPOSURE;
-  readonly description = 'Detects exposed API keys and secrets in responses';
-  
-  async detect(data: unknown): Promise<Vulnerability[]> {
-    const vulnerabilities: Vulnerability[] = [];
-    
-    if (!this.isResponseData(data)) {
-      return vulnerabilities;
-    }
-    
-    const { body, url } = data;
-    const patterns = this.getPatterns();
-    
-    for (const pattern of patterns) {
-      const matches = body.matchAll(pattern);
+export class PriceManipulationDetector implements IActiveDetector {
+  readonly id = 'price-manipulation';
+  readonly name = 'Price Manipulation Check';
+  // ... metadata
+
+  async detect(context: ActiveDetectorContext): Promise<Vulnerability[]> {
+    const { page, attackSurfaces } = context;
+    const vulns: Vulnerability[] = [];
+
+    // Find "price" inputs
+    const priceInputs = attackSurfaces.filter(s => s.name.includes('price'));
+
+    for (const surface of priceInputs) {
+      // Try negative price injection
+      await surface.element.fill('-100');
+      await page.keyboard.press('Enter');
       
-      for (const match of matches) {
-        const keyType = this.identifyKeyType(match[0]);
-        
-        vulnerabilities.push(
-          this.createVulnerability({
-            title: `${keyType} API Key Exposed`,
-            description: `An ${keyType} API key was found in the response body at ${url}. This could allow unauthorized access to your services.`,
-            severity: VulnerabilitySeverity.CRITICAL,
-            evidence: {
-              url,
-              keyType,
-              pattern: pattern.source,
-              matchedValue: this.maskKey(match[0]),
-              location: 'response-body'
-            },
-            remediation: `
-              1. Immediately revoke the exposed API key
-              2. Never include API keys in client-side code
-              3. Use environment variables for secrets
-              4. Implement server-side proxies for API calls
-              5. Use short-lived tokens when possible
-            `,
-            confidence: 0.95,
-            cwe: 'CWE-798',
-            owasp: 'A02:2021 – Cryptographic Failures',
-            references: [
-              'https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password',
-              'https://cwe.mitre.org/data/definitions/798.html'
-            ]
-          })
-        );
+      // Check for success message (bad!)
+      if (await page.getByText('Order Successful').isVisible()) {
+        vulns.push({
+          id: `price-${Date.now()}`,
+          title: 'Negative Price Manipulation',
+          severity: VulnerabilitySeverity.CRITICAL,
+          category: VulnerabilityCategory.INSECURE_DESIGN,
+          description: 'Application accepted a negative price.',
+          remediation: 'Validate input range on server side.',
+          evidence: { /* ... */ }
+        });
       }
     }
-    
-    return vulnerabilities;
-  }
-  
-  getPatterns(): RegExp[] {
-    return [
-      // Generic API keys
-      /(?:api[_-]?key|apikey|api_key)['"]?\s*[:=]\s*['"]([a-zA-Z0-9_\-]{20,})['"]/gi,
-      
-      // AWS Access Keys
-      /AKIA[0-9A-Z]{16}/g,
-      
-      // Google API Keys
-      /AIza[0-9A-Za-z\-_]{35}/g,
-      
-      // GitHub Tokens
-      /ghp_[0-9a-zA-Z]{36}/g,
-      /gho_[0-9a-zA-Z]{36}/g,
-      
-      // Stripe Keys
-      /sk_live_[0-9a-zA-Z]{24,}/g,
-      /pk_live_[0-9a-zA-Z]{24,}/g,
-      
-      // Slack Tokens
-      /xox[baprs]-[0-9a-zA-Z\-]{10,}/g,
-      
-      // JWT Tokens
-      /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/g,
-    ];
-  }
-  
-  getCWEReferences(): string[] {
-    return ['CWE-798', 'CWE-259', 'CWE-321'];
-  }
-  
-  getOWASPReferences(): string[] {
-    return ['A02:2021'];
-  }
-  
-  private isResponseData(data: unknown): data is { body: string; url: string } {
-    return (
-      typeof data === 'object' &&
-      data !== null &&
-      'body' in data &&
-      'url' in data &&
-      typeof (data as any).body === 'string' &&
-      typeof (data as any).url === 'string'
-    );
-  }
-  
-  private identifyKeyType(key: string): string {
-    if (key.startsWith('AKIA')) return 'AWS';
-    if (key.startsWith('AIza')) return 'Google';
-    if (key.startsWith('ghp_') || key.startsWith('gho_')) return 'GitHub';
-    if (key.startsWith('sk_live_') || key.startsWith('pk_live_')) return 'Stripe';
-    if (key.startsWith('xox')) return 'Slack';
-    if (key.startsWith('eyJ')) return 'JWT';
-    return 'Generic';
-  }
-  
-  private maskKey(key: string): string {
-    if (key.length <= 8) return '***';
-    return key.substring(0, 4) + '...' + key.substring(key.length - 4);
+    return vulns;
   }
 }
 ```
 
-**Usage**:
+**Registration:**
 
 ```typescript
-import { ActiveScanner } from '@tzigger/kinetic';
-import { ApiKeyDetector } from './detectors/ApiKeyDetector';
-
-const scanner = new ActiveScanner();
-scanner.registerDetectors([
-  new ApiKeyDetector(),
-  // ... other detectors
-]);
-```
-
-### Example 8: CORS Misconfiguration Detector
-
-```typescript
-// detectors/CorsDetector.ts
-import { 
-  BaseDetector, 
-  Vulnerability, 
-  VulnerabilityCategory, 
-  VulnerabilitySeverity 
-} from '@tzigger/kinetic';
-
-export class CorsDetector extends BaseDetector {
-  readonly id = 'cors-misconfiguration';
-  readonly name = 'CORS Misconfiguration Detector';
-  readonly version = '1.0.0';
-  readonly category = VulnerabilityCategory.SECURITY_MISCONFIGURATION;
-  readonly description = 'Detects insecure CORS configurations';
-  
-  async detect(data: unknown): Promise<Vulnerability[]> {
-    const vulnerabilities: Vulnerability[] = [];
-    
-    if (!this.isResponseData(data)) {
-      return vulnerabilities;
-    }
-    
-    const { headers, url } = data;
-    const corsHeader = headers['access-control-allow-origin'];
-    const credentialsHeader = headers['access-control-allow-credentials'];
-    
-    // Check for wildcard with credentials
-    if (corsHeader === '*' && credentialsHeader === 'true') {
-      vulnerabilities.push(
-        this.createVulnerability({
-          title: 'Insecure CORS: Wildcard with Credentials',
-          description: 'The server allows any origin (*) while also allowing credentials. This is a severe security risk.',
-          severity: VulnerabilitySeverity.HIGH,
-          evidence: {
-            url,
-            'Access-Control-Allow-Origin': corsHeader,
-            'Access-Control-Allow-Credentials': credentialsHeader
-          },
-          remediation: 'Either specify exact origins or disable credentials. Never use both wildcard and credentials together.',
-          confidence: 1.0,
-          cwe: 'CWE-346',
-          owasp: 'A05:2021 – Security Misconfiguration'
-        })
-      );
-    }
-    
-    // Check for overly permissive wildcard
-    if (corsHeader === '*') {
-      vulnerabilities.push(
-        this.createVulnerability({
-          title: 'Permissive CORS Policy',
-          description: 'The server allows requests from any origin using wildcard (*)',
-          severity: VulnerabilitySeverity.MEDIUM,
-          evidence: {
-            url,
-            'Access-Control-Allow-Origin': corsHeader
-          },
-          remediation: 'Specify exact allowed origins instead of using wildcard.',
-          confidence: 0.8,
-          cwe: 'CWE-346'
-        })
-      );
-    }
-    
-    return vulnerabilities;
-  }
-  
-  getPatterns(): RegExp[] {
-    return [];
-  }
-  
-  getCWEReferences(): string[] {
-    return ['CWE-346'];
-  }
-  
-  private isResponseData(data: unknown): data is { 
-    headers: Record<string, string>; 
-    url: string 
-  } {
-    return (
-      typeof data === 'object' &&
-      data !== null &&
-      'headers' in data &&
-      'url' in data
-    );
-  }
-}
+import { DetectorRegistry } from '@tzigger/kinetic';
+// Register before scan starts
+DetectorRegistry.getInstance().registerActiveDetector(new PriceManipulationDetector(), metadata);
 ```
 
 ---
 
 ## Authentication Scenarios
 
-### Example 9: Form-Based Authentication
+### Example 8: Auto-Login via Config
 
-```typescript
-// tests/authenticated-security.spec.ts
-import { test } from '@playwright/test';
-import { ScanEngine, ActiveScanner, SqlInjectionDetector } from '@tzigger/kinetic';
-import { ScanConfiguration, AuthType } from '@tzigger/kinetic/types';
+Kinetic's `SessionManager` can handle standard login forms automatically.
 
-test('authenticated pages security scan', async ({ page }) => {
-  const engine = new ScanEngine();
-  const scanner = new ActiveScanner();
-  scanner.registerDetector(new SqlInjectionDetector());
-  engine.registerScanner(scanner);
-  
-  const config: ScanConfiguration = {
-    target: {
-      url: 'https://myapp.com/dashboard',
-      authentication: {
-        type: AuthType.FORM,
-        loginUrl: 'https://myapp.com/login',
-        credentials: {
-          username: process.env.TEST_USERNAME!,
-          password: process.env.TEST_PASSWORD!
-        },
-        formSelectors: {
-          usernameField: '#username',
-          passwordField: '#password',
-          submitButton: 'button[type="submit"]'
-        },
-        successIndicator: 'text=Dashboard'
+```json
+// kinetic.config.json
+{
+  "target": {
+    "url": "https://myapp.com/dashboard",
+    "authentication": {
+      "type": "form",
+      "loginPage": { 
+        "url": "https://myapp.com/login" 
       },
-      crawlDepth: 2,
-      maxPages: 10
-    },
-    scanners: {
-      active: { enabled: true, aggressiveness: 'medium' },
-      passive: { enabled: false }
+      "credentials": {
+        "username": "admin@example.com",
+        "password": "${env.TEST_PASSWORD}"
+      }
     }
-  };
-  
-  await engine.loadConfiguration(config);
-  const results = await engine.scan();
-  await engine.cleanup();
-  
-  console.log(`Found ${results.vulnerabilities.length} vulnerabilities in authenticated section`);
-});
+  }
+}
 ```
 
-### Example 10: Token-Based Authentication
+Run with: `kinetic -c kinetic.config.json`
+
+### Example 9: Reusing Auth State (Playwright)
+
+For complex auth (MFA/SSO), perform login in your `global-setup` and reuse the state.
 
 ```typescript
-import { ScanConfiguration, AuthType } from '@tzigger/kinetic/types';
+// tests/security.spec.ts
+test.use({ storageState: 'auth.json' }); // Load cookies/storage
 
-const config: ScanConfiguration = {
-  target: {
-    url: 'https://api.myapp.com/v1/users',
-    authentication: {
-      type: AuthType.BEARER,
-      credentials: {
-        token: process.env.API_TOKEN!
-      }
-    },
-    customHeaders: {
-      'Authorization': `Bearer ${process.env.API_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  },
-  // ... rest of config
-};
+test('authenticated scan', async ({ page }) => {
+  await page.goto('https://myapp.com/dashboard');
+  // Kinetic uses the page's existing auth state
+  await runActiveSecurityScan(page); 
+});
 ```
 
 ---
 
 ## Advanced Configurations
 
-### Example 11: Multi-Environment Configuration
+### Example 10: Production Safe Mode
+
+Explicitly scanning production with safety guardrails.
 
 ```typescript
-// config/security-config.ts
-import { ScanConfiguration, AggressivenessLevel } from '@tzigger/kinetic/types';
-
-export function getSecurityConfig(environment: 'dev' | 'staging' | 'prod'): ScanConfiguration {
-  const baseConfig: ScanConfiguration = {
-    target: {
-      url: process.env[`${environment.toUpperCase()}_URL`]!,
-      crawlDepth: 2,
-      maxPages: 20,
-      scope: {
-        excludePatterns: [
-          '**/logout',
-          '**/delete-account',
-          '**/*.pdf',
-          '**/*.zip'
-        ]
-      }
-    },
-    scanners: {
-      passive: { enabled: true },
-      active: { 
-        enabled: true,
-        aggressiveness: environment === 'prod' 
-          ? AggressivenessLevel.LOW 
-          : AggressivenessLevel.MEDIUM
-      }
-    },
-    reporting: {
-      formats: ['json', 'html', 'sarif'],
-      outputDir: `./security-reports/${environment}`
+const config = {
+  target: { url: 'https://production.myapp.com' },
+  scanners: {
+    active: {
+      enabled: true,
+      safeMode: true, // Filters destructive payloads (DROP/DELETE)
+      aggressiveness: 'low'
     }
-  };
-  
-  return baseConfig;
-}
-
-// Usage
-const config = getSecurityConfig(process.env.NODE_ENV as any);
+  },
+  advanced: {
+    parallelism: 1 // Reduce load
+  },
+  detectors: {
+    // Disable noisy/risky detectors
+    disabled: ['command-injection', 'sqlmap']
+  }
+};
 ```
 
-### Example 12: Comprehensive Test with All Features
+### Example 11: Verification Tuning
+
+Adjusting the Verification Engine to reduce false positives in a noisy environment.
 
 ```typescript
-// tests/comprehensive-security.spec.ts
-import { test, expect } from '@playwright/test';
-import { 
-  ScanEngine, 
-  ActiveScanner,
-  SqlInjectionDetector,
-  XssDetector,
-  ErrorBasedDetector,
-  JsonReporter,
-  HtmlReporter,
-  SarifReporter
-} from '@tzigger/kinetic';
-import * as fs from 'fs/promises';
-
-test('comprehensive security scan with all features', async () => {
-  const engine = new ScanEngine();
-  
-  // Setup scanner with all detectors
-  const scanner = new ActiveScanner();
-  scanner.registerDetectors([
-    new SqlInjectionDetector(),
-    new XssDetector(),
-    new ErrorBasedDetector()
-  ]);
-  engine.registerScanner(scanner);
-  
-  // Setup all reporters
-  engine.registerReporters([
-    new JsonReporter(),
-    new HtmlReporter(),
-    new SarifReporter()
-  ]);
-  
-  // Event monitoring
-  const foundVulnerabilities: any[] = [];
-  
-  engine.on('scan:start', () => {
-    console.log('🔍 Starting comprehensive security scan...');
-  });
-  
-  engine.on('vulnerability:found', (vuln) => {
-    foundVulnerabilities.push(vuln);
-    console.log(`⚠️  [${vuln.severity.toUpperCase()}] ${vuln.title}`);
-  });
-  
-  engine.on('scan:complete', (results) => {
-    console.log(`✅ Scan complete! Found ${results.vulnerabilities.length} vulnerabilities`);
-  });
-  
-  // Load configuration
-  const config = {
-    target: {
-      url: process.env.BASE_URL || 'https://myapp.com',
-      crawlDepth: 3,
-      maxPages: 50,
-      scope: {
-        includePatterns: [
-          `${process.env.BASE_URL || 'https://myapp.com'}/**`
-        ],
-        excludePatterns: [
-          '**/logout',
-          '**/signout',
-          '**/delete'
-        ]
+const config = {
+  detectors: {
+    tuning: {
+      sqli: {
+        booleanBased: {
+          // Require at least 5 chars difference in response length
+          minRowCountDiff: 5,
+          // Take 5 samples to establish a stable baseline
+          baselineSamples: 5
+        }
       }
-    },
-    scanners: {
-      passive: { enabled: true },
-      active: { 
-        enabled: true, 
-        aggressiveness: 'medium',
-        submitForms: true,
-        followRedirects: true
-      }
-    },
-    reporting: {
-      formats: ['json', 'html', 'sarif'],
-      outputDir: './security-reports',
-      verbosity: 'detailed'
     }
-  };
-  
-  await engine.loadConfiguration(config);
-  const results = await engine.scan();
-  await engine.cleanup();
-  
-  // Analyze results
-  const byCategory = results.vulnerabilities.reduce((acc, vuln) => {
-    acc[vuln.category] = (acc[vuln.category] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-  
-  const bySeverity = results.vulnerabilities.reduce((acc, vuln) => {
-    acc[vuln.severity] = (acc[vuln.severity] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-  
-  // Print summary
-  console.log('\n📊 Summary by Category:');
-  console.table(byCategory);
-  
-  console.log('\n📊 Summary by Severity:');
-  console.table(bySeverity);
-  
-  // Save custom summary
-  await fs.writeFile(
-    './security-reports/summary.json',
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      total: results.vulnerabilities.length,
-      byCategory,
-      bySeverity,
-      criticalIssues: results.vulnerabilities.filter(v => v.severity === 'critical')
-    }, null, 2)
-  );
-  
-  // Assertions
-  expect(bySeverity.critical || 0, 'No critical vulnerabilities allowed').toBe(0);
-  expect(bySeverity.high || 0, 'No high severity vulnerabilities allowed').toBe(0);
-});
+  }
+};
 ```
-
----
-
-## More Examples
-
-For additional examples, see:
-- [examples/](../examples/) directory in the repository
-- [Developer Guide](./DEVELOPER-GUIDE.md) for detailed API documentation
-- [API Quick Reference](./API-QUICK-REFERENCE.md) for quick lookups
-
----
-
-## Contributing Examples
-
-Have a useful example? Please contribute! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.

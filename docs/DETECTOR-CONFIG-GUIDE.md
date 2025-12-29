@@ -2,303 +2,167 @@
 
 ## Overview
 
-The Kinetic DAST framework uses a **Detector Registry** system that allows you to control which security detectors run via configuration files. This gives you fine-grained control over scan behavior without modifying code.
+Kinetic uses a **Detector Registry** system that allows you to control which security checks run via configuration files. This gives you fine-grained control over scan behavior without modifying code.
 
-## Configuration
+## Configuration Structure
 
-### ScanConfiguration.detectors
-
-All detector configuration is done through the `detectors` section of your scan configuration:
+All detector configuration is done through the `detectors` section of your scan configuration (`kinetic.config.json` or inline config objects):
 
 ```json
 {
   "detectors": {
     "enabled": ["*"],           // Array of detector IDs or patterns to enable
     "disabled": [],             // Array of detector IDs to disable (overrides enabled)
-    "sensitivity": "normal",    // Detector sensitivity level
-    "tuning": {                 // Detector-specific tuning parameters
-      "sqli": { ... },
-      "xss": { ... }
+    "sensitivity": "normal",    // Global sensitivity level (normal/high/low)
+    "tuning": {                 // Detector-specific settings
+      "sqli": {
+        "booleanBased": {
+          "minRowCountDiff": 1,
+          "baselineSamples": 3
+        }
+      },
+      "sensitiveData": {
+        "emailAllowlist": ["example.com"]
+      }
     }
   }
 }
 ```
 
-## Built-in Detectors
+## Built-in Detectors Reference
 
-### Active Detectors (require interaction)
+### Active Detectors (Payload Injection)
 
-| ID | Name | Category | Description |
-|----|------|----------|-------------|
-| `sql-injection` | SQL Injection Detector | sql | Detects SQL injection vulnerabilities (error-based, boolean-based, time-based) |
-| `xss` | XSS Detector | xss | Detects cross-site scripting (reflected, stored, DOM-based, JSON-based) |
-| `error-based` | Error-Based Detector | errors | Detects information disclosure through error messages |
-| `ssrf` | SSRF Detector | ssrf | Detects server-side request forgery via URL fetch/redirect behavior and indicators |
-| `path-traversal` | Path Traversal Detector | traversal | Detects path traversal and local file inclusion style issues |
-| `command-injection` | Command Injection / SSTI / XXE Detector | cmdi | Detects OS command injection and other injection classes where supported |
-
-### Passive Detectors (observe traffic only)
+These detectors actively interact with the application (clicks, inputs, API calls).
 
 | ID | Name | Category | Description |
 |----|------|----------|-------------|
-| `sensitive-data` | Sensitive Data Detector | data | Detects PII exposure (emails, SSNs, credit cards) |
-| `header-security` | Header Security Detector | headers | Detects missing/misconfigured security headers |
-| `cookie-security` | Cookie Security Detector | cookies | Detects insecure cookie configurations |
-| `insecure-transmission` | Insecure Transmission Detector | transmission | Detects unencrypted HTTP traffic |
+| `sql-injection` | SQL Injection Detector | sql | Error-based, Boolean-based, and Time-based SQLi detection. |
+| `sqlmap` | SqlMap API Detector | sql | Bridge to run external `sqlmap` on discovered API endpoints. |
+| `xss` | XSS Detector | xss | Reflected, Stored, DOM-based, JSON-based, Angular Template injection. |
+| `command-injection` | Command Injection | cmdi | OS Command Injection, SSTI (Template Injection), and XXE. |
+| `path-traversal` | Path Traversal | traversal | Local File Inclusion (LFI) and Path Traversal patterns. |
+| `ssrf` | SSRF Detector | ssrf | Server-Side Request Forgery via URL manipulation. |
+| `error-based` | Error-Based Detector | errors | Triggers and identifies stack traces and database errors. |
+
+### Passive Detectors (Traffic Analysis)
+
+These detectors analyze HTTP/S traffic without modifying requests.
+
+| ID | Name | Category | Description |
+|----|------|----------|-------------|
+| `sensitive-data` | Sensitive Data | data | Detects PII (SSN, Emails, Phones) and Secrets (Keys, Tokens). |
+| `header-security` | Security Headers | headers | Checks for HSTS, CSP, X-Frame-Options, etc. |
+| `cookie-security` | Cookie Security | cookies | Validates `Secure`, `HttpOnly`, and `SameSite` attributes. |
+| `insecure-transmission`| Insecure Transmission | transmission | Detects HTTP usage and Mixed Content issues. |
 
 ## Pattern Matching
 
-The `enabled` array supports powerful pattern matching:
+The `enabled` array supports wildcard matching:
 
-### Wildcard: `*`
-Matches all detectors:
-```json
-{
-  "detectors": {
-    "enabled": ["*"]
-  }
-}
-```
+*   **`"*"`**: Enable ALL registered detectors.
+*   **`"sql-*"`**: Matches `sql-injection` (but not `sqlmap`).
+*   **`"*-security"`**: Matches `header-security` and `cookie-security`.
+*   **Exact ID**: `["xss", "ssrf"]` matches those specific detectors.
 
-Note: `"*"` is powerful, but it may increase false positives on some apps. If you want stable defaults, prefer an explicit allowlist of detector IDs.
+### Disabled Overrides
+The `disabled` array takes precedence. Useful for enabling "everything except X":
 
-### Exact ID Matching
-Specify detector IDs exactly:
-```json
-{
-  "detectors": {
-    "enabled": ["sql-injection", "xss"]
-  }
-}
-```
-
-### Wildcard Patterns
-Use `*` for prefix/suffix matching:
-```json
-{
-  "detectors": {
-    "enabled": ["sql-*"]  // Matches: sql-injection
-  }
-}
-```
-
-### Category Matching
-Match all detectors in a category:
-```json
-{
-  "detectors": {
-    "enabled": ["*-security"]  // Matches: header-security, cookie-security
-  }
-}
-```
-
-## Disabled List (Override)
-
-The `disabled` array **always overrides** the `enabled` array:
-
-```json
-{
-  "detectors": {
-    "enabled": ["*"],           // Enable all detectors
-    "disabled": ["xss", "error-based"]  // Except these two
-  }
-}
-```
-
-**Result**: Only `sql-injection`, `sensitive-data`, `header-security`, `cookie-security`, `insecure-transmission` will run.
-
-## Common Configurations
-
-### 1. SQL Injection Only
-```json
-{
-  "detectors": {
-    "enabled": ["sql-injection"],
-    "disabled": []
-  }
-}
-```
-
-### 2. All Passive Scanners
-```json
-{
-  "detectors": {
-    "enabled": [
-      "sensitive-data",
-      "header-security",
-      "cookie-security",
-      "insecure-transmission"
-    ],
-    "disabled": []
-  }
-}
-```
-
-### 3. Security Headers + Cookie Checks
-```json
-{
-  "detectors": {
-    "enabled": ["*-security"],  // Matches header-security and cookie-security
-    "disabled": []
-  }
-}
-```
-
-### 4. Everything Except XSS
 ```json
 {
   "detectors": {
     "enabled": ["*"],
-    "disabled": ["xss"]
+    "disabled": ["sqlmap", "ssrf"] // Skip slow/intrusive detectors
   }
 }
 ```
 
-### 5. Active Detectors Only
+## Advanced Tuning
+
+You can fine-tune specific detectors to reduce false positives or increase depth.
+
+### SQL Injection Tuning
 ```json
-{
-  "detectors": {
-    "enabled": ["sql-injection", "xss", "error-based"],
-    "disabled": []
-  },
-  "scanners": {
-    "passive": { "enabled": false },
-    "active": { "enabled": true }
+"tuning": {
+  "sqli": {
+    "booleanBased": {
+      "minRowCountDiff": 2,    // Require >2 char difference in response length
+      "baselineSamples": 5     // Take 5 samples to establish baseline stability
+    },
+    "techniqueTimeouts": {
+      "timeBased": 20000       // Increase timeout for slow networks
+    }
   }
 }
 ```
 
-## Testing Helpers Integration
-
-The `runActiveSecurityScan()` and `runPassiveSecurityScan()` helpers automatically configure detector patterns:
-
-### Active Scan
-```typescript
-import { runActiveSecurityScan } from '@tzigger/kinetic/testing';
-
-// Test SQL injection only
-const results = await runActiveSecurityScan('http://localhost:3000', {
-  detectors: 'sql',  // Maps to enabled: ['sql-injection']
-  maxPages: 1
-});
-```
-
-**Detector Mapping (Active)**:
-- `'sql'` → `['sql-injection']`
-- `'xss'` → `['xss']`
-- `'errors'` → `['error-based']`
-- `'all'` → `['*']`
-
-### Passive Scan
-```typescript
-import { runPassiveSecurityScan } from '@tzigger/kinetic/testing';
-
-// Test headers only
-const results = await runPassiveSecurityScan('http://localhost:3000', {
-  detectors: 'headers',  // Maps to enabled: ['header-security']
-});
-```
-
-**Detector Mapping (Passive)**:
-- `'headers'` → `['header-security']`
-- `'cookies'` → `['cookie-security']`
-- `'transmission'` → `['insecure-transmission']`
-- `'data'` → `['sensitive-data']`
-- `'all'` → `['*']`
-
-## CLI Usage
-
-When using the CLI, the config file's `detectors.enabled` and `detectors.disabled` arrays control which detectors execute:
-
-```bash
-# Run with custom config
-kinetic --config ./my-config.json
-
-# Example config: only SQL injection and XSS
-cat my-config.json
-{
-  "detectors": {
-    "enabled": ["sql-injection", "xss"],
-    "disabled": []
+### Sensitive Data Tuning
+```json
+"tuning": {
+  "sensitiveData": {
+    "emailAllowlist": ["@mycompany.com", "support@example.com"], // Ignore these emails
+    "skipPaths": ["/assets/", ".js.map"] // Don't scan these file types
   }
 }
 ```
+
+## Helper Function Mappings
+
+When using `runActiveSecurityScan` or `runPassiveSecurityScan` in tests, simple string aliases map to detector patterns:
+
+### Active Mapping
+| Helper Option | Maps to Pattern |
+|---------------|-----------------|
+| `detectors: 'all'` | `['*']` |
+| `detectors: 'sql'` | `['sql-injection']` |
+| `detectors: 'xss'` | `['xss']` |
+| `detectors: 'errors'`| `['error-based']` |
+
+### Passive Mapping
+| Helper Option | Maps to Pattern |
+|---------------|-----------------|
+| `detectors: 'headers'` | `['header-security']` |
+| `detectors: 'cookies'` | `['cookie-security']` |
+| `detectors: 'data'` | `['sensitive-data']` |
+| `detectors: 'transmission'` | `['insecure-transmission']` |
 
 ## Custom Detector Registration
 
-To add custom detectors to the registry:
+To add your own detector to the engine:
+
+1.  Implement `IActiveDetector` or `IPassiveDetector`.
+2.  Register it with the `DetectorRegistry` singleton **before** creating the scanner.
 
 ```typescript
-import { DetectorRegistry } from '@tzigger/kinetic';
-import { MyCustomDetector } from './detectors/MyCustomDetector';
+import { DetectorRegistry, IActiveDetector } from '@tzigger/kinetic';
 
-const registry = DetectorRegistry.getInstance();
-
-registry.registerActiveDetector(new MyCustomDetector(), {
-  id: 'my-custom-detector',
-  name: 'My Custom Detector',
-  type: 'active',
-  category: 'custom',
-  description: 'My custom security check',
-  enabledByDefault: true,
-});
-```
-
-Then reference it in config:
-```json
-{
-  "detectors": {
-    "enabled": ["my-custom-detector"]
-  }
+class MyCustomDetector implements IActiveDetector {
+  // Implementation...
 }
+
+// Register
+DetectorRegistry.getInstance().registerActiveDetector(new MyCustomDetector(), {
+  id: 'my-custom-check',
+  name: 'My Custom Check',
+  category: 'custom',
+  description: 'Checks for specific business logic flaws',
+  enabledByDefault: true,
+  type: 'active'
+});
+
+// Now you can enable it in config:
+// { "detectors": { "enabled": ["my-custom-check"] } }
 ```
-
-## Implementation Details
-
-### Registry Pattern
-- Singleton `DetectorRegistry` manages all detectors
-- `registerBuiltInDetectors()` initializes 7 built-in detectors
-- CLI and helpers call `getActiveDetectors(config.detectors)` / `getPassiveDetectors(config.detectors)`
-
-### Filtering Logic
-1. Start with all registered detectors
-2. Filter by `enabled` patterns (wildcard matching)
-3. Remove any detectors in `disabled` list
-4. Return filtered detector instances
-
-### Verification
-Run the registry test to verify configuration:
-```bash
-node test-registry.js
-```
-
-Example output:
-```
-Test 2: enabled: ["sql-injection"]
-  Active detectors: SQL Injection Detector
-  Count: 1
-```
-
-## Best Practices
-
-1. **Use wildcards for broad scans**: `enabled: ["*"]` for comprehensive coverage
-2. **Be specific for focused testing**: `enabled: ["sql-injection"]` for targeted tests
-3. **Use disabled list sparingly**: Only exclude problematic detectors
-4. **Test config changes**: Use `test-registry.js` to verify detector filtering
-5. **Document custom detectors**: Add clear ID/name/description metadata
 
 ## Troubleshooting
 
-### No detectors running?
-- Check `enabled` array is not empty
-- Verify detector IDs match exactly (case-sensitive)
-- Ensure `disabled` list is not blocking all detectors
+### Why isn't my detector running?
+1.  **Check `enabled`**: Is the ID or a matching wildcard present?
+2.  **Check `disabled`**: Is it accidentally listed here?
+3.  **Exact Match**: IDs are case-sensitive. Use `sql-injection`, not `SqlInjection`.
+4.  **Registration**: If it's a custom detector, ensure it was registered before `engine.scan()` was called.
 
-### Wrong detectors running?
-- Review pattern matching (wildcards may match unexpectedly)
-- Check `disabled` list overrides
-- Use exact IDs instead of patterns for precise control
-
-### Custom detector not found?
-- Ensure `registerBuiltInDetectors()` or custom registration is called **before** scanner creation
-- Verify detector ID in config matches registered ID exactly
+### Why is the scan taking too long?
+1.  **Disable Time-Based Checks**: `disabled: ["sql-injection", "command-injection"]` (these rely on sleeps).
+2.  **Disable External Tools**: `disabled: ["sqlmap"]`.
+3.  **Tune SQLi**: Reduce `baselineSamples` in `tuning.sqli`.

@@ -1,439 +1,166 @@
-# Kinetic Engine Architecture
+# Kinetic Architecture
+
+> System design and component interaction for Kinetic v0.2.0.
 
 ## System Overview
 
-The Kinetic Security Scanner is built on a modular, layered architecture that enables extensibility, maintainability, and scalability. It leverages Playwright for browser automation and implements multiple detection techniques for OWASP Top 10 vulnerabilities.
+Kinetic is built on a modular, layered architecture designed for extensibility and reliability. It orchestrates Playwright for browser automation while managing complex logic for crawling, payload injection, traffic interception, and result verification.
 
 ## Architectural Layers
 
-### 1. Testing Layer
-- **Helper Functions**: `runActiveSecurityScan()`, `runPassiveSecurityScan()`, `combinedSecurityScan()`
-- **Playwright Integration**: Seamless integration with Playwright Test framework
-- **SPA Support**: Existing page reuse for Single Page Applications
-
-### 2. Core Layer
-- **ScanEngine**: Main orchestrator coordinating scanners and detectors
-- **BrowserManager**: Playwright lifecycle management and context handling
-- **ConfigurationManager**: Configuration validation, loading, and merging
-- **Interfaces**: IScanner, IDetector, IReporter for extensibility
-
-### 3. Scanner Layer
-- **ActiveScanner**: DOM manipulation, payload injection, and fuzzing
-- **DomExplorer**: Attack surface discovery and SPA framework detection
-- **PayloadInjector**: Intelligent payload injection with encoding
-- **PassiveScanner**: Network traffic interception (planned)
-
-### 4. Detector Layer
-- **SqlInjectionDetector**: Error-based, boolean-based, time-based, union-based, authentication bypass
-- **XssDetector**: Reflected, stored, DOM-based, JSON XSS, Angular template injection
-- **ErrorBasedDetector**: Stack trace disclosure, database errors, framework errors
-- Base classes for extensibility
-
-### 5. Reporter Layer
-- **JSONReporter**: Structured JSON output
-- **HTMLReporter**: Human-readable HTML reports
-- **SARIFReporter**: SARIF format for CI/CD integration
-- **ConsoleReporter**: Terminal output with formatting
-
-## Current Implementation Status
-
-### ✅ Implemented
-- Core scanning engine with SPA support
-- Active scanner with DOM exploration
-- SQL injection detection (5 techniques)
-- XSS detection (5 types)
-- Error disclosure detection
-- Multiple report formats (JSON, HTML, SARIF)
-- Playwright test integration
-- Configuration management
-
-### 🚧 Partial Implementation
-- Passive scanner (architecture ready, detectors partial)
-- Plugin system (interfaces defined, registry partial)
-
-### 📋 Planned
-- Machine learning false positive reduction
-- Distributed scanning support
-- WebSocket security testing
-- API fuzzing capabilities
-
-## Design Patterns
-
-### 1. Strategy Pattern
-Used in detectors to allow different detection algorithms to be swapped at runtime.
-
-```typescript
-interface IActiveDetector {
-  detect(context: ActiveDetectorContext): Promise<Vulnerability[]>;
-}
-
-class ActiveScanner {
-  private detectors: IActiveDetector[] = [];
-  
-  registerDetectors(detectors: IActiveDetector[]): void {
-    this.detectors.push(...detectors);
-  }
-}
-```
-
-### 2. Factory Pattern
-Helper functions act as factories for creating configured scan engines.
-
-```typescript
-async function runActiveSecurityScan(
-  target: string | Page,
-  options?: ActiveScanOptions
-): Promise<Vulnerability[]> {
-  const engine = new ScanEngine();
-  const scanner = new ActiveScanner();
-  scanner.registerDetectors([
-    new SqlInjectionDetector(),
-    new XssDetector(),
-    new ErrorBasedDetector()
-  ]);
-  engine.registerScanner(scanner);
-  return (await engine.scan()).vulnerabilities;
-}
-```
-
-### 3. Builder Pattern
-Configuration building with fluent API.
-
-```typescript
-const config: ScanConfiguration = {
-  target: {
-    url: 'https://example.com',
-    scope: {
-      maxDepth: 2,
-      maxPages: 5
-    }
-  },
-  scanners: {
-    active: {
-      enabled: true,
-      aggressiveness: AggressivenessLevel.MEDIUM
-    }
-  }
-};
-```
-
-### 4. Singleton Pattern
-Browser instance management to reuse contexts.
-
-```typescript
-class BrowserManager {
-  private browsers: Map<string, Browser> = new Map();
-  
-  async createBrowser(scanId: string): Promise<Browser> {
-    if (!this.browsers.has(scanId)) {
-      this.browsers.set(scanId, await chromium.launch());
-    }
-    return this.browsers.get(scanId)!;
-  }
-}
-```
-
-### 5. Adapter Pattern
-SPA mode adapts existing Playwright Page objects to the scanning engine.
-
-```typescript
-// Helper adapts Page object to scanning engine
-if (typeof target !== 'string') {
-  engine.setExistingPage(target); // Adapter
-}
-```
-
-## Data Flow
-
-### Standard Flow (URL String)
-1. **Initialization**
-   - Helper function receives URL string
-   - Create ScanEngine and scanners
-   - Load configuration
-
-2. **Browser Launch**
-   - BrowserManager initializes Playwright
-   - Create browser context and page
-   - Navigate to target URL
-
-3. **Active Scanning**
-   - DomExplorer discovers attack surfaces (forms, inputs, APIs)
-   - Categorize surfaces by injection context
-   - For each surface:
-     - PayloadInjector sends payloads
-     - Detectors analyze responses
-     - Collect vulnerabilities
-
-4. **Reporting**
-   - Aggregate results from all detectors
-   - Generate reports in specified formats
-   - Return vulnerability array
-
-### SPA Flow (Existing Page Object)
-1. **Initialization**
-   - Helper function receives Page object
-   - Create ScanEngine and scanners
-   - Call `engine.setExistingPage(page)`
-
-2. **Browser Reuse**
-   - Skip browser creation
-   - Reuse existing page and context
-   - Use `page.url()` as starting point
-
-3. **Active Scanning**
-   - Check if already on target URL (skip navigation)
-   - Detect SPA framework (Angular/React/Vue)
-   - Extract hash routes (`/#/login`, `/#/search`)
-   - Discover attack surfaces on current page
-   - For each surface:
-     - Inject payloads
-     - Wait for XHR/network requests
-     - Analyze JSON responses
-     - Collect vulnerabilities
-
-4. **Cleanup**
-   - Skip browser closure (test owns the page)
-   - Return results to test
-
-## Attack Surface Discovery
-
-### Types of Attack Surfaces
-
-1. **Form Inputs**
-   - `<input type="text">`
-   - `<textarea>`
-   - `<select>`
-
-2. **URL Parameters**
-   - Query strings
-   - Hash parameters (SPA routes)
-
-3. **API Endpoints**
-   - Intercepted XHR/Fetch requests
-   - REST API calls
-   - JSON request bodies
-
-4. **Cookies**
-   - Session cookies
-   - Tracking cookies
-   - Custom cookies
-
-5. **JSON Bodies**
-   - API request payloads
-   - GraphQL queries
-
-### Prioritization
-
-Attack surfaces are prioritized based on:
-- **Type**: API endpoints > Forms > URL params
-- **Context**: Known vulnerable patterns (id, search, query)
-- **Visibility**: User-facing inputs prioritized
-- **Framework**: API routes (`/rest/`, `/api/`) scored higher
-
-## Component Interactions
-
-```
-┌──────────────────┐
-│ Test File        │
-│ (Playwright)     │
-└────────┬─────────┘
-         │ calls runActiveSecurityScan(page)
-         ▼
-┌──────────────────────────┐
-│ Helper Function          │
-│ (testing/helpers.ts)     │
-└────────┬─────────────────┘
-         │ creates
-         ▼
-┌──────────────────────────┐
-│ ScanEngine               │◄──── setExistingPage(page)
-└────────┬─────────────────┘
-         │ registers
-         ▼
-┌──────────────────────────┐
-│ ActiveScanner            │
-└────────┬─────────────────┘
-         │ uses
-         ├──────────────┬──────────────┐
-         ▼              ▼              ▼
-┌─────────────┐  ┌─────────────┐  ┌──────────────┐
-│DomExplorer  │  │PayloadInj.. │  │BrowserManager│
-└──────┬──────┘  └──────┬──────┘  └──────────────┘
-       │                │
-       │ discovers      │ injects
-       ▼                ▼
-┌──────────────────────────────┐
-│ Attack Surfaces              │
-│ - Forms                      │
-│ - URL params                 │
-│ - API endpoints              │
-│ - Cookies                    │
-└────────┬─────────────────────┘
-         │ tests
-         ▼
-┌──────────────────────────────┐
-│ Detectors                    │
-│ - SqlInjectionDetector       │
-│ - XssDetector                │
-│ - ErrorBasedDetector         │
-└────────┬─────────────────────┘
-         │ returns
-         ▼
-┌──────────────────────────────┐
-│ Vulnerabilities[]            │
-└────────┬─────────────────────┘
-         │ optionally formats
-         ▼
-┌──────────────────────────────┐
-│ Reporters                    │
-│ - JSON, HTML, SARIF          │
-└──────────────────────────────┘
-```
-
-## Extension Points
-
-1. **Custom Detectors**: Implement `IActiveDetector` or `IPassiveDetector`
-2. **Custom Reporters**: Implement `IReporter` interface
-3. **Custom Patterns**: Add to payload files in `config/payloads/`
-4. **Custom Aggressiveness**: Define custom `AggressivenessLevel` mappings
-5. **Helper Functions**: Create domain-specific wrappers
-
-### Example: Custom Detector
-
-```typescript
-import { IActiveDetector, ActiveDetectorContext } from '../core/interfaces/IActiveDetector';
-import { Vulnerability } from '../types/vulnerability';
-
-export class CustomDetector implements IActiveDetector {
-  readonly name = 'Custom Detector';
-  readonly description = 'Detects custom vulnerabilities';
-  readonly version = '1.0.0';
-
-  async detect(context: ActiveDetectorContext): Promise<Vulnerability[]> {
-    const { page, attackSurfaces, baseUrl } = context;
-    // Your detection logic
-    return [];
-  }
-}
-```
-
-### Example: Custom Helper
-
-```typescript
-export async function runSqlInjectionScan(
-  page: Page
-): Promise<Vulnerability[]> {
-  return runActiveSecurityScan(page, {
-    detectors: 'sql',
-    aggressiveness: AggressivenessLevel.HIGH,
-    maxPages: 5,
-  });
-}
-```
-
-## Security Considerations
-
-- All network traffic is analyzed locally (no external data transmission)
-- No data is sent to external servers
-- Configurable scope to prevent unintended scanning
-- Rate limiting to avoid DoS
-- Authentication support for protected resources
-- Payload encoding to minimize false positives
-- Secure cookie handling (HttpOnly, Secure flags checked)
-- SPA mode respects user authentication state
-
-## Performance Optimizations
-
-1. **Parallel Detection**: Multiple detectors run concurrently
-2. **Smart Payload Selection**: Context-aware payloads (numeric vs string)
-3. **Response Caching**: Baseline measurements reused
-4. **Configurable Limits**: `maxPages`, `maxDepth` for scope control
-5. **Timeout Management**: Per-page and per-test timeouts
-6. **Incremental Reporting**: Vulnerabilities reported as discovered
-7. **Browser Reuse**: SPA mode reuses existing browser contexts
-8. **Reduced Sleep Times**: Time-based SQLi uses 2s delays (down from 5s)
-
-## Known Limitations
-
-### SPA Testing
-- **SQLi Detection**: May miss SQLi in complex Angular/React apps
-- **API Discovery**: Passive API interception not yet implemented
-- **Framework-Specific**: Angular zone stability not yet handled
-- **Workaround**: Use hybrid testing (framework + direct API tests)
-
-See [SPA Testing Limitations](./SPA-TESTING-LIMITATIONS.md) for details.
-
-### Performance
-- Default scans can take 4-5 minutes for comprehensive coverage
-- Recommended timeout: 5-10 minutes for full scans
-- Use `maxPages` and `maxDepth` to control scope
-
-### Detection Accuracy
-- Time-based SQLi may have false positives on slow networks
-- XSS in cookies may include false positives for analytics
-- Error disclosure may include non-security errors
-
-## Implementation Details
-
-### SQL Injection Detection
-
-**Techniques**:
-1. **Error-based**: Database error pattern matching (Sequelize, SQLite, MySQL, etc.)
-2. **Boolean-based**: True vs false condition comparison with JSON-aware diffing
-3. **Time-based**: Response delay detection with baseline averaging
-4. **Union-based**: Query stacking detection
-5. **Authentication Bypass**: Login SQLi with token/redirect/UI detection
-
-**Payloads**: Context-aware (numeric vs string), database-specific
-
-### XSS Detection
-
-**Types**:
-1. **Reflected**: Immediate payload reflection in response
-2. **Stored**: Persistent XSS (requires re-navigation)
-3. **DOM-based**: JavaScript-executed XSS
-4. **JSON XSS**: Unescaped payloads in JSON responses
-5. **Angular Template Injection**: `{{7*7}}` detection
-
-**Payloads**: Script tags, event handlers, template injection
-
-### Error Disclosure Detection
-
-**Patterns**:
-- Stack traces (at file.js:line:col)
-- Database errors (SQL, Sequelize, TypeORM, Prisma)
-- Framework errors (Express, Next.js, Angular)
-- Path disclosure
-- Version information
-
-## Future Enhancements
-
-### Planned for v0.2.0
-- [ ] Full passive scanner implementation
-- [ ] Network request interception for API discovery
-- [ ] Angular zone stability awareness
-- [ ] Reduced scan times (payload optimization)
-- [ ] Parallel attack surface testing
-
-### Long-term Roadmap
-- [ ] Machine learning-based false positive reduction
-- [ ] Distributed scanning support
-- [ ] GraphQL API scanning
-- [ ] WebSocket security testing
-- [ ] Enhanced API fuzzing capabilities
-- [ ] Real-time vulnerability notifications
-- [ ] Historical trend analysis
-- [ ] OWASP ZAP integration
-- [ ] Burp Suite import/export
-
-## References
-
-- [OWASP Top 10 2025](https://owasp.org/www-project-top-ten/)
-- [Playwright Documentation](https://playwright.dev/)
-- [CWE Database](https://cwe.mitre.org/)
-- [SARIF Specification](https://sarifweb.azurewebsites.net/)
+### 1. Testing Layer (Entry Points)
+- **Helpers**: `runActiveSecurityScan()`, `runPassiveSecurityScan()`.
+- **CLI**: `kinetic` command-line interface.
+- **Playwright Integration**: Adapters to reuse existing `Page` objects.
+
+### 2. Core Layer (Orchestration)
+- **ScanEngine**: The central controller. Manages lifecycle, config loading, and event event dispatching.
+- **BrowserManager**: Handles Playwright browser contexts, pages, and lifecycle.
+- **ConfigurationManager**: Validates and merges JSON/CLI configurations.
+- **SessionManager**: Handles authentication state (Cookies/LocalStorage) and auto-login heuristics.
+
+### 3. Scanner Layer (Execution)
+- **ActiveScanner**: The main crawler. Discovers attack surfaces and injects payloads.
+- **ElementScanner**: **(New v0.2)** Targeted scanner for specific DOM elements (via locators).
+- **PassiveScanner**: Analyzes network traffic using `NetworkInterceptor`.
+- **DomExplorer**: Analyzes DOM to find inputs, forms, and API endpoints.
+
+### 4. Strategy Layer (Detection & Verification)
+- **Detectors**: Logic for identifying potential vulnerabilities (SQLi, XSS, etc.).
+- **PayloadInjector**: Context-aware injection with Safe Mode filtering.
+- **VerificationEngine**: **(New v0.2)** Statistical analysis to confirm findings.
+- **TimeoutManager**: **(New v0.2)** Adaptive timeout strategies for SPAs.
+
+### 5. Reporting Layer
+- **Reporters**: Console, JSON, HTML, SARIF output generators.
 
 ---
 
-**Last Updated**: November 27, 2025  
-**Framework Version**: 0.1.0-beta.1
+## Component Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      ScanEngine                             │
+│ ┌────────────────┐  ┌──────────────┐  ┌──────────────────┐  │
+│ │ BrowserManager │  │ ConfigManager│  │ SessionManager   │  │
+│ └───────┬────────┘  └──────────────┘  └────────┬─────────┘  │
+└─────────┼──────────────────────────────────────┼────────────┘
+          │                                      │
+          ▼                                      ▼
+┌────────────────────┐                 ┌────────────────────┐
+│   ActiveScanner    │                 │   PassiveScanner   │
+│ ┌────────────────┐ │                 │ ┌────────────────┐ │
+│ │  DomExplorer   │ │                 │ │NetworkIntercept│ │
+│ └───────┬────────┘ │                 │ └───────┬────────┘ │
+│         ▼          │                 │         ▼          │
+│ ┌────────────────┐ │                 │ ┌────────────────┐ │
+│ │ PayloadInjector│ │                 │ │ResponseAnalyzer│ │
+│ └───────┬────────┘ │                 │ └───────┬────────┘ │
+└─────────┼──────────┘                 └─────────┼──────────┘
+          │                                      │
+          ▼                                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     Detector Registry                       │
+│  [SqlInjection] [XssDetector] [SensitiveData] [Headers] ... │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Verification Engine                        │
+│  [TimeBasedVerifier] [ResponseDiffVerifier] [ReplayVerifier]│
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+                  ┌───────────────┐
+                  │ ScanResult    │
+                  └───────────────┘
+```
+
+---
+
+## Core Flows
+
+### 1. Active Scan Flow
+1.  **Init**: `ScanEngine` initializes. `SessionManager` performs auto-login if configured.
+2.  **Crawl**: `ActiveScanner` navigates to target. `DomExplorer` identifies inputs (Forms, URLs, APIs).
+3.  **Inject**: `PayloadInjector` sends payloads (filtered by Safe Mode).
+4.  **Detect**: Active Detectors (e.g., `SqlInjectionDetector`) analyze responses for errors/anomalies.
+5.  **Verify**: If a vulnerability is found, `VerificationEngine` takes over:
+    *   Runs **TimeBasedVerifier** (Z-score analysis) for blind injections.
+    *   Runs **ResponseDiffVerifier** (Structural JSON diffing) for boolean logic.
+6.  **Report**: Confirmed vulnerabilities are added to the final report.
+
+### 2. Element Scan Flow (Targeted)
+1.  **Config**: User provides specific locators (e.g., `#login-btn`, `input[name="q"]`).
+2.  **Locate**: `ElementScanner` finds elements directly (skips crawling).
+3.  **Context**: Converts element properties into an `AttackSurface`.
+4.  **Inject/Detect/Verify**: Follows the standard active scan logic for just those elements.
+
+### 3. Passive Scan Flow
+1.  **Attach**: `NetworkInterceptor` attaches to the Playwright Page CDP session.
+2.  **Monitor**: Captures all HTTP/S Requests and Responses.
+3.  **Analyze**: `ResponseAnalyzer` checks for:
+    *   PII (Emails, Keys)
+    *   Security Headers
+    *   Cookie Flags
+    *   Unencrypted Transmission
+4.  **Report**: Issues are reported immediately (no verification step needed for passive).
+
+---
+
+## Key Subsystems (v0.2 Updates)
+
+### Verification Engine
+To reduce false positives, Kinetic uses a multi-stage verification process.
+
+*   **Statistical Analysis**: Uses Welch's t-test and standard deviation to determine if a time delay (e.g., `SLEEP(5)`) is statistically significant compared to baseline latency.
+*   **Structural Diffing**: Compares the JSON structure or HTML DOM tree of responses to "True" vs "False" payloads, rather than just text matching.
+
+### Timeout Manager & SPA Strategy
+Handling modern SPAs requires more than hardcoded sleeps.
+
+*   **SPAWaitStrategy**: Detects the framework (Angular, React, Vue). Uses framework-specific hooks (e.g., `ngZone.isStable`, `Vue.nextTick`) to ensure the page is idle.
+*   **Adaptive Timeouts**: The `TimeoutManager` observes the application's response time. If the app is slow, it dynamically increases timeouts to prevent false negatives.
+
+### Safe Mode Architecture
+Safety is enforced at the lowest level of injection.
+
+1.  **Configuration**: User sets `safeMode: true` (or auto-enabled for non-local).
+2.  **PayloadFilter**: Loaded by `PayloadInjector`.
+3.  **Check**: Before *any* payload is sent, it is regex-matched against destructive patterns (`DROP`, `TRUNCATE`, `GRANT`).
+4.  **Action**: Destructive payloads are silently dropped; informational payloads (`OR 1=1`) are allowed.
+
+---
+
+## Extension Points
+
+### Custom Detectors
+Implement `IActiveDetector` or `IPassiveDetector`. Register via `DetectorRegistry`.
+
+```typescript
+class MyDetector implements IActiveDetector {
+  async detect(context) { /* ... */ }
+}
+```
+
+### Custom Reporters
+Implement `IReporter`.
+
+```typescript
+class MyReporter implements IReporter {
+  async generate(result) { /* ... */ }
+}
+```
+
+### Plugins
+(Future v1.0) The architecture allows for dynamic loading of external modules via `PluginManager` (currently stubbed).
+
+---
+
+## Design Patterns Used
+
+*   **Strategy Pattern**: Detectors and Verifiers are interchangeable strategies.
+*   **Singleton**: `DetectorRegistry`, `BrowserManager`, and `ConfigurationManager`.
+*   **Observer**: `ScanEngine` emits events (`scan:start`, `vulnerability:found`) for Reporters/CLI to consume.
+*   **Adapter**: `ElementScanner` adapts specific locators into the generic `AttackSurface` interface used by detectors.
+*   **Chain of Responsibility**: `VerificationEngine` passes a candidate vulnerability through multiple verifiers.
