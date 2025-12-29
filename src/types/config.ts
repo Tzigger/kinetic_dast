@@ -147,6 +147,9 @@ export interface ActiveScannerConfig {
 
   /** Specific user agent for active scanner */
   userAgent?: string;
+
+  /** Number of parallel workers */
+  parallelism?: number;
 }
 
 /**
