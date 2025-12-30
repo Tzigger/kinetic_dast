@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated all package references and configuration files
 
 #### Element Scanner
-- Added specialized `ElementScanner` for focused testing of individual DOM elements
-- Support for `ElementScanConfig` to target specific inputs/forms
+- Added specialized `ElementScanner` for focused testing of individual DOM elements via locators
+- Support for `ElementScanConfig` to target specific inputs/forms without crawling
 - Integration with `DomExplorer` for precise attack surface identification
 
 ### 🛠 Improvements
@@ -66,12 +66,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - VerificationResult, VerificationAttempt
   - IVulnerabilityVerifier interface
 
-- `timeout.ts`: Tipuri pentru timeout handling
+- `timeout.ts`: Types for timeout handling
   - TimeoutStrategy, OperationType, SPAFramework
   - TimeoutConfig, AdaptiveTimeoutState
   - SPAStabilityResult, SPAWaitCondition
 
-### � Îmbunătățiri Metrici Țintă
+### 📈 Metric Improvements
 | Metric | v0.1 | v0.2 Target |
 |--------|------|-------------|
 | False Positive Rate | ~15% | < 5% |
@@ -98,19 +98,16 @@ src/types/
 ├── verification.ts
 └── timeout.ts
 
-docs/
-└── V0.2-VERIFICATION-TIMEOUT.md
+src/scanners/active/
+└── ElementScanner.ts
 
-tests/unit/
-└── verification-timeout.test.ts
+docs/
+└── ELEMENT-SCANNER.md
 ```
 
-### � Changed
-- `tsconfig.json`: Adăugat "DOM" la lib pentru suport tipuri browser
-- `src/types/index.ts`: Export-uri pentru noile module
-
-### 📝 Documentation
-- `docs/V0.2-VERIFICATION-TIMEOUT.md`: Ghid complet pentru v0.2
+### ⚙️ Changed
+- `tsconfig.json`: Added "DOM" to lib for browser type support
+- `src/types/index.ts`: Exports for new verification and timeout modules
 
 ---
 
@@ -167,7 +164,7 @@ The first public beta release of Playwright Security! This release includes core
 - Binary: `kinetic` command
 
 #### Playwright Integration
-- **Testing Helpers**: `runSecurityScan()`, `assertNoVulnerabilities()`
+- **Testing Helpers**: `runActiveSecurityScan()`, `runPassiveSecurityScan()`, `assertNoVulnerabilities()`
 - Example test files in `examples/` directory
 - Support for inline security testing
 
@@ -215,56 +212,10 @@ The first public beta release of Playwright Security! This release includes core
 - **Dependencies**: Minimal (commander, chalk, ora, handlebars, winston, uuid)
 
 ### 🐛 Known Issues
-- Passive scanner not yet implemented (Phase 6)
+- Passive scanner not yet fully implemented
 - Limited to Chromium browser (Firefox/WebKit support planned)
-- No authentication support yet
+- Authentication support limited to config-based
 - Single-page scanning only (crawling basic)
 
-### 📝 Migration Notes
-
-This is the first beta release. Breaking changes expected in future versions.
-
-**NPM Installation:**
-```bash
-npm install @tzigger/kinetic@0.1.0-beta.1
-```
-
-**CLI Usage:**
-```bash
-npx kinetic https://example.com --formats console,json,html
-```
-
-**Playwright Tests:**
-```typescript
-import { runSecurityScan, VulnerabilitySeverity } from '@tzigger/kinetic';
-
-test('security test', async ({ page }) => {
-  const vulns = await runSecurityScan(page.url());
-  expect(vulns.filter(v => v.severity === VulnerabilitySeverity.CRITICAL)).toHaveLength(0);
-});
-```
-
-## [Unreleased]
-
-### Planned for v0.2.0
-- Passive scanner implementation
-- CSRF detection
-- Path traversal detection
-- Command injection detection
-- Authentication support (OAuth, Session-based)
-- Multi-browser support (Firefox, WebKit)
-- Performance optimizations (caching, smart crawling)
-- Custom detector API
-
-### Planned for v1.0.0
-- Stable API
-- 30%+ CWE coverage (75+/250)
-- Production-ready passive scanner
-- Full authentication support
-- API security testing
-- OpenAPI/Swagger integration
-- Web UI for reports
-
----
-
+[0.2.0]: https://github.com/tzigger/kinetic/releases/tag/v0.2.0
 [0.1.0-beta.1]: https://github.com/tzigger/kinetic/releases/tag/v0.1.0-beta.1

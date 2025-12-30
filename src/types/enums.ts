@@ -24,6 +24,7 @@ export enum VulnerabilityCategory {
   AUTHORIZATION = 'authorization',
   CONFIGURATION = 'configuration',
   SECURITY_MISCONFIGURATION = 'security-misconfiguration',
+  INSECURE_DESIGN = 'insecure-design',
   CRYPTOGRAPHY = 'cryptography',
   CSRF = 'csrf',
   CLICKJACKING = 'clickjacking',
