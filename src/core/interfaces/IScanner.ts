@@ -4,6 +4,10 @@ import { ScanConfiguration } from '../../types/config';
 import { ScanResult } from '../../types/scan-result';
 import { Logger } from '../../utils/logger/Logger';
 
+export interface InteractionHandler {
+  askQuestion(question: string): Promise<boolean>;
+}
+
 /**
  * Context provided to scanners during execution
  */
@@ -25,6 +29,9 @@ export interface ScanContext {
 
   /** Session-specific metadata */
   metadata?: Record<string, unknown>;
+
+  /** Interaction handler for CLI prompts */
+  interactionHandler?: InteractionHandler;
 }
 
 /**

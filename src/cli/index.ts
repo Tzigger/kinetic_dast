@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import * as readline from 'readline';
 
 import { ConfigurationManager } from '../core/config/ConfigurationManager';
 import { ScanEngine } from '../core/engine/ScanEngine';
@@ -146,6 +147,22 @@ program
       registerBuiltInDetectors(); // Încărcăm detectoarele disponibile (SQLi, XSS, etc.)
       const registry = DetectorRegistry.getInstance();
       const engine = new ScanEngine();
+
+      engine.setInteractionHandler({
+        askQuestion: (query: string): Promise<boolean> => {
+            const rl = readline.createInterface({
+                input: process.stdin,
+                output: process.stdout,
+            });
+
+            return new Promise((resolve) => {
+                rl.question(`${query} (y/n) `, (answer) => {
+                    rl.close();
+                    resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+                });
+            });
+        }
+      });
 
       // 3. Configurare Active Scanner (The Big One)
       if (config.scanners.active?.enabled) {

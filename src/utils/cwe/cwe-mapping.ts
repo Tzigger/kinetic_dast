@@ -220,6 +220,7 @@ export const CATEGORY_TO_CWE: Record<VulnerabilityCategory, string[]> = {
   [VulnerabilityCategory.INSECURE_COMMUNICATION]: ['CWE-319', 'CWE-523'],
   [VulnerabilityCategory.BROKEN_AUTHENTICATION]: ['CWE-287', 'CWE-798'],
   [VulnerabilityCategory.SECURITY_MISCONFIGURATION]: ['CWE-16', 'CWE-2'],
+  [VulnerabilityCategory.INSECURE_DESIGN]: [],
 };
 
 /**

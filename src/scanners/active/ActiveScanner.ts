@@ -102,7 +102,7 @@ export class ActiveScanner extends BaseScanner {
     const authConfig = context.config.target.authentication;
     if (authConfig?.credentials && authConfig.credentials.username) {
         this.sessionManager.configure(
-            authConfig.loginPage?.url || context.config.target.url + '/login',
+            authConfig.loginPage?.url || context.config.target.url,
             authConfig.credentials.username,
             authConfig.credentials.password || ''
         );
@@ -150,6 +150,20 @@ export class ActiveScanner extends BaseScanner {
     
     // 1. Attempt Auto-Login if configured
     const loginSuccess = await this.sessionManager.performAutoLogin(page);
+
+    const authConfig = context.config.target.authentication;
+    if (authConfig?.credentials && !loginSuccess) {
+         context.logger.error('Auto-login failed.');
+         if (context.interactionHandler) {
+             const continueScan = await context.interactionHandler.askQuestion('Login failed. Do you want to continue the scan without authentication?');
+             if (!continueScan) {
+                 throw new Error('Scan aborted by user due to login failure.');
+             }
+         } else {
+             context.logger.warn('Login failed. Continuing scan without authentication.');
+         }
+    }
+
     if (loginSuccess) {
         const postLoginUrl = page.url();
         // If redirected to a new page (e.g. dashboard), add it to queue

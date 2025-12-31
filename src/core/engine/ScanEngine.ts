@@ -4,7 +4,7 @@ import { ScanResult, VulnerabilitySummary } from '../../types/scan-result';
 import { Vulnerability } from '../../types/vulnerability';
 import { ScanStatus, VulnerabilitySeverity, ScannerType, LogLevel } from '../../types/enums';
 import { Logger } from '../../utils/logger/Logger';
-import { IScanner, ScanContext } from '../interfaces/IScanner';
+import { IScanner, ScanContext, InteractionHandler } from '../interfaces/IScanner';
 import { BrowserManager } from '../browser/BrowserManager';
 import { ConfigurationManager } from '../config/ConfigurationManager';
 import { TargetValidator } from '../../utils/TargetValidator';
@@ -36,6 +36,7 @@ export class ScanEngine extends EventEmitter {
   private endTime: number = 0;
   private reporters: IReporter[] = [];
   private existingPage: Page | null = null;  // For SPA support
+  private interactionHandler?: InteractionHandler;
 
   constructor() {
     super();
@@ -52,6 +53,10 @@ export class ScanEngine extends EventEmitter {
   public setExistingPage(page: Page): void {
     this.existingPage = page;
     this.logger.info('Using existing page for SPA scan');
+  }
+
+  public setInteractionHandler(handler: InteractionHandler): void {
+    this.interactionHandler = handler;
   }
 
   /**
@@ -175,6 +180,7 @@ export class ScanEngine extends EventEmitter {
         config,
         logger: this.logger.child('Scanner'),
         emitVulnerability: (vuln: unknown) => this.handleVulnerability(vuln as Vulnerability),
+        interactionHandler: this.interactionHandler,
       };
 
       // 4. Rulează fiecare scanner înregistrat (posibil paralel)
