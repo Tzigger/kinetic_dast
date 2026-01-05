@@ -7,7 +7,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)
 ![Playwright](https://img.shields.io/badge/Playwright-1.56-orange.svg)
 
-## 🎯 Overview
+## Overview
 
 **Kinetic** is a modular, extensible security testing framework designed for modern Single Page Applications (SPAs). Unlike traditional scanners that struggle with client-side rendering, Kinetic leverages Playwright to fully render applications before analyzing them.
 
@@ -15,18 +15,18 @@ It combines **passive network analysis** with **active vulnerability scanning** 
 
 ### Key Features (v0.2.0)
 
-- 🧠 **Smart SPA Scanning**: Framework-aware waiting (Angular/React/Vue) ensures the page is stable before testing.
-- 🔍 **Triple-Mode Scanning**:
+- **Smart SPA Scanning**: Framework-aware waiting (Angular/React/Vue) ensures the page is stable before testing.
+- **Triple-Mode Scanning**:
   - **Active**: Crawling, form discovery, and payload injection.
   - **Passive**: Real-time network traffic analysis (PII, Headers, Auth).
   - **Element**: Targeted scanning of specific DOM elements via locators.
-- ✅ **Active Verification**: Uses statistical timing analysis and response diffing to verify blind injections (SQLi, Command Injection).
-- 🛡️ **Production Guardrails**: "Safe Mode" automatically filters destructive payloads (e.g., `DROP TABLE`) on non-local targets.
-- 🔌 **Plugin Architecture**: Easily extendable with custom Detectors and Reporters.
-- 🎯 **Advanced XSS Detection**: Multi-context XSS detection (HTML, JavaScript, URL, JSON) with DOM mutation monitoring and CSP bypass analysis.
-- ⏱️ **Global Rate Limiting**: Token bucket algorithm with automatic 429 backoff to prevent overwhelming targets.
+- **Active Verification**: Uses statistical timing analysis and response diffing to verify blind injections (SQLi, Command Injection).
+- **Production Guardrails**: "Safe Mode" automatically filters destructive payloads (e.g., `DROP TABLE`) on non-local targets.
+- **Plugin Architecture**: Easily extendable with custom Detectors and Reporters.
+- **Advanced XSS Detection**: Multi-context XSS detection (HTML, JavaScript, URL, JSON) with DOM mutation monitoring and CSP bypass analysis.
+-  **Global Rate Limiting**: Token bucket algorithm with automatic 429 backoff to prevent overwhelming targets.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. CLI Usage
 
@@ -81,7 +81,7 @@ test('login form security', async ({ page }) => {
 });
 ```
 
-## 📋 Architecture
+## Architecture
 
 Kinetic uses a layered architecture to separate orchestration, execution, and strategy.
 
@@ -115,7 +115,7 @@ Kinetic uses a layered architecture to separate orchestration, execution, and st
 └─────────────────────────────────────────────────┘
 ```
 
-## 🛡️ Safety Features & Production Guardrails
+## Safety Features & Production Guardrails
 
 Kinetic is designed to be safe by default.
 
@@ -131,7 +131,7 @@ The `TargetValidator` analyzes your URL before scanning starts.
 
 *Read more in the [Safe Mode Guide](./docs/SAFE-MODE.md).*
 
-## 🔧 Configuration
+## Configuration
 
 Create a `kinetic.config.json` for advanced control:
 
@@ -160,7 +160,7 @@ Create a `kinetic.config.json` for advanced control:
 }
 ```
 
-## 📚 Documentation
+## Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -170,7 +170,7 @@ Create a `kinetic.config.json` for advanced control:
 | **[Safe Mode](./docs/SAFE-MODE.md)** | Details on production guardrails and payload filtering. |
 | **[Migration Guide](./docs/MIGRATION-GUIDE.md)** | Upgrading from v0.1.x to v0.2.0. |
 
-## 📦 Supported Vulnerabilities
+## Supported Vulnerabilities
 
 | Category | Detectors |
 |----------|-----------|
@@ -180,7 +180,7 @@ Create a `kinetic.config.json` for advanced control:
 | **Config** | Security Headers, Cookie Flags, CORS, Error Disclosure |
 | **Data** | PII Exposure (Emails, Keys, Tokens, Credentials) |
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md).
 
