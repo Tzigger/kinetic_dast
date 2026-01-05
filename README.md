@@ -23,6 +23,8 @@ It combines **passive network analysis** with **active vulnerability scanning** 
 - ✅ **Active Verification**: Uses statistical timing analysis and response diffing to verify blind injections (SQLi, Command Injection).
 - 🛡️ **Production Guardrails**: "Safe Mode" automatically filters destructive payloads (e.g., `DROP TABLE`) on non-local targets.
 - 🔌 **Plugin Architecture**: Easily extendable with custom Detectors and Reporters.
+- 🎯 **Advanced XSS Detection**: Multi-context XSS detection (HTML, JavaScript, URL, JSON) with DOM mutation monitoring and CSP bypass analysis.
+- ⏱️ **Global Rate Limiting**: Token bucket algorithm with automatic 429 backoff to prevent overwhelming targets.
 
 ## 🚀 Quick Start
 
@@ -45,6 +47,9 @@ kinetic https://example.com --scan-type passive
 
 # Active Scan with Authentication
 kinetic https://example.com --auth "admin:password123"
+
+# Rate-limited scan (requests per second)
+kinetic https://example.com --rate-limit 5
 
 # Targeted Element Scan (Requires config)
 kinetic -c kinetic.config.json
@@ -170,7 +175,7 @@ Create a `kinetic.config.json` for advanced control:
 | Category | Detectors |
 |----------|-----------|
 | **Injection** | SQLi (Boolean/Error/Time), Command Injection, SSTI, XML |
-| **XSS** | Reflected, Stored, DOM-based, JSON-based, Angular Template |
+| **XSS** | Reflected, Stored, DOM-based, JSON-based, Angular Template, Multi-context (HTML/JS/URL/JSON), CSP Bypass Detection |
 | **Access Control** | Path Traversal, SSRF (Cloud Metadata/Local) |
 | **Config** | Security Headers, Cookie Flags, CORS, Error Disclosure |
 | **Data** | PII Exposure (Emails, Keys, Tokens, Credentials) |

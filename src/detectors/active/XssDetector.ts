@@ -4,6 +4,7 @@ import { Vulnerability } from '../../types/vulnerability';
 import { VulnerabilitySeverity, VulnerabilityCategory, LogLevel } from '../../types/enums';
 import { AttackSurface, InjectionContext, AttackSurfaceType } from '../../scanners/active/DomExplorer';
 import { PayloadInjector, InjectionResult, PayloadEncoding } from '../../scanners/active/PayloadInjector';
+import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 import { Logger } from '../../utils/logger/Logger';
 import {
@@ -1004,6 +1005,7 @@ export class XssDetector implements IActiveDetector {
           const trimmedPayload = payload.trim();
           const isProtocolPayload = trimmedPayload.startsWith('javascript:') || trimmedPayload.startsWith('data:');
           const targetUrl = isProtocolPayload ? trimmedPayload : `${baseUrl}${payload}`;
+          await getGlobalRateLimiter().waitForToken();
           await page.goto(targetUrl).catch(() => {});
         } else {
           await this.injector.inject(page, surface, payload, {

@@ -11,6 +11,7 @@ import {
   InterceptedRequest,
   InterceptedResponse,
 } from './NetworkInterceptor';
+import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 
 /**
  * Configurare PassiveScanner
@@ -110,6 +111,7 @@ export class PassiveScanner implements IScanner {
 
       // Navighează la URL-ul țintă
       this.logger.info(`Navigating to target: ${targetUrl}`);
+      await getGlobalRateLimiter().waitForToken();
       await page.goto(targetUrl, {
         waitUntil: 'networkidle',
         timeout: config.browser.timeout || 30000,

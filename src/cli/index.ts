@@ -17,6 +17,7 @@ import {
 } from '../types/enums';
 import { DetectorRegistry } from '../utils/DetectorRegistry';
 import { registerBuiltInDetectors } from '../utils/builtInDetectors';
+import { getGlobalRateLimiter } from '../core/network/RateLimiter';
 
 type CliScanType = 'active' | 'passive' | 'both';
 
@@ -28,6 +29,7 @@ interface CliOptions {
   parallel: string;
   scanType: CliScanType;
   safemodeDisable: boolean;
+  rateLimit: string;
   auth?: string;
 }
 
@@ -46,6 +48,7 @@ program
   .option('--parallel <n>', 'Parallel scanners count', '2')
   .option('--scan-type <type>', 'Scan type: active, passive, or both', 'active')
   .option('--safemode-disable', 'Disable Safe Mode (Allow dangerous payloads)', false)
+  .option('--rate-limit <n>', 'Rate limit (requests per second)', '10')
   .option('--auth <credentials>', 'Basic auth credentials (username:password)')
   .option('--detectors <list>', 'Comma-separated list of detectors to enable (e.g. xss,sqli)')
   .action(async (url: string | undefined, options: CliOptions & { detectors?: string }) => {
@@ -75,6 +78,11 @@ program
         // Override Detectors from CLI
         if (options.detectors) {
             config.detectors.enabled = options.detectors.split(',').map(d => d.trim());
+        }
+
+        // Override Rate Limit from CLI
+        if (options.rateLimit) {
+            config.advanced.rateLimit = parseInt(options.rateLimit, 10);
         }
       } else {
         if (!url) {
@@ -123,6 +131,7 @@ program
           advanced: {
             parallelism: parseInt(options.parallel, 10) || 2,
             logLevel: LogLevel.INFO,
+            rateLimit: parseInt(options.rateLimit, 10),
           },
           detectors: {
             // Keep defaults stable: only enable detectors that are enabled-by-default.
@@ -144,6 +153,13 @@ program
           }
         };
         configManager.loadFromObject(config);
+      }
+
+      // Initialize Rate Limiter
+      if (config.advanced.rateLimit) {
+          getGlobalRateLimiter().updateConfig({
+              requestsPerSecond: config.advanced.rateLimit
+          });
       }
 
       console.log(`🚀 Starting Kinetic Scan against: ${config.target.url}`);

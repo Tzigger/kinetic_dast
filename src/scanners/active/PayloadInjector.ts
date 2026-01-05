@@ -5,6 +5,7 @@ import { AttackSurface, AttackSurfaceType, InjectionContext } from './DomExplore
 import { SPAWaitStrategy } from '../../core/timeout/SPAWaitStrategy';
 import { SPAFramework } from '../../types/timeout';
 import { PayloadFilter } from '../../utils/PayloadFilter';
+import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 
 /**
  * Strategie de injecție
@@ -224,6 +225,10 @@ export class PayloadInjector {
       this.logger.debug(`[Inject] Final payload after strategy: ${finalPayload.substring(0, 100)}${finalPayload.length > 100 ? '...' : ''}`);
 
       // 3. Inject based on surface type
+      
+      // Rate Limiting
+      await getGlobalRateLimiter().waitForToken();
+
       const startTime = Date.now();
       let apiResponse: { body: string; status: number; headers: Record<string, string> } | null = null;
       
@@ -233,7 +238,10 @@ export class PayloadInjector {
           break;
         
         case AttackSurfaceType.URL_PARAMETER:
-          await this.injectIntoUrlParameter(page, surface, finalPayload);
+          const status = await this.injectIntoUrlParameter(page, surface, finalPayload);
+          if (status) {
+            getGlobalRateLimiter().handleResponse(status);
+          }
           break;
         
         case AttackSurfaceType.COOKIE:
@@ -252,6 +260,7 @@ export class PayloadInjector {
       const endTime = Date.now();
 
       if (apiResponse) {
+        getGlobalRateLimiter().handleResponse(apiResponse.status);
         result.response = {
           url: surface.metadata.url || page.url(),
           status: apiResponse.status,
@@ -676,10 +685,11 @@ export class PayloadInjector {
     page: Page,
     surface: AttackSurface,
     payload: string
-  ): Promise<void> {
+  ): Promise<number | null> {
     const currentUrl = new URL(page.url());
     currentUrl.searchParams.set(surface.name, payload);
-    await page.goto(currentUrl.toString(), { waitUntil: 'domcontentloaded' });
+    const response = await page.goto(currentUrl.toString(), { waitUntil: 'domcontentloaded' });
+    return response ? response.status() : null;
   }
 
   /**

@@ -10,6 +10,7 @@ import { TimeoutManager, getGlobalTimeoutManager } from '../../core/timeout/Time
 import { SPAWaitStrategy, getGlobalSPAWaitStrategy } from '../../core/timeout/SPAWaitStrategy';
 import { OperationType } from '../../types/timeout';
 import { SessionManager } from '../../core/auth/SessionManager';
+import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 
 /**
  * Configuration for ActiveScanner
@@ -322,6 +323,7 @@ export class ActiveScanner extends BaseScanner {
     if (needsNavigation) {
       try {
         const timeout = this.timeoutManager.getTimeout(OperationType.NAVIGATION);
+        await getGlobalRateLimiter().waitForToken();
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
         await this.spaWaitStrategy.waitForStability(page, timeout, 'navigation');
       } catch (error) {
@@ -459,7 +461,10 @@ export class ActiveScanner extends BaseScanner {
           }
           
           // Restore if navigated away
-          if (page.url() !== url) await page.goto(url, { waitUntil: 'domcontentloaded' });
+          if (page.url() !== url) {
+            await getGlobalRateLimiter().waitForToken();
+            await page.goto(url, { waitUntil: 'domcontentloaded' });
+          }
 
         } catch (e) { /* ignore */ }
       }

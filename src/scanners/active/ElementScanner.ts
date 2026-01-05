@@ -9,6 +9,7 @@ import { AttackSurface, AttackSurfaceType } from './DomExplorer';
 import { ElementScanConfig, ElementTarget, ElementScanResult, ElementVulnerabilityScanResult } from '../../types/element-scan';
 import { ActionHelper } from './ActionHelper';
 import { VulnerabilityCategory } from '../../types/enums';
+import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 
 /**
  * ElementScanner - Targeted scanner for specific locators/elements
@@ -81,6 +82,7 @@ export class ElementScanner extends BaseScanner {
       : this.elementScanConfig.baseUrl;
 
     if (targetPageUrl) {
+      await getGlobalRateLimiter().waitForToken();
       await page.goto(targetPageUrl, {
         waitUntil: 'domcontentloaded',
         timeout: this.elementScanConfig.pageTimeout || 30000,

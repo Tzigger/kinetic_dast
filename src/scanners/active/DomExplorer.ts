@@ -1,6 +1,7 @@
 import { Logger } from '../../utils/logger/Logger';
 import { LogLevel } from '../../types/enums';
 import { Page, Request } from 'playwright';
+import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 
 /**
  * Tipuri de elemente care pot fi atacate
@@ -247,6 +248,7 @@ export class DomExplorer {
 
     for (const scriptUrl of scriptUrls) {
       try {
+        await getGlobalRateLimiter().waitForToken();
         const response = await page.request.get(scriptUrl);
         if (response.ok()) {
           const content = await response.text();
@@ -293,7 +295,9 @@ export class DomExplorer {
         const fullUrl = new URL(path, baseUrl).toString();
         this.logger.debug(`Checking for Swagger at ${fullUrl}`);
         
+        await getGlobalRateLimiter().waitForToken();
         const response = await page.request.get(fullUrl);
+        getGlobalRateLimiter().handleResponse(response.status());
         if (!response.ok()) {
             this.logger.debug(`Swagger check failed for ${fullUrl}: ${response.status()}`);
             continue;

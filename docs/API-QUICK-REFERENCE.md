@@ -152,6 +152,7 @@ Command: `kinetic`
 | `--auth <creds>` | Basic/Form auth | `kinetic --auth user:pass` |
 | `--safemode-disable`| **Dangerous**: Allow destructive payloads | `kinetic --safemode-disable` |
 | `--parallel <n>` | Parallel workers | `kinetic --parallel 4` |
+| `--rate-limit <n>` | Requests per second | `kinetic --rate-limit 5` |
 | `-f, --formats` | Output formats | `kinetic -f json,html` |
 | `--headless` | Run hidden browser | `kinetic --headless` |
 
@@ -169,3 +170,30 @@ Import path: `@tzigger/kinetic/types`
 
 ### `AttackSurfaceType`
 `FORM_INPUT`, `URL_PARAMETER`, `JSON_BODY`, `API_PARAM`, `COOKIE`, `HEADER`
+
+---
+
+## 🚦 Rate Limiter
+
+Import path: `@tzigger/kinetic`
+
+### `getGlobalRateLimiter()`
+Returns the singleton RateLimiter instance.
+
+```typescript
+import { getGlobalRateLimiter } from '@tzigger/kinetic';
+
+const limiter = getGlobalRateLimiter();
+limiter.setRateLimit(10);          // 10 requests per second
+await limiter.waitForToken();       // Wait for available token
+limiter.handleResponse(statusCode); // Handle 429 backoff
+```
+
+### RateLimiter Methods
+
+| Method | Description |
+|--------|-------------|
+| `setRateLimit(rps)` | Set requests per second limit |
+| `waitForToken()` | Wait until a token is available |
+| `handleResponse(status)` | Process response status for 429 backoff |
+| `getStats()` | Get current limiter statistics |

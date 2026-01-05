@@ -17,12 +17,14 @@ New to Kinetic? Start here:
 2. **[Developer Guide](./DEVELOPER-GUIDE.md)**
    - Complete guide for using the framework in your projects
    - Installation, configuration, and usage
+   - **Rate limiting and 429 backoff handling**
    - API reference and examples
    - Best practices and troubleshooting
    - **~26 KB** | **Comprehensive**
 
 3. **[API Quick Reference](./API-QUICK-REFERENCE.md)**
    - Quick lookup for all APIs and methods
+   - **RateLimiter API documentation**
    - Common patterns and imports
    - Configuration examples
    - **~11 KB** | **Quick Reference**
@@ -220,8 +222,8 @@ class MyDetector extends BaseDetector {
 
 - **Total Documents**: 9
 - **Total Size**: ~128 KB
-- **Last Updated**: November 27, 2025
-- **Framework Version**: 0.1.0-beta.1
+- **Last Updated**: January 5, 2026
+- **Framework Version**: 0.2.0
 
 ---
 

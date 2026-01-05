@@ -313,6 +313,61 @@ Once registered, you can reference it in your config `detectors.enabled` array.
 
 ---
 
+## Rate Limiting
+
+Kinetic includes a **Global Rate Limiter** to prevent overwhelming target servers. This is especially important when scanning production or rate-limited APIs.
+
+### How It Works
+
+The rate limiter uses a **Token Bucket Algorithm**:
+- Tokens are consumed for each request
+- Tokens refill at a configurable rate (requests per second)
+- When tokens are exhausted, requests wait until tokens are available
+- Automatic backoff when receiving HTTP 429 responses
+
+### Configuration
+
+```bash
+# CLI: Set rate limit to 5 requests per second
+kinetic https://example.com --rate-limit 5
+```
+
+```json
+// Config file
+{
+  "advanced": {
+    "rateLimit": 5
+  }
+}
+```
+
+### Programmatic Access
+
+```typescript
+import { getGlobalRateLimiter } from '@tzigger/kinetic';
+
+const rateLimiter = getGlobalRateLimiter();
+
+// Configure rate limit
+rateLimiter.setRateLimit(10); // 10 RPS
+
+// Wait for token before making request
+await rateLimiter.waitForToken();
+const response = await fetch(url);
+
+// Report response status for automatic 429 handling
+rateLimiter.handleResponse(response.status);
+```
+
+### 429 Backoff Behavior
+
+When the rate limiter receives a 429 status code:
+1. It pauses all requests for 1 second (or uses `Retry-After` header if present)
+2. Logs a warning: `Rate limited (429). Backing off for Xms`
+3. Automatically resumes after the backoff period
+
+---
+
 ## Troubleshooting
 
 *   **Scan takes too long?**

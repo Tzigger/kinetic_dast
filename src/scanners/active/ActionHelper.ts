@@ -1,6 +1,7 @@
 import { Page } from 'playwright';
 import { Logger } from '../../utils/logger/Logger';
 import { PageAction } from '../../types/page-scan';
+import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 
 /** Shared helper utilities for scanner actions and URL resolution. */
 export class ActionHelper {
@@ -41,7 +42,10 @@ export class ActionHelper {
             await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
             break;
           case 'navigate':
-            if (action.value) await page.goto(action.value, { waitUntil: 'domcontentloaded' });
+            if (action.value) {
+              await getGlobalRateLimiter().waitForToken();
+              await page.goto(action.value, { waitUntil: 'domcontentloaded' });
+            }
             break;
           case 'dismiss-dialog':
             await this.dismissDialogs(page, delayFn);

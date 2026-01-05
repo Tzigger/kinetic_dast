@@ -5,6 +5,7 @@ import { Logger } from '../../utils/logger/Logger';
 import { TimeBasedVerifier } from './techniques/TimeBasedVerifier';
 import { ResponseDiffVerifier } from './techniques/ResponseDiffVerifier';
 import { VerificationConfig, VerificationStatus, VerificationLevel } from '../../types/verification';
+import { getGlobalRateLimiter } from '../network/RateLimiter';
 
 export interface VerificationResult {
   shouldReport: boolean;
@@ -136,8 +137,10 @@ export class VerificationEngine {
     try {
       if (vulnerability.evidence?.request?.method === 'GET') {
         this.logger.info(`Navigating to ${url} for XSS check`);
+        await getGlobalRateLimiter().waitForToken();
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
       } else {
+        await getGlobalRateLimiter().waitForToken();
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
       }
 

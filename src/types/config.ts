@@ -274,6 +274,9 @@ export interface AdvancedConfig {
   /** Maximum scan duration (ms) */
   maxScanDuration?: number;
 
+  /** Rate limit (requests per second) */
+  rateLimit?: number;
+
   /** Whether to pause on vulnerability detection */
   pauseOnVulnerability?: boolean;
 

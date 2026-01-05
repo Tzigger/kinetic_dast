@@ -1,6 +1,7 @@
 import { Page, BrowserContext } from 'playwright';
 import { Logger } from '../../utils/logger/Logger';
 import { LogLevel } from '../../types/enums';
+import { getGlobalRateLimiter } from '../network/RateLimiter';
 
 export class SessionManager {
   private logger: Logger;
@@ -23,6 +24,7 @@ export class SessionManager {
     this.logger.info(`Attempting auto-login to ${this.loginUrl}`);
     
     try {
+      await getGlobalRateLimiter().waitForToken();
       await page.goto(this.loginUrl, { waitUntil: 'domcontentloaded' });
       
       // Heuristic: Find username/password fields
