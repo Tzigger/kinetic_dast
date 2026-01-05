@@ -159,7 +159,27 @@ export class PayloadInjector {
         // Only reload if we are not on the base URL or if we suspect state is dirty
         // For robustness, we always reload for form inputs as they likely caused navigation
         if (surface.type === AttackSurfaceType.FORM_INPUT || currentUrl !== options.baseUrl) {
-           await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+           try {
+             await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+           } catch (e) {
+             const msg = String(e);
+             if (msg.includes('interrupted') || msg.includes('navigating')) {
+               this.logger.debug('Navigation interrupted by another navigation, waiting for it to finish...');
+               try {
+                 await page.waitForLoadState('domcontentloaded', { timeout: 5000 });
+               } catch (e2) {
+                 this.logger.debug('Wait for interrupted navigation failed: ' + e2);
+               }
+               
+               // Check if we need to navigate again
+               if (page.url() !== options.baseUrl) {
+                 this.logger.debug('Retrying navigation to base URL...');
+                 await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+               }
+             } else {
+               throw e;
+             }
+           }
            
            // Wait for SPA to load and elements to be available
            if (surface.selector) {
@@ -257,7 +277,7 @@ export class PayloadInjector {
           headers: {},
           timing: endTime - startTime,
         };
-        this.logger.debug(`[Inject] Page Response: url=${page.url()}, bodyLen=${body.length}, time=${endTime - startTime}ms`);
+        this.logger.info(`[Inject] Page Response: url=${page.url()}, bodyLen=${body.length}, time=${endTime - startTime}ms`);
       }
 
     } catch (error) {
@@ -571,6 +591,21 @@ export class PayloadInjector {
       await surface.element.fill(payload);
     } else {
       throw new Error('No element or selector available for injection');
+    }
+
+    // Fill other fields if specified in metadata
+    if (surface.metadata?.['otherFields']) {
+      const otherFields = surface.metadata['otherFields'] as Record<string, string>;
+      for (const [selector, value] of Object.entries(otherFields)) {
+        try {
+          // Wait for element to be visible before filling
+          await page.waitForSelector(selector, { state: 'visible', timeout: 2000 }).catch(() => {});
+          await page.fill(selector, value);
+          this.logger.debug(`Filled other field: ${selector} = ${value}`);
+        } catch (e) {
+          this.logger.warn(`Failed to fill other field ${selector}: ${e}`);
+        }
+      }
     }
 
     // Submit the form if requested

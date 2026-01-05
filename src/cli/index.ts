@@ -47,7 +47,8 @@ program
   .option('--scan-type <type>', 'Scan type: active, passive, or both', 'active')
   .option('--safemode-disable', 'Disable Safe Mode (Allow dangerous payloads)', false)
   .option('--auth <credentials>', 'Basic auth credentials (username:password)')
-  .action(async (url: string | undefined, options: CliOptions) => {
+  .option('--detectors <list>', 'Comma-separated list of detectors to enable (e.g. xss,sqli)')
+  .action(async (url: string | undefined, options: CliOptions & { detectors?: string }) => {
     try {
       const configManager = ConfigurationManager.getInstance();
       let config: ScanConfiguration;
@@ -69,6 +70,11 @@ program
                 type: AuthType.FORM,
                 credentials: { username, password: password || '' }
              };
+        }
+
+        // Override Detectors from CLI
+        if (options.detectors) {
+            config.detectors.enabled = options.detectors.split(',').map(d => d.trim());
         }
       } else {
         if (!url) {
@@ -121,16 +127,18 @@ program
           detectors: {
             // Keep defaults stable: only enable detectors that are enabled-by-default.
             // Optional detectors (e.g., ssrf/path-traversal/command-injection) must be enabled explicitly.
-            enabled: [
-              'sql-injection',
-              'sqlmap',
-              'xss',
-              'error-based',
-              'sensitive-data',
-              'header-security',
-              'cookie-security',
-              'insecure-transmission',
-            ],
+            enabled: options.detectors 
+                ? options.detectors.split(',').map(d => d.trim())
+                : [
+                  'sql-injection',
+                  'sqlmap',
+                  'xss',
+                  'error-based',
+                  'sensitive-data',
+                  'header-security',
+                  'cookie-security',
+                  'insecure-transmission',
+                ],
             disabled: [],
             tuning: {}
           }
@@ -139,6 +147,7 @@ program
       }
 
       console.log(`🚀 Starting Kinetic Scan against: ${config.target.url}`);
+      console.log(`Enabled Detectors: ${config.detectors.enabled.join(', ')}`);
       if (!config.scanners.active.safeMode) {
           console.warn(`⚠️  WARNING: Safe Mode is DISABLED. Destructive payloads may be used.`);
       }

@@ -20,6 +20,10 @@ import {
   EncodingType,
 } from '../../utils/patterns/xss-patterns';
 
+const PROBE_STRING = 'k1n3t1c';
+const PROOF_VARIABLE = 'kinetic_proof';
+const PROOF_VALUE = 'scan_id';
+
 interface TechniqueTimeouts {
   reflected: number;
   stored: number;
@@ -58,11 +62,11 @@ interface XssDetectorStats {
 
 const DEFAULT_XSS_DETECTOR_CONFIG: ResolvedXssDetectorConfig = {
   techniqueTimeouts: {
-    reflected: 10000,
-    stored: 15000,
-    domBased: 8000,
-    angularTemplate: 12000,
-    jsonXss: 10000,
+    reflected: 30000,
+    stored: 40000,
+    domBased: 20000,
+    angularTemplate: 20000,
+    jsonXss: 20000,
   },
   skipRedundantTests: true,
   allowDuplicatePayloads: false,
@@ -107,7 +111,7 @@ export class XssDetector implements IActiveDetector {
 
   constructor(config: XssDetectorConfig = {}) {
     this.injector = new PayloadInjector();
-    this.logger = new Logger(LogLevel.INFO, 'XssDetector');
+    this.logger = new Logger(LogLevel.DEBUG, 'XssDetector');
     this.config = this.mergeConfig(DEFAULT_XSS_DETECTOR_CONFIG, config);
     
     // Auto-adjust confidence for permissive mode if not explicitly set by caller
@@ -185,6 +189,31 @@ export class XssDetector implements IActiveDetector {
     const result = await Promise.race([promise, timeoutPromise]);
     if (timer) clearTimeout(timer);
     return result as T | null;
+  }
+
+  /**
+   * Verifies XSS execution by checking for the injected proof variable
+   * Implements DOM Mutation Wait to handle SPAs
+   */
+  private async verifyExecution(page: Page): Promise<boolean> {
+    try {
+      // DOM Mutation Wait: Wait for the payload to be rendered and executed
+      // We wait for the window property to be set
+      await page.waitForFunction(
+        (args) => (window as any)[args.prop] === args.val, 
+        { prop: PROOF_VARIABLE, val: PROOF_VALUE }, 
+        { timeout: 1000 }
+      );
+      
+      const proof = await page.evaluate((prop) => (window as any)[prop], PROOF_VARIABLE);
+      
+      // Clean up
+      await page.evaluate((prop) => delete (window as any)[prop], PROOF_VARIABLE);
+      
+      return proof === PROOF_VALUE;
+    } catch (e) {
+      return false;
+    }
   }
 
   /**
@@ -401,19 +430,22 @@ export class XssDetector implements IActiveDetector {
     testValue: string
   ): Promise<{ context: ReflectionContext; encoding: EncodingType; encodingLevel: 'none' | 'partial' | 'full'; html: string } | null> {
     try {
-      const result = await this.injector.inject(page, surface, testValue, {
+      // Use the harmless probe string for context analysis
+      const probe = testValue === 'xss-reflection-probe' ? PROBE_STRING : testValue;
+      
+      const result = await this.injector.inject(page, surface, probe, {
         encoding: PayloadEncoding.NONE,
         submit: true,
         baseUrl,
       });
 
       const html = result.response?.body || '';
-      const context = detectReflectionContext(html, testValue);
-      const htmlEncoding = detectHtmlEncoding(html, testValue);
-      const urlEncoding = detectUrlEncoding(html, testValue);
-      const jsEncoding = detectJsEncoding(html, testValue);
+      const context = detectReflectionContext(html, probe);
+      const htmlEncoding = detectHtmlEncoding(html, probe);
+      const urlEncoding = detectUrlEncoding(html, probe);
+      const jsEncoding = detectJsEncoding(html, probe);
       const encoding: EncodingType = htmlEncoding !== 'none' ? 'html' : urlEncoding !== 'none' ? 'url' : jsEncoding !== 'none' ? 'js' : 'none';
-      const encodingLevel = detectEncodingLevel(html, testValue);
+      const encodingLevel = detectEncodingLevel(html, probe);
 
       return { context, encoding, encodingLevel, html };
     } catch (error) {
@@ -428,28 +460,29 @@ export class XssDetector implements IActiveDetector {
     encoding: EncodingType
   ): string[] {
     const basePayloads: string[] = [];
+    const proofPayload = `window.${PROOF_VARIABLE}='${PROOF_VALUE}'`;
 
     const fastHtml = [
-      '<script>alert("XSS")</script>',
-      '<img src=x onerror=alert("XSS")>',
-      '<svg onload=alert("XSS")>',
+      `<script>${proofPayload}</script>`,
+      `<img src=x onerror=${proofPayload}>`,
+      `<svg onload=${proofPayload}>`,
     ];
 
     const attributeBreakout = [
-      '" autofocus onfocus=alert("XSS") "',
-      "' onfocus=alert('XSS') '",
-      '" onmouseover=alert("XSS") "',
+      `" autofocus onfocus=${proofPayload} "`,
+      `' autofocus onfocus=${proofPayload} '`,
+      `" onmouseover=${proofPayload} "`,
     ];
 
     const jsContext = [
-      '";alert("XSS");//',
-      "';alert('XSS');//",
-      '</script><script>alert("XSS")</script>',
+      `";${proofPayload};//`,
+      `';${proofPayload};//`,
+      `</script><script>${proofPayload}</script>`,
     ];
 
     const urlContext = [
-      'javascript:alert("XSS")',
-      'data:text/html,<script>alert("XSS")</script>',
+      `javascript:${proofPayload}`,
+      `data:text/html,<script>${proofPayload}</script>`,
     ];
 
     const nameLower = surface.name.toLowerCase();
@@ -477,40 +510,40 @@ export class XssDetector implements IActiveDetector {
     }
 
     if (['search', 'query', 'comment', 'message'].some((key) => nameLower.includes(key))) {
-      basePayloads.unshift('<img src=x onerror=alert("XSS")>');
+      basePayloads.unshift(`<img src=x onerror=${proofPayload}>`);
     }
     
     if (this.config.permissiveMode) {
         // Prioritize simple, bWAPP-effective payloads
         basePayloads.unshift(
-            '<script>alert(1)</script>', 
-            "<script>alert('XSS')</script>", 
-            '<img src=x onerror=alert(1)>'
+            `<script>${proofPayload}</script>`, 
+            `<img src=x onerror=${proofPayload}>`
         );
     }
 
     if (inputType === 'email') {
-      basePayloads.push('" autofocus onfocus=alert(1) "');
+      basePayloads.push(`" autofocus onfocus=${proofPayload} "`);
     }
 
     const encodingBypasses: string[] = [];
     if (encoding === 'html') {
       encodingBypasses.push(
-        '<scr\x69pt>alert(1)</scr\x69pt>',
-        '<img src=x onerror=window["al"+"ert"](1)>',
-        '&#x3c;img src=x onerror=alert(1)&#x3e;'
+        `<scr\x69pt>${proofPayload}</scr\x69pt>`,
+        `<img src=x onerror=window["${PROOF_VARIABLE}"]='${PROOF_VALUE}'>`,
+        `&#x3c;img src=x onerror=${proofPayload}&#x3e;`
       );
     }
     if (encoding === 'url') {
+      // URL encoded versions of <script>...
       encodingBypasses.push(
-        '%3Cscript%3Ealert(1)%3C/script%3E',
-        '%253Cscript%253Ealert(1)%253C/script%253E'
+        `%3Cscript%3E${proofPayload}%3C/script%3E`,
+        `%253Cscript%253E${proofPayload}%253C/script%253E`
       );
     }
     if (encoding === 'js') {
       encodingBypasses.push(
-        '\\x3cscript\\x3ealert(1)\\x3c/script\\x3e',
-        '\\u003cscript\\u003ealert(1)\\u003c/script\\u003e'
+        `\\x3cscript\\x3e${proofPayload}\\x3c/script\\x3e`,
+        `\\u003cscript\\u003e${proofPayload}\\u003c/script\\u003e`
       );
     }
 
@@ -578,17 +611,26 @@ export class XssDetector implements IActiveDetector {
         });
 
         const reflectionAnalysis = this.analyzeReflection(result, payload);
-        const confidence = this.calculateConfidence(XssType.REFLECTED, result, { reflectionAnalysis });
-        this.logger.debug(`[XSS] Reflected check: payload="${payload.substring(0, 40)}", reflected=${reflectionAnalysis.reflected}, confidence=${confidence.toFixed(2)}`);
+        
+        // Execution-Based Verification
+        const executed = await this.verifyExecution(page);
+        
+        const confidence = executed ? 1.0 : this.calculateConfidence(XssType.REFLECTED, result, { reflectionAnalysis });
+        this.logger.debug(`[XSS] Reflected check: payload="${payload.substring(0, 40)}", reflected=${reflectionAnalysis.reflected}, executed=${executed}, confidence=${confidence.toFixed(2)}`);
+        
+        if (reflectionAnalysis.reflected) {
+             this.logger.debug(`[XSS] Reflection details: context=${reflectionAnalysis.context}, encoding=${reflectionAnalysis.encodingType}, indicators=${reflectionAnalysis.executionIndicators.length}`);
+        }
 
         this.markPayloadTested(surface, payload);
 
         const threshold = this.config.permissiveMode ? 0.6 : 0.7;
 
-        if (reflectionAnalysis.reflected && confidence >= threshold) {
+        if (executed || (reflectionAnalysis.reflected && confidence >= threshold)) {
           const vuln = this.createVulnerability(surface, result, XssType.REFLECTED, baseUrl, payload, {
             reflectionAnalysis,
             confidence,
+            executed
           });
 
           if (confidence >= this.config.minConfidenceForEarlyExit) {
@@ -609,7 +651,7 @@ export class XssDetector implements IActiveDetector {
 
   private async testStoredXss(page: Page, surface: AttackSurface, baseUrl: string): Promise<Vulnerability | null> {
     const marker = `xss-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const storedPayload = `<script>window.__xss_mark__='${marker}';alert('XSS-STORED')</script>`;
+    const storedPayload = `<script>window.${PROOF_VARIABLE}='${PROOF_VALUE}';window.__xss_mark__='${marker}';</script>`;
 
     try {
       const result = await this.injector.inject(page, surface, storedPayload, {
@@ -620,6 +662,9 @@ export class XssDetector implements IActiveDetector {
 
       await page.waitForTimeout(500);
       await page.reload({ waitUntil: 'domcontentloaded' });
+
+      // Execution-Based Verification
+      const executed = await this.verifyExecution(page);
 
       const body = await page.content();
       const safeResponse = {
@@ -638,9 +683,9 @@ export class XssDetector implements IActiveDetector {
         storedPayload
       );
 
-      const confidence = Math.max(0.95, this.calculateConfidence(XssType.STORED, result, { reflectionAnalysis }));
+      const confidence = executed ? 1.0 : Math.max(0.95, this.calculateConfidence(XssType.STORED, result, { reflectionAnalysis }));
 
-      if (body.includes(marker) || reflectionAnalysis.executionIndicators.length > 0 || reflectionAnalysis.reflected) {
+      if (executed || body.includes(marker) || reflectionAnalysis.executionIndicators.length > 0 || reflectionAnalysis.reflected) {
         const resultWithReloadedHtml: InjectionResult = {
           ...result,
           response: safeResponse as any,
@@ -649,6 +694,7 @@ export class XssDetector implements IActiveDetector {
         return this.createVulnerability(surface, resultWithReloadedHtml, XssType.STORED, baseUrl, storedPayload, {
           reflectionAnalysis,
           confidence,
+          executed
         });
       }
     } catch (error) {
@@ -856,30 +902,39 @@ export class XssDetector implements IActiveDetector {
 
   private async testJsonXss(page: Page, surface: AttackSurface, baseUrl: string): Promise<Vulnerability | null> {
     // ENHANCED: Extended payloads for JSON XSS testing
+    const proofPayload = `window.${PROOF_VARIABLE}='${PROOF_VALUE}'`;
     const jsonPayloads = [
-      '<script>alert("XSS")</script>',
-      '<img src=x onerror=alert("XSS")>',
-      '"><script>alert("XSS")</script>',
-      '\"><img src=x onerror=alert("XSS")>',
+      // JSON string context breakout payloads (for inline JS like: var data = '{"response":"PAYLOAD"}')
+      // These break out of JS string literals containing JSON
+      `"}]}';${proofPayload};//`,
+      `"};${proofPayload};//`,
+      `'}];${proofPayload};//`,
+      `';${proofPayload};//`,
+      // Standard XSS payloads
+      `<script>${proofPayload}</script>`,
+      `<img src=x onerror=${proofPayload}>`,
+      `"><script>${proofPayload}</script>`,
+      `\"><img src=x onerror=${proofPayload}>`,
       // Additional payloads for JSON contexts
-      '<script>alert(1)</script>',
-      '<img src=x onerror=alert(1)>',
-      '<svg/onload=alert(1)>',
-      '<iframe src="javascript:alert(1)">',
-      '{{constructor.constructor("alert(1)")()}}',  // Angular template in JSON
-      '${alert(1)}',  // Template literal injection
+      `<svg/onload=${proofPayload}>`,
+      `<iframe src="javascript:${proofPayload}">`,
+      `{{constructor.constructor("${proofPayload}")()}}`,  // Angular template in JSON
+      `\${${proofPayload}}`,  // Template literal injection
       // Payloads that might bypass JSON encoding
-      '\\u003cscript\\u003ealert(1)\\u003c/script\\u003e',
-      '\\x3cscript\\x3ealert(1)\\x3c/script\\x3e',
+      `\\u003cscript\\u003e${proofPayload}\\u003c/script\\u003e`,
+      `\\x3cscript\\x3e${proofPayload}\\x3c/script\\x3e`,
     ];
 
     for (const payload of jsonPayloads) {
       if (this.hasTestedPayload(surface, payload)) continue;
       try {
+        // Execution-Based Verification
+        const executed = await this.verifyExecution(page);
+
         // ENHANCED: Check API responses for XSS, not just page content
         const apiCheck = await this.checkApiResponseForXss(page, surface, payload, baseUrl);
         
-        if (apiCheck.vulnerable) {
+        if (executed || apiCheck.vulnerable) {
           this.markPayloadTested(surface, payload);
           return this.createVulnerability(surface, {
             payload,
@@ -894,8 +949,9 @@ export class XssDetector implements IActiveDetector {
               timing: 0,
             },
           }, XssType.JSON_XSS, baseUrl, payload, {
-            confidence: 0.85,
+            confidence: executed ? 1.0 : 0.85,
             reflectionAnalysis: { context: apiCheck.context },
+            executed
           });
         }
 
@@ -928,39 +984,22 @@ export class XssDetector implements IActiveDetector {
   }
 
   private async testDomBasedXss(page: Page, surface: AttackSurface, baseUrl: string): Promise<Vulnerability | null> {
+    const proofPayload = `window.${PROOF_VARIABLE}='${PROOF_VALUE}'`;
     const domPayloads = [
-      '<script>alert("DOM-XSS")</script>',
-      '<img src=x onerror=alert("DOM-XSS")>',
-      '#<script>alert("DOM-XSS")</script>',
-      '#<img src=x onerror=alert("DOM-XSS")>',
-      'javascript:alert("DOM-XSS")',
-      'data:text/html,<script>alert("DOM-XSS")</script>',
+      `<script>${proofPayload}</script>`,
+      `<img src=x onerror=${proofPayload}>`,
+      `#<script>${proofPayload}</script>`,
+      `#<img src=x onerror=${proofPayload}>`,
+      `javascript:${proofPayload}`,
+      `data:text/html,<script>${proofPayload}</script>`,
     ];
 
     for (const payload of domPayloads) {
       if (this.hasTestedPayload(surface, payload)) continue;
 
       let consoleListener: ((msg: any) => void) | null = null;
-      let confirmedExecution = false;
 
       try {
-        const dialogPromise = new Promise<boolean>((resolve) => {
-          const listener = (dialog: any) => {
-            const msg = dialog.message();
-            if (msg === 'DOM-XSS') {
-                confirmedExecution = true;
-            }
-            dialog.dismiss().catch(() => {});
-            page.off('dialog', listener);
-            resolve(true);
-          };
-          page.on('dialog', listener);
-          setTimeout(() => {
-            page.off('dialog', listener);
-            resolve(false);
-          }, 1000);
-        });
-
         if (surface.type === AttackSurfaceType.URL_PARAMETER || surface.type === AttackSurfaceType.LINK) {
           const trimmedPayload = payload.trim();
           const isProtocolPayload = trimmedPayload.startsWith('javascript:') || trimmedPayload.startsWith('data:');
@@ -974,7 +1013,8 @@ export class XssDetector implements IActiveDetector {
           });
         }
 
-        const dialogDetected = await dialogPromise;
+        // Execution-Based Verification
+        const executed = await this.verifyExecution(page);
         
         let domContent = '';
         try {
@@ -1005,28 +1045,22 @@ export class XssDetector implements IActiveDetector {
           },
         };
 
-        const reflectionAnalysis = this.analyzeReflection(domResult, payload);
+        const confidence = executed ? 1.0 : this.calculateConfidence(XssType.DOM_BASED, domResult, {
+          reflectionAnalysis: {
+            reflected: domContent.includes(payload),
+            context: 'dom',
+            executionIndicators: [],
+            confidence: 0,
+            encodingLevel: 'none',
+            encodingType: 'none',
+          },
+        });
 
-        this.markPayloadTested(surface, payload);
-
-        const payloadLinked = reflectionAnalysis.reflected || domContent.includes(payload);
-
-        if (
-          confirmedExecution ||
-          dialogDetected ||
-          (payloadLinked && (reflectionAnalysis.executionIndicators.length > 0 || consoleErrors.length > 0))
-        ) {
-          const confidence = Math.max(
-            0.85,
-            this.calculateConfidence(XssType.DOM_BASED, domResult, {
-              reflectionAnalysis,
-              executionIndicators: reflectionAnalysis.executionIndicators,
-            })
-          );
+        if (executed || (confidence >= 0.8 && domContent.includes(payload))) {
+          this.markPayloadTested(surface, payload);
           return this.createVulnerability(surface, domResult, XssType.DOM_BASED, baseUrl, payload, {
-            reflectionAnalysis,
-            executionIndicators: reflectionAnalysis.executionIndicators,
             confidence,
+            executed
           });
         }
       } catch (error) {
@@ -1135,6 +1169,7 @@ export class XssDetector implements IActiveDetector {
       executionIndicators?: string[];
       confidence?: number;
       encodingStatus?: string;
+      executed?: boolean;
     }
   ): Vulnerability {
     const typeDescriptions = {
@@ -1185,6 +1220,7 @@ export class XssDetector implements IActiveDetector {
           reflectionAnalysis: additionalData?.reflectionAnalysis,
           executionIndicators: additionalData?.executionIndicators,
           encodingStatus: additionalData?.encodingStatus,
+          executed: additionalData?.executed,
           contextInfo: {
             surfaceType: surface.type,
             injectionContext: surface.context,

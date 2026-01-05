@@ -940,11 +940,13 @@ export class DomExplorer {
     const surfaces: AttackSurface[] = [];
 
     try {
-      const url = new URL(page.url());
-      const params = url.searchParams;
-
+      const currentUrl = page.url();
+      const url = new URL(currentUrl);
+      
+      // 1. Standard URL parameters
       let index = 0;
-      params.forEach((value, key) => {
+      url.searchParams.forEach((value, key) => {
+        this.logger.info(`[DomExplorer] Found standard param: ${key}=${value}`);
         surfaces.push({
           id: `url-param-${index++}`,
           type: AttackSurfaceType.URL_PARAMETER,
@@ -954,9 +956,37 @@ export class DomExplorer {
           metadata: {
             url: page.url(),
             parameterName: key,
+            source: 'query'
           },
         });
       });
+
+      // 2. Hash parameters (SPA)
+      if (url.hash && url.hash.includes('?')) {
+        this.logger.info(`[DomExplorer] Found hash with query: ${url.hash}`);
+        const hashQuery = url.hash.split('?')[1];
+        if (hashQuery) {
+          const hashParams = new URLSearchParams(hashQuery);
+          hashParams.forEach((value, key) => {
+             this.logger.info(`[DomExplorer] Found hash param: ${key}=${value}`);
+             // Avoid duplicates if same param is in both
+             if (!surfaces.some(s => s.name === key)) {
+                surfaces.push({
+                  id: `url-param-hash-${index++}`,
+                  type: AttackSurfaceType.URL_PARAMETER,
+                  name: key,
+                  value,
+                  context: InjectionContext.URL,
+                  metadata: {
+                    url: page.url(),
+                    parameterName: key,
+                    source: 'hash'
+                  },
+                });
+             }
+          });
+        }
+      }
 
       this.logger.debug(`Discovered ${surfaces.length} URL parameters`);
     } catch (error) {

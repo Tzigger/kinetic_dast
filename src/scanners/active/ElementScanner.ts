@@ -243,10 +243,25 @@ export class ElementScanner extends BaseScanner {
       formMeta = await elementHandle
         .evaluate((el: any) => {
           const form = el.closest('form');
+          const otherFields: Record<string, string> = {};
+          
+          if (form) {
+            const inputs = form.querySelectorAll('input, textarea, select');
+            inputs.forEach((input: any) => {
+              if (input !== el && input.name) {
+                // Use value if present, otherwise empty string
+                // For radio/checkbox, only include if checked? 
+                // For now, simple approach: include everything with current value
+                otherFields[`[name="${input.name}"]`] = input.value || 'test'; 
+              }
+            });
+          }
+
           return {
             formAction: form?.getAttribute('action') || undefined,
             formMethod: (form?.getAttribute('method') || 'get').toLowerCase(),
             inputType: el.getAttribute('type') || el.tagName.toLowerCase(),
+            otherFields
           };
         })
         .catch(() => ({}));
