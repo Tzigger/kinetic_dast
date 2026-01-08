@@ -11,6 +11,7 @@ import { TargetValidator } from '../../utils/TargetValidator';
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
 import { ReportFormat } from '../../types/enums';
+import { ContentBlobStore } from '../storage/ContentBlobStore';
 import { IReporter } from '../../reporters/base/IReporter';
 import { ConsoleReporter } from '../../reporters/ConsoleReporter';
 import { JsonReporter } from '../../reporters/JsonReporter';
@@ -144,6 +145,7 @@ export class ScanEngine extends EventEmitter {
       }
     }
     this.scanId = uuidv4();
+    ContentBlobStore.getInstance().initialize(this.scanId);
     this.scanStatus = ScanStatus.RUNNING;
     this.startTime = Date.now();
     this.vulnerabilities = [];
@@ -375,6 +377,7 @@ export class ScanEngine extends EventEmitter {
     this.logger.info('Cleaning up ScanEngine');
 
     try {
+      await ContentBlobStore.getInstance().cleanup();
       await this.browserManager.cleanup();
       this.scanners.clear();
       this.reporters = [];

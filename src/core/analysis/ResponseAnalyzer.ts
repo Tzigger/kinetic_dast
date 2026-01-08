@@ -21,6 +21,7 @@ type SeverityLevel = VulnerabilitySeverity;
 const SeverityLevel = VulnerabilitySeverity;
 import { Vulnerability } from '../../types/vulnerability';
 import { InterceptedRequest, InterceptedResponse } from '../../scanners/passive/NetworkInterceptor';
+import { ContentBlobStore } from '../../core/storage/ContentBlobStore';
 
 /**
  * Vulnerability indicators found in responses
@@ -257,16 +258,32 @@ export class ResponseAnalyzer extends EventEmitter {
 
     const vulnerabilities: ResponseVulnerability[] = [];
 
-    // Skip if body is too large
-    if (response.body && response.body.length > this.config.maxBodySizeToAnalyze) {
-      this.logger.debug(`Skipping analysis for ${response.url} - body too large`);
-      return [];
+    let body = response.body || '';
+
+    // Fetch content/snippet from BlobStore if body is empty or a placeholder
+    if (response.bodyId && (!body || body.startsWith('[Content'))) {
+      try {
+        // Get snippet for analysis (use maxBodySizeToAnalyze as limit)
+        body = await ContentBlobStore.getInstance().getSnippet(
+          response.bodyId,
+          this.config.maxBodySizeToAnalyze
+        );
+      } catch (err) {
+        this.logger.warn(`Failed to retrieve content snippet for analysis: ${err}`);
+      }
     }
 
-    const body = response.body || '';
+    // Skip if body is too large
+    if (body.length > this.config.maxBodySizeToAnalyze) {
+      this.logger.debug(`Truncating analysis for ${response.url} - body too large`);
+      body = body.slice(0, this.config.maxBodySizeToAnalyze);
+    }
+
     const contentType = response.contentType || '';
 
-    this.logger.debug(`Analyzing response: ${response.url} (${body.length} bytes, ${contentType})`);
+    this.logger.debug(
+      `Analyzing response: ${response.url} (${body.length} bytes, ${contentType})`
+    );
 
     // 1. Check for SQL errors
     if (this.config.checkSqlErrors) {
@@ -594,6 +611,7 @@ export class ResponseAnalyzer extends EventEmitter {
         response: {
           status: response.status,
           statusText: response.contentType || undefined,
+          bodyId: response.bodyId,
         },
       },
       remediation: this.getRemediation(responseVuln.type),

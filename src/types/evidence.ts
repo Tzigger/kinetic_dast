@@ -30,6 +30,7 @@ export interface Evidence {
     statusText?: string;
     headers?: Record<string, string>;
     body?: string;
+    bodyId?: string; // Reference to stored content
     snippet?: string;
   };
 

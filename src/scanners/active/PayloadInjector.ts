@@ -361,8 +361,31 @@ export class PayloadInjector {
 
     if (!response) throw new Error('Failed to send API request');
 
+    // Prevent OOM on active injection responses
+    const cl = response.headers()['content-length'];
+    const size = cl ? parseInt(cl, 10) : 0;
+    let bodyText = '';
+    const MAX_ACTIVE_BODY = 5 * 1024 * 1024; // 5MB limit for active scan analysis
+
+    if (size > MAX_ACTIVE_BODY) {
+      // If extremely large (e.g. > 50MB), avoid loading at all if possible, 
+      // but without stream support in APIResponse we might still download it.
+      // However, we can at least avoid creating a massive string.
+      try {
+        const buffer = await response.body();
+        // Truncate to a reasonable size for regex analysis (e.g. 500KB)
+        // Most SQL errors are at the beginning or end, checking first 500KB is usually enough.
+        const TRUNCATE_SIZE = 500 * 1024; 
+        bodyText = buffer.subarray(0, TRUNCATE_SIZE).toString('utf-8');
+      } catch (e) {
+        bodyText = "[Failed to read large response body]";
+      }
+    } else {
+      bodyText = await response.text();
+    }
+
     return {
-      body: await response.text(),
+      body: bodyText,
       status: response.status(),
       headers: response.headers(),
     };

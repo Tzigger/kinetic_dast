@@ -11,6 +11,8 @@ import {
   InterceptedRequest,
   InterceptedResponse,
 } from './NetworkInterceptor';
+import { PassiveScanOrchestrator } from './PassiveScanOrchestrator';
+import { ResponseAnalyzer } from '../../core/analysis/ResponseAnalyzer';
 import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 
 /**
@@ -39,6 +41,7 @@ export class PassiveScanner implements IScanner {
   private logger: Logger;
   private config: PassiveScannerConfig;
   private networkInterceptor: NetworkInterceptor;
+  private passiveOrchestrator: PassiveScanOrchestrator | null = null;
   private detectors: IPassiveDetector[] = [];
   private vulnerabilities: Vulnerability[] = [];
   private context: ScanContext | null = null;
@@ -80,6 +83,22 @@ export class PassiveScanner implements IScanner {
           }
         }
       }
+
+      // Initialize PassiveScanOrchestrator to wire NetworkInterceptor -> ResponseAnalyzer
+      const responseAnalyzer = new ResponseAnalyzer({
+        enabled: true,
+        checkSqlErrors: true,
+        checkXssReflection: true,
+        checkSensitiveData: true,
+        checkInfoDisclosure: true,
+        minConfidence: 50,
+        maxBodySizeToAnalyze: 5 * 1024 * 1024, // 5MB
+      }, LogLevel.INFO);
+      this.passiveOrchestrator = new PassiveScanOrchestrator(
+        this.networkInterceptor,
+        responseAnalyzer,
+        this.logger
+      );
 
       // Attach NetworkInterceptor la pagina curentă
       await this.networkInterceptor.attach(context.page);
@@ -123,6 +142,22 @@ export class PassiveScanner implements IScanner {
       // Rulează detectori pe datele interceptate
       await this.runDetectors();
 
+      // Collect vulnerabilities from passive orchestrator (response analysis)
+      if (this.passiveOrchestrator) {
+        const passiveVulns = this.passiveOrchestrator.getDetectedVulnerabilities();
+        if (passiveVulns.length > 0) {
+          this.logger.info(
+            `PassiveScanOrchestrator detected ${passiveVulns.length} vulnerabilities from response analysis`
+          );
+          this.vulnerabilities.push(...passiveVulns);
+
+          // Emit to context
+          if (this.context?.emitVulnerability) {
+            passiveVulns.forEach((vuln) => this.context!.emitVulnerability!(vuln));
+          }
+        }
+      }
+
       this.status = ScanStatus.COMPLETED;
       const endTime = Date.now();
 
@@ -165,6 +200,11 @@ export class PassiveScanner implements IScanner {
     try {
       // Detach NetworkInterceptor
       this.networkInterceptor.detach();
+
+      // Reset orchestrator
+      if (this.passiveOrchestrator) {
+        this.passiveOrchestrator.reset();
+      }
 
       // Clear vulnerabilities
       this.vulnerabilities = [];

@@ -2,8 +2,7 @@ import { Page, Request, Response } from 'playwright';
 import { Logger } from '../../utils/logger/Logger';
 import { LogLevel, HttpMethod } from '../../types/enums';
 import { EventEmitter } from 'events';
-import { ResponseAnalyzer, ResponseVulnerability } from '../../core/analysis/ResponseAnalyzer';
-import { Vulnerability } from '../../types/vulnerability';
+import { ContentBlobStore } from '../../core/storage/ContentBlobStore';
 
 /**
  * Interfață pentru datele interceptate din request
@@ -29,6 +28,7 @@ export interface InterceptedResponse {
   statusText: string;
   headers: Record<string, string>;
   body: string | null;
+  bodyId?: string; // Reference to ContentBlobStore
   contentType: string | null;
   timing: number;
   timestamp: number;
@@ -45,20 +45,14 @@ export interface NetworkInterceptorConfig {
   excludeResourceTypes?: string[];
   includeUrlPatterns?: RegExp[];
   excludeUrlPatterns?: RegExp[];
-  enableResponseAnalysis?: boolean; // NEW: Enable automatic vulnerability detection
-  responseAnalysisConfig?: {
-    checkSqlErrors?: boolean;
-    checkXssReflection?: boolean;
-    checkSensitiveData?: boolean;
-    checkInfoDisclosure?: boolean;
-  };
 }
 
 /**
- * NetworkInterceptor - Interceptează și filtrează traficul HTTP
- * Emit evenimente pentru request/response detectate
+ * NetworkInterceptor - Intercepts and filters HTTP traffic
+ * Emits events for detected requests/responses
  * 
- * ENHANCED: Now includes real-time response analysis for vulnerability detection
+ * REFACTORED: Follows Dependency Inversion Principle
+ * Only intercepts traffic, does not analyze. Wire analysis externally.
  */
 export class NetworkInterceptor extends EventEmitter {
   private logger: Logger;
@@ -67,8 +61,6 @@ export class NetworkInterceptor extends EventEmitter {
   private responseMap: Map<string, InterceptedResponse> = new Map();
   private isActive = false;
   private requestIdCounter = 0;
-  private responseAnalyzer: ResponseAnalyzer | null = null;
-  private detectedVulnerabilities: Vulnerability[] = [];
 
   constructor(config: NetworkInterceptorConfig = {}) {
     super();
@@ -81,25 +73,8 @@ export class NetworkInterceptor extends EventEmitter {
       excludeResourceTypes: ['image', 'font', 'stylesheet', 'media'],
       includeUrlPatterns: [],
       excludeUrlPatterns: [],
-      enableResponseAnalysis: true, // Enable by default
       ...config,
     };
-
-    // Initialize ResponseAnalyzer if enabled
-    if (this.config.enableResponseAnalysis) {
-      this.responseAnalyzer = new ResponseAnalyzer(
-        this.config.responseAnalysisConfig,
-        LogLevel.DEBUG
-      );
-      
-      // Forward vulnerability events
-      this.responseAnalyzer.on('vulnerability', (vuln: ResponseVulnerability, response: InterceptedResponse, request?: InterceptedRequest) => {
-        const fullVuln = this.responseAnalyzer!.toVulnerability(vuln, response, request);
-        this.detectedVulnerabilities.push(fullVuln);
-        this.emit('vulnerability', fullVuln);
-        this.logger.info(`Vulnerability detected: ${fullVuln.title} at ${fullVuln.url}`);
-      });
-    }
   }
 
   /**
@@ -198,15 +173,32 @@ export class NetworkInterceptor extends EventEmitter {
 
     // Capturare body dacă este configurat
     let body: string | null = null;
+    let bodyId: string | undefined = undefined;
+
     if (this.config.captureResponseBody && this.shouldCaptureResponseBody(response)) {
       try {
-        const buffer = await response.body();
-        if (buffer.length <= this.config.maxBodySize!) {
-          body = buffer.toString('utf-8');
-        } else {
-          this.logger.debug(
-            `Response body too large (${buffer.length} bytes), skipping: ${request.url()}`
+        const contentLengthHeader = response.headers()['content-length'];
+        const contentLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
+        const HARD_LIMIT = 50 * 1024 * 1024; // 50MB
+
+        if (contentLength > HARD_LIMIT) {
+          this.logger.warn(
+            `Response too large (${contentLength} bytes) for body capture: ${request.url()}`
           );
+          body = '[Content too large to capture]';
+        } else {
+          const buffer = await response.body();
+          
+          // Store in BlobStore (handles Memory vs Disk based on internal threshold)
+          bodyId = await ContentBlobStore.getInstance().store(buffer);
+
+          // Populate legacy body field only if small enough
+          if (buffer.length <= (this.config.maxBodySize || 1024 * 1024)) {
+            body = buffer.toString('utf-8');
+          } else {
+            // Keep body null or minimal for large files to save RAM
+            body = '[Content stored on disk]';
+          }
         }
       } catch (error) {
         this.logger.warn(`Failed to capture response body for ${request.url()}: ${error}`);
@@ -221,6 +213,7 @@ export class NetworkInterceptor extends EventEmitter {
       statusText: response.statusText(),
       headers: response.headers(),
       body,
+      bodyId,
       contentType: response.headers()['content-type'] || null,
       timing,
       timestamp: Date.now(),
@@ -231,17 +224,8 @@ export class NetworkInterceptor extends EventEmitter {
       `Response intercepted: ${response.status()} ${request.url()} (${timing}ms)`
     );
 
-    // Emit event pentru detectori
+    // Emit event for external analyzers/detectors
     this.emit('response', interceptedResponse, matchingRequest);
-
-    // ENHANCED: Analyze response for vulnerabilities in real-time
-    if (this.responseAnalyzer && body) {
-      try {
-        await this.responseAnalyzer.analyze(interceptedResponse, matchingRequest);
-      } catch (error) {
-        this.logger.debug(`Response analysis failed: ${error}`);
-      }
-    }
   }
 
   /**
@@ -380,43 +364,5 @@ export class NetworkInterceptor extends EventEmitter {
    */
   public setLogLevel(level: LogLevel): void {
     this.logger.setLevel(level);
-  }
-
-  /**
-   * Register an injected payload for reflection detection
-   */
-  public registerInjectedPayload(url: string, payload: string): void {
-    if (this.responseAnalyzer) {
-      this.responseAnalyzer.registerInjectedPayload(url, payload);
-    }
-  }
-
-  /**
-   * Get vulnerabilities detected during response analysis
-   */
-  public getDetectedVulnerabilities(): Vulnerability[] {
-    return [...this.detectedVulnerabilities];
-  }
-
-  /**
-   * Get response analyzer instance
-   */
-  public getResponseAnalyzer(): ResponseAnalyzer | null {
-    return this.responseAnalyzer;
-  }
-
-  /**
-   * Get analysis statistics
-   */
-  public getAnalysisStats(): { analyzed: number; vulnerabilities: number; byType: Record<string, number> } | null {
-    return this.responseAnalyzer?.getStats() || null;
-  }
-
-  /**
-   * Clear detected vulnerabilities
-   */
-  public clearVulnerabilities(): void {
-    this.detectedVulnerabilities = [];
-    this.responseAnalyzer?.clear();
   }
 }
