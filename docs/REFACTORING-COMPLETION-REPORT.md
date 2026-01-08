@@ -11,7 +11,7 @@
 
 ## Executive Summary
 
-Successfully refactored the Kinetic DAST Scanner codebase to follow SOLID principles by addressing three major architectural flaws:
+Successfully refactored the Kinetic DAST Scanner codebase to follow SOLID principles by addressing four major architectural flaws:
 
 1. **ActiveScanner God Class** (SRP Violation)
    - **Problem:** Single class handling 10+ responsibilities
@@ -28,6 +28,11 @@ Successfully refactored the Kinetic DAST Scanner codebase to follow SOLID princi
    - **Solution:** Integrated ContentBlobStore into PayloadInjector
    - **Result:** Unified memory management, prevents OOM on large active injection responses
 
+4. **ContentBlobStore.get() Memory Spikes** (Performance Issue)
+   - **Problem:** Loading entire large files into memory for pattern matching
+   - **Solution:** Implemented streaming regex with chunk-based processing
+   - **Result:** No memory spikes during parallel detector execution on 40MB+ responses
+
 ---
 
 ## Changes Overview
@@ -37,11 +42,13 @@ Successfully refactored the Kinetic DAST Scanner codebase to follow SOLID princi
 2. `src/scanners/active/ExecutionWorker.ts` (~200 lines)
 3. `src/scanners/passive/PassiveScanOrchestrator.ts` (~180 lines)
 
-### Files Refactored (4)
+### Files Refactored (5)
 1. `src/scanners/active/ActiveScanner.ts` (800 → 350 lines)
 2. `src/scanners/passive/NetworkInterceptor.ts` (443 → 368 lines)
 3. `src/scanners/passive/PassiveScanner.ts` (updated to use orchestrator)
 4. `src/scanners/active/PayloadInjector.ts` (integrated ContentBlobStore)
+5. `src/core/storage/ContentBlobStore.ts` (added streaming methods)
+6. `src/detectors/active/SqlInjectionDetector.ts` (snippet-first approach)
 
 ### Files Backed Up (1)
 1. `src/scanners/active/ActiveScanner.ts.backup` (original implementation)
