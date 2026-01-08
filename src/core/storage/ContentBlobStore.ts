@@ -141,6 +141,170 @@ export class ContentBlobStore {
       return '';
   }
 
+  /**
+   * Stream-based regex matching to avoid loading entire file into memory.
+   * Reads file in chunks and tests patterns against each chunk with overlap.
+   * Returns true if any pattern matches, false otherwise.
+   * 
+   * @param id - Content blob ID
+   * @param patterns - Array of RegExp patterns to test
+   * @param chunkSize - Size of each chunk to read (default 512KB)
+   * @param overlap - Overlap between chunks to catch patterns spanning chunks (default 10KB)
+   */
+  public async matchPatterns(
+    id: string,
+    patterns: RegExp[],
+    chunkSize: number = 512 * 1024,
+    overlap: number = 10 * 1024
+  ): Promise<boolean> {
+    const entry = this.entries.get(id);
+    if (!entry) return false;
+
+    // For memory entries, just check directly
+    if (entry.type === 'memory') {
+      const content = entry.data?.toString() || '';
+      return patterns.some(pattern => pattern.test(content));
+    }
+
+    // For disk entries, use streaming approach
+    if (entry.type === 'disk' && entry.path) {
+      let fd: fs.promises.FileHandle | null = null;
+      try {
+        fd = await fs.promises.open(entry.path, 'r');
+        let position = 0;
+        let previousChunk = '';
+
+        while (position < entry.size) {
+          const buffer = Buffer.alloc(chunkSize);
+          const { bytesRead } = await fd.read(buffer, 0, chunkSize, position);
+          
+          if (bytesRead === 0) break;
+
+          // Combine with overlap from previous chunk
+          const currentChunk = previousChunk + buffer.subarray(0, bytesRead).toString('utf-8');
+          
+          // Test patterns against current chunk
+          if (patterns.some(pattern => pattern.test(currentChunk))) {
+            return true;
+          }
+
+          // Save overlap for next iteration
+          previousChunk = currentChunk.slice(-overlap);
+          position += bytesRead;
+        }
+
+        return false;
+      } catch (error) {
+        this.logger.error(`Failed to stream match patterns: ${error}`);
+        return false;
+      } finally {
+        if (fd) await fd.close();
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Stream-based content search to find all matches of patterns.
+   * Returns array of match objects with context.
+   * 
+   * @param id - Content blob ID
+   * @param patterns - Array of RegExp patterns to search
+   * @param contextLength - Length of context to include around matches (default 200 chars)
+   * @param maxMatches - Maximum number of matches to return (default 100)
+   */
+  public async findMatches(
+    id: string,
+    patterns: RegExp[],
+    contextLength: number = 200,
+    maxMatches: number = 100
+  ): Promise<Array<{ pattern: RegExp; match: string; context: string; position: number }>> {
+    const entry = this.entries.get(id);
+    if (!entry) return [];
+
+    const matches: Array<{ pattern: RegExp; match: string; context: string; position: number }> = [];
+
+    // For memory entries, search directly
+    if (entry.type === 'memory') {
+      const content = entry.data?.toString() || '';
+      for (const pattern of patterns) {
+        const regex = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g');
+        let match;
+        while ((match = regex.exec(content)) !== null && matches.length < maxMatches) {
+          const start = Math.max(0, match.index - contextLength);
+          const end = Math.min(content.length, match.index + match[0].length + contextLength);
+          matches.push({
+            pattern,
+            match: match[0],
+            context: content.slice(start, end),
+            position: match.index,
+          });
+        }
+      }
+      return matches;
+    }
+
+    // For disk entries, use streaming approach
+    if (entry.type === 'disk' && entry.path) {
+      let fd: fs.promises.FileHandle | null = null;
+      try {
+        fd = await fs.promises.open(entry.path, 'r');
+        const chunkSize = 512 * 1024;
+        const overlap = 10 * 1024;
+        let position = 0;
+        let previousChunk = '';
+        let globalPosition = 0;
+
+        while (position < entry.size && matches.length < maxMatches) {
+          const buffer = Buffer.alloc(chunkSize);
+          const { bytesRead } = await fd.read(buffer, 0, chunkSize, position);
+          
+          if (bytesRead === 0) break;
+
+          const currentChunk = previousChunk + buffer.subarray(0, bytesRead).toString('utf-8');
+          
+          // Search for patterns in current chunk
+          for (const pattern of patterns) {
+            const regex = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g');
+            let match;
+            while ((match = regex.exec(currentChunk)) !== null && matches.length < maxMatches) {
+              const start = Math.max(0, match.index - contextLength);
+              const end = Math.min(currentChunk.length, match.index + match[0].length + contextLength);
+              matches.push({
+                pattern,
+                match: match[0],
+                context: currentChunk.slice(start, end),
+                position: globalPosition + match.index - previousChunk.length,
+              });
+            }
+          }
+
+          previousChunk = currentChunk.slice(-overlap);
+          position += bytesRead;
+          globalPosition += bytesRead;
+        }
+
+        return matches;
+      } catch (error) {
+        this.logger.error(`Failed to find matches: ${error}`);
+        return matches;
+      } finally {
+        if (fd) await fd.close();
+      }
+    }
+
+    return matches;
+  }
+
+  /**
+   * Get content size without loading into memory
+   */
+  public getSize(id: string): number {
+    const entry = this.entries.get(id);
+    return entry?.size || 0;
+  }
+
   public async cleanup() {
       // Clear memory map
       this.entries.clear();

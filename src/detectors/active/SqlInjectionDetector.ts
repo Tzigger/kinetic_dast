@@ -7,6 +7,7 @@ import { PayloadInjector, InjectionResult, PayloadEncoding } from '../../scanner
 import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 import { Logger } from '../../utils/logger/Logger';
 import { SQL_ERROR_PATTERNS, categorizeError, findErrorPatterns, BWAPP_SQL_PATTERNS, containsErrorPatternPermissive } from '../../utils/patterns/error-patterns';
+import { ContentBlobStore } from '../../core/storage/ContentBlobStore';
 
 interface TechniqueTimeouts {
   authBypass: number;
@@ -499,7 +500,7 @@ export class SqlInjectionDetector implements IActiveDetector {
       const result = results[i];
       if (!result) continue;
       this.logger.info(`[SQLi] testErrorBased result ${i}: payload="${result.payload}", bodyLen=${result.response?.body?.length || 0}`);
-      const errorInfo = this.hasSqlError(result);
+      const errorInfo = await this.hasSqlError(result);
       if (errorInfo.hasError) {
         this.logger.info(`[SQLi] testErrorBased: FOUND SQL ERROR with payload "${result.payload}"`);
         return this.createVulnerability(surface, result, SqlInjectionTechnique.ERROR_BASED, baseUrl, {
@@ -735,7 +736,7 @@ export class SqlInjectionDetector implements IActiveDetector {
   async analyzeInjectionResult(result: InjectionResult): Promise<Vulnerability[]> {
     const vulnerabilities: Vulnerability[] = [];
     
-    const errorInfo = this.hasSqlError(result);
+    const errorInfo = await this.hasSqlError(result);
     if (errorInfo.hasError) {
       const cwe = 'CWE-89';
       const owasp = getOWASP2025Category(cwe) || 'A03:2021';
@@ -801,9 +802,44 @@ export class SqlInjectionDetector implements IActiveDetector {
 
   /**
    * Check if result contains SQL error indicators
+   * Uses streaming approach for large responses to avoid memory spikes
    */
-  private getMatchedErrorPatterns(result: InjectionResult): string[] {
+  private async getMatchedErrorPatterns(result: InjectionResult): Promise<string[]> {
+    const bodyId = result.response?.bodyId;
     const body = result.response?.body || '';
+    
+    // If we have a bodyId and the content is large, use streaming
+    if (bodyId) {
+      const blobStore = ContentBlobStore.getInstance();
+      const size = blobStore.getSize(bodyId);
+      
+      // For large responses (>1MB), use streaming pattern matching
+      if (size > 1024 * 1024) {
+        this.logger.debug(`[SQLi] Using streaming pattern match for large response (${(size / 1024 / 1024).toFixed(2)}MB)`);
+        
+        // Test patterns using streaming approach
+        const hasMatch = await blobStore.matchPatterns(bodyId, SQL_ERROR_PATTERNS);
+        
+        if (hasMatch) {
+          // Find actual matches for reporting
+          const matches = await blobStore.findMatches(bodyId, SQL_ERROR_PATTERNS, 200, 10);
+          return matches.map(m => m.pattern.source);
+        }
+        
+        // Try permissive patterns if enabled
+        if (this.config.permissiveMode) {
+          const hasPermissiveMatch = await blobStore.matchPatterns(bodyId, BWAPP_SQL_PATTERNS);
+          if (hasPermissiveMatch) {
+            const matches = await blobStore.findMatches(bodyId, BWAPP_SQL_PATTERNS, 200, 10);
+            return matches.map(m => m.pattern.source);
+          }
+        }
+        
+        return [];
+      }
+    }
+    
+    // For small responses or no bodyId, use direct string matching
     const matches = findErrorPatterns(body);
     let sqlMatches = matches.filter((m) => SQL_ERROR_PATTERNS.some((p) => p.source === m.pattern.source));
     
@@ -818,10 +854,20 @@ export class SqlInjectionDetector implements IActiveDetector {
     return sqlMatches.map((m) => m.pattern.source);
   }
 
-  private hasSqlError(result: InjectionResult): { hasError: boolean; patterns: string[]; category?: string } {
-    const patterns = this.getMatchedErrorPatterns(result);
+  private async hasSqlError(result: InjectionResult): Promise<{ hasError: boolean; patterns: string[]; category?: string }> {
+    const patterns = await this.getMatchedErrorPatterns(result);
     const body = result.response?.body || '';
-    const category = categorizeError(body) || undefined;
+    const bodyId = result.response?.bodyId;
+    
+    // For category detection, use snippet to avoid loading large files
+    let category: string | undefined;
+    if (bodyId) {
+      const snippet = await ContentBlobStore.getInstance().getSnippet(bodyId, 10000);
+      category = categorizeError(snippet) || undefined;
+    } else {
+      category = categorizeError(body) || undefined;
+    }
+    
     this.logger.info(`[SQLi] hasSqlError: payload="${result.payload?.substring(0, 50)}", bodyLen=${body.length}, matchedPatterns=${patterns.length}, category=${category || 'none'}`);
     if (patterns.length > 0) {
       this.logger.info(`[SQLi] Matched error patterns: ${patterns.join(', ')}`);
