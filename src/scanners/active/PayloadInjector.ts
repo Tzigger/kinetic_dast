@@ -6,6 +6,7 @@ import { SPAWaitStrategy } from '../../core/timeout/SPAWaitStrategy';
 import { SPAFramework } from '../../types/timeout';
 import { PayloadFilter } from '../../utils/PayloadFilter';
 import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
+import { ContentBlobStore } from '../../core/storage/ContentBlobStore';
 
 /**
  * Strategie de injecție
@@ -40,7 +41,8 @@ export interface InjectionResult {
   response?: {
     url: string;
     status: number;
-    body: string;
+    body: string;  // Kept for backward compatibility (small responses)
+    bodyId?: string;  // ContentBlobStore ID for large responses
     headers: Record<string, string>;
     timing: number;
   };
@@ -261,14 +263,28 @@ export class PayloadInjector {
 
       if (apiResponse) {
         getGlobalRateLimiter().handleResponse(apiResponse.status);
+        
+        // Store response body in ContentBlobStore for large responses
+        let bodyId: string | undefined;
+        let bodyPreview = apiResponse.body;
+        const bodySize = Buffer.byteLength(apiResponse.body, 'utf-8');
+        
+        if (bodySize > 1024 * 1024) { // > 1MB, use ContentBlobStore
+          bodyId = await ContentBlobStore.getInstance().store(apiResponse.body);
+          // Keep small preview for logging
+          bodyPreview = apiResponse.body.substring(0, 1000) + '...';
+          this.logger.debug(`[Inject] Large API response (${(bodySize / 1024 / 1024).toFixed(2)}MB) stored in ContentBlobStore: ${bodyId}`);
+        }
+        
         result.response = {
           url: surface.metadata.url || page.url(),
           status: apiResponse.status,
-          body: apiResponse.body,
+          body: bodyPreview,
+          bodyId: bodyId,
           headers: apiResponse.headers,
           timing: endTime - startTime,
         };
-        this.logger.debug(`[Inject] API Response: status=${apiResponse.status}, bodyLen=${apiResponse.body.length}, time=${endTime - startTime}ms`);
+        this.logger.debug(`[Inject] API Response: status=${apiResponse.status}, bodyLen=${bodySize}, time=${endTime - startTime}ms`);
       } else {
         // Use SPA Wait Strategy for intelligent waiting
         const isBackgroundRequest = surface.type === AttackSurfaceType.API_PARAM || 
@@ -279,14 +295,28 @@ export class PayloadInjector {
         await this.spaWaitStrategy.waitForStability(page, timeout, context);
         
         const body = await page.content();
+        const bodySize = Buffer.byteLength(body, 'utf-8');
+        
+        // Store response body in ContentBlobStore for large responses
+        let bodyId: string | undefined;
+        let bodyPreview = body;
+        
+        if (bodySize > 1024 * 1024) { // > 1MB, use ContentBlobStore
+          bodyId = await ContentBlobStore.getInstance().store(body);
+          // Keep small preview for logging
+          bodyPreview = body.substring(0, 1000) + '...';
+          this.logger.debug(`[Inject] Large page content (${(bodySize / 1024 / 1024).toFixed(2)}MB) stored in ContentBlobStore: ${bodyId}`);
+        }
+        
         result.response = {
           url: page.url(),
           status: 200, // Will be updated from network monitoring
-          body: body,
+          body: bodyPreview,
+          bodyId: bodyId,
           headers: {},
           timing: endTime - startTime,
         };
-        this.logger.info(`[Inject] Page Response: url=${page.url()}, bodyLen=${body.length}, time=${endTime - startTime}ms`);
+        this.logger.info(`[Inject] Page Response: url=${page.url()}, bodyLen=${bodySize}, time=${endTime - startTime}ms`);
       }
 
     } catch (error) {
@@ -361,27 +391,23 @@ export class PayloadInjector {
 
     if (!response) throw new Error('Failed to send API request');
 
-    // Prevent OOM on active injection responses
+    // Use ContentBlobStore for memory-efficient response handling
     const cl = response.headers()['content-length'];
     const size = cl ? parseInt(cl, 10) : 0;
     let bodyText = '';
-    const MAX_ACTIVE_BODY = 5 * 1024 * 1024; // 5MB limit for active scan analysis
+    const HARD_LIMIT = 50 * 1024 * 1024; // 50MB hard limit
 
-    if (size > MAX_ACTIVE_BODY) {
-      // If extremely large (e.g. > 50MB), avoid loading at all if possible, 
-      // but without stream support in APIResponse we might still download it.
-      // However, we can at least avoid creating a massive string.
-      try {
-        const buffer = await response.body();
-        // Truncate to a reasonable size for regex analysis (e.g. 500KB)
-        // Most SQL errors are at the beginning or end, checking first 500KB is usually enough.
-        const TRUNCATE_SIZE = 500 * 1024; 
-        bodyText = buffer.subarray(0, TRUNCATE_SIZE).toString('utf-8');
-      } catch (e) {
-        bodyText = "[Failed to read large response body]";
-      }
+    if (size > HARD_LIMIT) {
+      // Skip extremely large responses (consistent with NetworkInterceptor)
+      this.logger.warn(`API response too large (${(size / 1024 / 1024).toFixed(2)}MB), skipping body`);
+      bodyText = `[Response too large: ${(size / 1024 / 1024).toFixed(2)}MB]`;
     } else {
-      bodyText = await response.text();
+      try {
+        bodyText = await response.text();
+        // ContentBlobStore will handle storage decision (RAM vs disk) in the caller
+      } catch (e) {
+        bodyText = "[Failed to read response body]";
+      }
     }
 
     return {
