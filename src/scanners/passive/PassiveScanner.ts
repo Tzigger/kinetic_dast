@@ -5,12 +5,8 @@ import { ScanResult } from '../../types/scan-result';
 import { ScanConfiguration } from '../../types/config';
 import { ScannerType, ScanStatus, LogLevel, VulnerabilityCategory } from '../../types/enums';
 import { Logger } from '../../utils/logger/Logger';
-import {
-  NetworkInterceptor,
-  NetworkInterceptorConfig,
-  InterceptedRequest,
-  InterceptedResponse,
-} from './NetworkInterceptor';
+import { NetworkInterceptor, NetworkInterceptorConfig } from './NetworkInterceptor';
+import { InterceptedRequest, InterceptedResponse } from '../../types/network';
 import { PassiveScanOrchestrator } from './PassiveScanOrchestrator';
 import { ResponseAnalyzer } from '../../core/analysis/ResponseAnalyzer';
 import { getGlobalRateLimiter } from '../../core/network/RateLimiter';

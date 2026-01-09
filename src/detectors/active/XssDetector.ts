@@ -674,6 +674,7 @@ export class XssDetector implements IActiveDetector {
         body,
         headers: result.response?.headers ?? {},
         timing: result.response?.timing ?? 0,
+        timestamp: result.response?.timestamp ?? Date.now(),
       };
 
       const reflectionAnalysis = this.analyzeReflection(
@@ -738,6 +739,7 @@ export class XssDetector implements IActiveDetector {
             body: responseBody,
             headers: result.response?.headers ?? {},
             timing: result.response?.timing ?? 0,
+            timestamp: result.response?.timestamp ?? Date.now(),
           };
 
           const reflectionAnalysis = this.analyzeReflection(
@@ -948,6 +950,7 @@ export class XssDetector implements IActiveDetector {
               body: apiCheck.response?.body || '',
               headers: {},
               timing: 0,
+              timestamp: Date.now(),
             },
           }, XssType.JSON_XSS, baseUrl, payload, {
             confidence: executed ? 1.0 : 0.85,
@@ -1044,6 +1047,7 @@ export class XssDetector implements IActiveDetector {
             body: domContent,
             headers: {},
             timing: 0,
+            timestamp: Date.now(),
           },
         };
 

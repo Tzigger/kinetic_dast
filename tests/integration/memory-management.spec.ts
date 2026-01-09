@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 import express from 'express';
 import * as http from 'http';
 import { AddressInfo } from 'net';
-import { NetworkInterceptor, InterceptedResponse } from '../../src/scanners/passive/NetworkInterceptor';
+import { NetworkInterceptor } from '../../src/scanners/passive/NetworkInterceptor';
+import { InterceptedResponse } from '../../src/types/network';
 import { ContentBlobStore } from '../../src/core/storage/ContentBlobStore';
 
 // Define server and base URL at worker scope (per worker)

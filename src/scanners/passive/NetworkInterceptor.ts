@@ -3,49 +3,10 @@ import { Logger } from '../../utils/logger/Logger';
 import { LogLevel, HttpMethod } from '../../types/enums';
 import { EventEmitter } from 'events';
 import { ContentBlobStore } from '../../core/storage/ContentBlobStore';
+import { InterceptedRequest, InterceptedResponse, NetworkInterceptorConfig } from '../../types/network';
 
-/**
- * Interfață pentru datele interceptate din request
- */
-export interface InterceptedRequest {
-  id: string;
-  url: string;
-  method: HttpMethod;
-  headers: Record<string, string>;
-  postData: string | null;
-  resourceType: string;
-  timestamp: number;
-}
-
-/**
- * Interfață pentru datele interceptate din response
- */
-export interface InterceptedResponse {
-  id: string;
-  requestId: string;
-  url: string;
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  body: string | null;
-  bodyId?: string; // Reference to ContentBlobStore
-  contentType: string | null;
-  timing: number;
-  timestamp: number;
-}
-
-/**
- * Opțiuni de configurare pentru NetworkInterceptor
- */
-export interface NetworkInterceptorConfig {
-  captureRequestBody?: boolean;
-  captureResponseBody?: boolean;
-  maxBodySize?: number; // bytes
-  includeResourceTypes?: string[];
-  excludeResourceTypes?: string[];
-  includeUrlPatterns?: RegExp[];
-  excludeUrlPatterns?: RegExp[];
-}
+// Re-export types for backward compatibility
+export type { InterceptedRequest, InterceptedResponse, NetworkInterceptorConfig };
 
 /**
  * NetworkInterceptor - Intercepts and filters HTTP traffic

@@ -2,7 +2,7 @@ import { IPassiveDetector } from '../../core/interfaces/IPassiveDetector';
 import { Vulnerability } from '../../types/vulnerability';
 import { VulnerabilityCategory, VulnerabilitySeverity, LogLevel } from '../../types/enums';
 import { Logger } from '../../utils/logger/Logger';
-import { InterceptedRequest, InterceptedResponse } from '../../scanners/passive/NetworkInterceptor';
+import { InterceptedRequest, InterceptedResponse } from '../../types/network';
 import { mapVulnerabilityToCWE } from '../../utils/cwe/cwe-mapping';
 import {
   API_KEY_PATTERNS,

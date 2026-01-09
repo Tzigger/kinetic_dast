@@ -26,3 +26,6 @@ export * from './timeout';
 // Page scan types (v0.2)
 export * from './page-scan';
 export * from './element-scan';
+
+// Network types (v0.3)
+export * from './network';

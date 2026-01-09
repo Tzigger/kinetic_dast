@@ -7,6 +7,7 @@ import { SPAFramework } from '../../types/timeout';
 import { PayloadFilter } from '../../utils/PayloadFilter';
 import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 import { ContentBlobStore } from '../../core/storage/ContentBlobStore';
+import { InterceptedResponse } from '../../types/network';
 
 /**
  * Strategie de injecție
@@ -38,14 +39,7 @@ export interface InjectionResult {
   encoding: PayloadEncoding;
   strategy: InjectionStrategy;
   surface: AttackSurface;
-  response?: {
-    url: string;
-    status: number;
-    body: string;  // Kept for backward compatibility (small responses)
-    bodyId?: string;  // ContentBlobStore ID for large responses
-    headers: Record<string, string>;
-    timing: number;
-  };
+  response?: Omit<InterceptedResponse, 'id' | 'requestId' | 'contentType' | 'statusText'>; // Partial InterceptedResponse for injection context
   error?: string;
 }
 
@@ -283,6 +277,7 @@ export class PayloadInjector {
           bodyId: bodyId,
           headers: apiResponse.headers,
           timing: endTime - startTime,
+          timestamp: startTime,
         };
         this.logger.debug(`[Inject] API Response: status=${apiResponse.status}, bodyLen=${bodySize}, time=${endTime - startTime}ms`);
       } else {
@@ -315,6 +310,7 @@ export class PayloadInjector {
           bodyId: bodyId,
           headers: {},
           timing: endTime - startTime,
+          timestamp: startTime,
         };
         this.logger.info(`[Inject] Page Response: url=${page.url()}, bodyLen=${bodySize}, time=${endTime - startTime}ms`);
       }

@@ -10,6 +10,17 @@ interface BlobEntry {
   data?: string | Buffer;
   path?: string;
   size: number;
+  refCount: number;
+  createdAt: number;
+}
+
+interface BlobStoreMetrics {
+  totalBlobs: number;
+  memoryBlobs: number;
+  diskBlobs: number;
+  totalMemoryUsed: number;
+  totalDiskUsed: number;
+  deletedBlobs: number;
 }
 
 export class ContentBlobStore {
@@ -20,7 +31,18 @@ export class ContentBlobStore {
   private tempDir: string;
   private config = {
     maxMemoryThreshold: 1024 * 1024, // 1MB
+    autoCleanupTTL: 3600000, // 1 hour default TTL
+    enableAutoCleanup: false, // Disabled by default, can be enabled for long scans
   };
+  private metrics: BlobStoreMetrics = {
+    totalBlobs: 0,
+    memoryBlobs: 0,
+    diskBlobs: 0,
+    totalMemoryUsed: 0,
+    totalDiskUsed: 0,
+    deletedBlobs: 0,
+  };
+  private autoCleanupInterval: NodeJS.Timeout | null = null;
 
   private constructor() {
     this.logger = new Logger(LogLevel.INFO, 'ContentBlobStore');
@@ -34,13 +56,28 @@ export class ContentBlobStore {
     return ContentBlobStore.instance;
   }
 
-  public initialize(scanId: string, options?: { maxMemoryThreshold?: number }) {
+  public initialize(scanId: string, options?: { 
+    maxMemoryThreshold?: number;
+    autoCleanupTTL?: number;
+    enableAutoCleanup?: boolean;
+  }) {
     this.scanId = scanId;
     this.tempDir = path.join(os.tmpdir(), 'kinetic-dast', this.scanId);
     if (options?.maxMemoryThreshold) {
       this.config.maxMemoryThreshold = options.maxMemoryThreshold;
     }
+    if (options?.autoCleanupTTL) {
+      this.config.autoCleanupTTL = options.autoCleanupTTL;
+    }
+    if (options?.enableAutoCleanup !== undefined) {
+      this.config.enableAutoCleanup = options.enableAutoCleanup;
+    }
     this.ensureTempDir();
+    
+    // Start auto-cleanup if enabled
+    if (this.config.enableAutoCleanup) {
+      this.startAutoCleanup();
+    }
   }
 
   private ensureTempDir() {
@@ -65,8 +102,13 @@ export class ContentBlobStore {
       this.entries.set(id, {
         type: 'memory',
         data: content,
-        size
+        size,
+        refCount: 1,
+        createdAt: Date.now(),
       });
+      this.metrics.totalBlobs++;
+      this.metrics.memoryBlobs++;
+      this.metrics.totalMemoryUsed += size;
     } else {
       this.ensureTempDir();
       const filePath = path.join(this.tempDir, `${id}.blob`);
@@ -75,8 +117,13 @@ export class ContentBlobStore {
         this.entries.set(id, {
           type: 'disk',
           path: filePath,
-          size
+          size,
+          refCount: 1,
+          createdAt: Date.now(),
         });
+        this.metrics.totalBlobs++;
+        this.metrics.diskBlobs++;
+        this.metrics.totalDiskUsed += size;
       } catch (error) {
         this.logger.error(`Failed to write blob to disk: ${error}`);
         throw error;
@@ -305,9 +352,168 @@ export class ContentBlobStore {
     return entry?.size || 0;
   }
 
+  /**
+   * Increment reference count for a blob.
+   * Call this when a new consumer starts using the blob.
+   */
+  public addRef(id: string): void {
+    const entry = this.entries.get(id);
+    if (entry) {
+      entry.refCount++;
+      this.logger.debug(`[BlobStore] addRef: ${id} refCount=${entry.refCount}`);
+    }
+  }
+
+  /**
+   * Decrement reference count and delete blob if refCount reaches 0.
+   * Call this when a consumer finishes using the blob.
+   */
+  public async release(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+
+    entry.refCount--;
+    this.logger.debug(`[BlobStore] release: ${id} refCount=${entry.refCount}`);
+
+    if (entry.refCount <= 0) {
+      await this.delete(id);
+    }
+  }
+
+  /**
+   * Delete a blob immediately, regardless of reference count.
+   * Use with caution - prefer release() for reference-counted deletion.
+   */
+  public async delete(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (!entry) {
+      this.logger.debug(`[BlobStore] delete: Blob ${id} not found`);
+      return;
+    }
+
+    // Delete disk file if applicable
+    if (entry.type === 'disk' && entry.path) {
+      try {
+        if (fs.existsSync(entry.path)) {
+          await fs.promises.unlink(entry.path);
+          this.logger.debug(`[BlobStore] Deleted disk blob: ${id} (${(entry.size / 1024 / 1024).toFixed(2)}MB)`);
+        }
+      } catch (error) {
+        this.logger.error(`[BlobStore] Failed to delete disk blob ${id}: ${error}`);
+      }
+    }
+
+    // Update metrics
+    if (entry.type === 'memory') {
+      this.metrics.memoryBlobs--;
+      this.metrics.totalMemoryUsed -= entry.size;
+    } else {
+      this.metrics.diskBlobs--;
+      this.metrics.totalDiskUsed -= entry.size;
+    }
+    this.metrics.totalBlobs--;
+    this.metrics.deletedBlobs++;
+
+    // Remove from map
+    this.entries.delete(id);
+    this.logger.debug(`[BlobStore] Deleted blob ${id}, remaining: ${this.metrics.totalBlobs}`);
+  }
+
+  /**
+   * Start automatic cleanup of expired blobs based on TTL
+   */
+  private startAutoCleanup(): void {
+    if (this.autoCleanupInterval) return;
+
+    this.logger.info(`[BlobStore] Starting auto-cleanup with TTL=${this.config.autoCleanupTTL}ms`);
+    
+    // Run cleanup every 5 minutes
+    this.autoCleanupInterval = setInterval(async () => {
+      await this.cleanupExpiredBlobs();
+    }, 5 * 60 * 1000);
+    
+    // Don't prevent process exit
+    if (this.autoCleanupInterval.unref) {
+      this.autoCleanupInterval.unref();
+    }
+  }
+
+  /**
+   * Stop automatic cleanup
+   */
+  private stopAutoCleanup(): void {
+    if (this.autoCleanupInterval) {
+      clearInterval(this.autoCleanupInterval);
+      this.autoCleanupInterval = null;
+      this.logger.info('[BlobStore] Stopped auto-cleanup');
+    }
+  }
+
+  /**
+   * Clean up blobs that have exceeded their TTL
+   */
+  private async cleanupExpiredBlobs(): Promise<void> {
+    const now = Date.now();
+    const expiredIds: string[] = [];
+
+    for (const [id, entry] of this.entries.entries()) {
+      const age = now - entry.createdAt;
+      if (age > this.config.autoCleanupTTL && entry.refCount <= 0) {
+        expiredIds.push(id);
+      }
+    }
+
+    if (expiredIds.length > 0) {
+      this.logger.info(`[BlobStore] Cleaning up ${expiredIds.length} expired blobs`);
+      for (const id of expiredIds) {
+        await this.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Get storage metrics for monitoring
+   */
+  public getMetrics(): BlobStoreMetrics {
+    return { ...this.metrics };
+  }
+
+  /**
+   * Force cleanup of all blobs with refCount = 0
+   */
+  public async cleanupUnused(): Promise<number> {
+    const unusedIds: string[] = [];
+    
+    for (const [id, entry] of this.entries.entries()) {
+      if (entry.refCount <= 0) {
+        unusedIds.push(id);
+      }
+    }
+
+    this.logger.info(`[BlobStore] Cleaning up ${unusedIds.length} unused blobs`);
+    for (const id of unusedIds) {
+      await this.delete(id);
+    }
+
+    return unusedIds.length;
+  }
+
   public async cleanup() {
+      // Stop auto-cleanup
+      this.stopAutoCleanup();
+      
       // Clear memory map
       this.entries.clear();
+      
+      // Reset metrics
+      this.metrics = {
+        totalBlobs: 0,
+        memoryBlobs: 0,
+        diskBlobs: 0,
+        totalMemoryUsed: 0,
+        totalDiskUsed: 0,
+        deletedBlobs: 0,
+      };
       
       // Delete temp dir
       if (this.scanId && fs.existsSync(this.tempDir)) {

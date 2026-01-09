@@ -362,6 +362,34 @@ export class DomExplorer {
     return surfaces;
   }
 
+  /**
+   * Wait for SPA frameworks to finish initial rendering
+   */
+  private async waitForSPARendering(page: Page): Promise<void> {
+    try {
+      // Wait for common SPA framework indicators
+      await Promise.race([
+        // Angular: wait for app-root or forms to appear
+        page.waitForSelector('app-root input, form input, [formControlName]', { timeout: 3000 }).catch(() => {}),
+        // React: wait for react root
+        page.waitForSelector('#root input, [data-testid], [class*="form"]', { timeout: 3000 }).catch(() => {}),
+        // Vue: wait for vue app
+        page.waitForSelector('#app input, [v-model]', { timeout: 3000 }).catch(() => {}),
+        // Generic: wait for any inputs to appear
+        page.waitForSelector('input[type="email"], input[type="password"], input[type="text"]', { timeout: 3000 }).catch(() => {}),
+        // Fallback: just wait 2 seconds
+        page.waitForTimeout(2000)
+      ]);
+      
+      // Additional small wait for Angular change detection
+      await page.waitForTimeout(500);
+      
+      this.logger.debug('[DomExplorer] SPA rendering wait completed');
+    } catch (error) {
+      this.logger.debug(`[DomExplorer] SPA wait error (continuing anyway): ${error}`);
+    }
+  }
+
   public async prepareForms(page: Page): Promise<void> {
       try {
           const inputs = await page.$$('input:visible, textarea:visible, select:visible');
@@ -418,6 +446,9 @@ export class DomExplorer {
     const surfaces: AttackSurface[] = [];
     
     try {
+      // Wait for SPA frameworks (Angular, React, Vue) to finish rendering
+      await this.waitForSPARendering(page);
+      
       await this.prepareForms(page);
 
       // 1. Descoperă input-uri din formulare

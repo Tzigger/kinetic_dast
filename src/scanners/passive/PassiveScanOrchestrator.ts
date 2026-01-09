@@ -1,4 +1,5 @@
-import { NetworkInterceptor, InterceptedResponse, InterceptedRequest } from './NetworkInterceptor';
+import { NetworkInterceptor } from './NetworkInterceptor';
+import { InterceptedResponse, InterceptedRequest } from '../../types/network';
 import { ResponseAnalyzer, ResponseVulnerability } from '../../core/analysis/ResponseAnalyzer';
 import { Vulnerability } from '../../types/vulnerability';
 import { VulnerabilityCategory, VulnerabilitySeverity, LogLevel } from '../../types/enums';
