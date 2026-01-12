@@ -634,6 +634,30 @@ export class SqlInjectionDetector implements IActiveDetector {
     const avgTrueLength = trueLengths.reduce((a, b) => a + b, 0) / trueLengths.length;
     const avgFalseLength = falseLengths.reduce((a, b) => a + b, 0) / falseLengths.length;
 
+    // ENHANCED: Semantic text comparison for blind SQLi detection
+    // Look for indicator text patterns that differ between true/false responses
+    // Check multiple pairs to find a valid true/false combination
+    for (let i = 0; i < trueResults.length; i++) {
+      for (let j = 0; j < falseResults.length; j++) {
+        const trueResult = trueResults[i];
+        const falseResult = falseResults[j];
+        if (!trueResult || !falseResult) continue;
+        
+        const trueBody = trueResult.response?.body || '';
+        const falseBody = falseResult.response?.body || '';
+        const semanticDiff = this.detectSemanticDifference(trueBody, falseBody);
+        
+        if (semanticDiff.isSignificant) {
+          this.logger.info(`[SQLi] Boolean-based SQLi detected via semantic diff: ${semanticDiff.reason}`);
+          this.logger.info(`[SQLi] Semantic indicators: ${semanticDiff.indicators.join(', ')}`);
+          this.logger.info(`[SQLi] True payload: "${trueResult.payload}", False payload: "${falseResult.payload}"`);
+          return this.createVulnerability(surface, trueResult, SqlInjectionTechnique.BOOLEAN_BASED, baseUrl, {
+            confidence: this.getTechniqueConfidence(SqlInjectionTechnique.BOOLEAN_BASED),
+          });
+        }
+      }
+    }
+
     // Measure baseline variance to filter out noise
     const baselineStats = await this.measureBaselineVariance(page, surface, baseUrl);
 
@@ -781,6 +805,88 @@ export class SqlInjectionDetector implements IActiveDetector {
   async validate(): Promise<boolean> {
     // Validation would require re-testing with stored context
     return true;
+  }
+
+  /**
+   * Detect semantic differences between true/false responses for blind SQLi
+   * This looks for indicator text patterns that suggest boolean-based behavior
+   */
+  private detectSemanticDifference(trueBody: string, falseBody: string): { isSignificant: boolean; reason: string; indicators: string[] } {
+    const indicators: string[] = [];
+    
+    // Common indicator patterns for boolean-based blind SQLi
+    // These patterns indicate success/failure states
+    const positiveIndicators = [
+      /exists?\s*in\s*(?:the\s*)?database/i,
+      /user\s*(?:id\s*)?(?:exists?|found)/i,
+      /record\s*(?:exists?|found)/i,
+      /data\s*(?:exists?|found)/i,
+      /result\s*found/i,
+      /(?:1|one)\s*(?:row|record|result)/i,
+      /successfully/i,
+      /valid\s*(?:user|id|record)/i,
+      /welcome/i,
+      /logged\s*in/i,
+    ];
+    
+    const negativeIndicators = [
+      /(?:missing|not\s*found|does\s*not\s*exist)/i,
+      /user\s*(?:id\s*)?(?:missing|not\s*found)/i,
+      /no\s*(?:record|result|data|user)/i,
+      /invalid\s*(?:user|id|record)/i,
+      /(?:0|zero)\s*(?:row|record|result)/i,
+      /error|failed/i,
+      /access\s*denied/i,
+    ];
+    
+    let trueHasPositive = false;
+    let falseHasNegative = false;
+    
+    // Check if true response has positive indicators
+    for (const pattern of positiveIndicators) {
+      if (pattern.test(trueBody)) {
+        trueHasPositive = true;
+        indicators.push(`True response contains: "${trueBody.match(pattern)?.[0]}"`);
+        break;
+      }
+    }
+    
+    // Check if false response has negative indicators
+    for (const pattern of negativeIndicators) {
+      if (pattern.test(falseBody)) {
+        falseHasNegative = true;
+        indicators.push(`False response contains: "${falseBody.match(pattern)?.[0]}"`);
+        break;
+      }
+    }
+    
+    // Strong indication: true has positive AND false has negative
+    if (trueHasPositive && falseHasNegative) {
+      return {
+        isSignificant: true,
+        reason: 'True payload returns positive indicator, false payload returns negative indicator',
+        indicators
+      };
+    }
+    
+    // Also detect case where same indicator appears but with different values
+    // e.g., "User ID exists" vs "User ID is MISSING"
+    const existsInTrue = /exists/i.test(trueBody);
+    const missingInFalse = /missing/i.test(falseBody);
+    if (existsInTrue && missingInFalse) {
+      indicators.push('Detected "exists" in true response, "MISSING" in false response');
+      return {
+        isSignificant: true,
+        reason: 'Boolean condition affects exists/missing state',
+        indicators
+      };
+    }
+    
+    return {
+      isSignificant: false,
+      reason: 'No significant semantic difference detected',
+      indicators
+    };
   }
 
   /**
@@ -955,13 +1061,14 @@ export class SqlInjectionDetector implements IActiveDetector {
   private getBooleanPayloads(surface: AttackSurface): { truePayloads: string[]; falsePayloads: string[] } {
     const context = this.determineInjectionContext(surface);
 
+    // For numeric context, include both pure numeric and quoted variants for MySQL compatibility
     const truePayloads = context === 'numeric'
-      ? ['1 OR 1=1', "1' OR 1=1", '1) OR (1=1']
-      : ["' OR '1'='1", "' OR 'a'='a", "') OR ('1'='1"];
+      ? ['1 OR 1=1', "1' OR 1=1", '1) OR (1=1', "1' AND '1'='1", "1 AND 1=1", "1' OR '1'='1"]
+      : ["' OR '1'='1", "' OR 'a'='a", "') OR ('1'='1", "1' AND '1'='1", "1' OR '1'='1"];
 
     const falsePayloads = context === 'numeric'
-      ? ['1 AND 1=2', "1' AND 1=2", '1) AND (1=0']
-      : ["' AND '1'='2", "' AND 'a'='b", "') AND ('1'='2"];
+      ? ['1 AND 1=2', "1' AND 1=2", '1) AND (1=0', "1' AND '1'='2", "1 AND 1=0", "1' AND '0'='1"]
+      : ["' AND '1'='2", "' AND 'a'='b", "') AND ('1'='2", "1' AND '1'='2", "1' AND '0'='1"];
 
     return {
       truePayloads: Array.from(new Set(truePayloads)),
