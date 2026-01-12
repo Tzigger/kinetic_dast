@@ -3,7 +3,11 @@
  * Types for Active Verification system to reduce false positives/negatives
  */
 
-import type { JsonDiffResult, EncodingInfo, ErrorMatchResult } from '../utils/helpers/response-comparison';
+import type {
+  JsonDiffResult,
+  EncodingInfo,
+  ErrorMatchResult,
+} from '../utils/helpers/response-comparison';
 
 import { Vulnerability } from './vulnerability';
 
@@ -123,7 +127,7 @@ export const DEFAULT_VERIFICATION_CONFIGS: Record<string, VerificationConfig> = 
     stopOnConfirm: false,
     techniques: ['time-based', 'response-diff'],
   },
-  'xss': {
+  xss: {
     level: VerificationLevel.STANDARD,
     minConfidence: 0.8,
     maxAttempts: 2,
@@ -147,7 +151,7 @@ export const DEFAULT_VERIFICATION_CONFIGS: Record<string, VerificationConfig> = 
     stopOnConfirm: true,
     techniques: ['response-diff'],
   },
-  'ssrf': {
+  ssrf: {
     level: VerificationLevel.FULL,
     minConfidence: 0.85,
     maxAttempts: 3,

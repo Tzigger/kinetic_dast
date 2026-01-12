@@ -2,7 +2,11 @@ import { IActiveDetector, ActiveDetectorContext } from '../../core/interfaces/IA
 import { Vulnerability } from '../../types/vulnerability';
 import { VulnerabilitySeverity, VulnerabilityCategory } from '../../types/enums';
 import { AttackSurface, AttackSurfaceType } from '../../scanners/active/DomExplorer';
-import { PayloadInjector, InjectionResult, PayloadEncoding } from '../../scanners/active/PayloadInjector';
+import {
+  PayloadInjector,
+  InjectionResult,
+  PayloadEncoding,
+} from '../../scanners/active/PayloadInjector';
 import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 
 /**
@@ -30,9 +34,10 @@ export class PathTraversalDetector implements IActiveDetector {
     // Target only inputs that might deal with files or paths
     // Or generic inputs if we are aggressive
     const targets = attackSurfaces.filter(
-      (s) => 
+      (s) =>
         [AttackSurfaceType.URL_PARAMETER, AttackSurfaceType.API_PARAM].includes(s.type) ||
-        (s.type === AttackSurfaceType.FORM_INPUT && (s.name.includes('file') || s.name.includes('path') || s.name.includes('doc')))
+        (s.type === AttackSurfaceType.FORM_INPUT &&
+          (s.name.includes('file') || s.name.includes('path') || s.name.includes('doc')))
     );
 
     for (const surface of targets) {
@@ -43,7 +48,11 @@ export class PathTraversalDetector implements IActiveDetector {
     return vulnerabilities;
   }
 
-  private async testPathTraversal(page: any, surface: AttackSurface, baseUrl: string): Promise<Vulnerability | null> {
+  private async testPathTraversal(
+    page: any,
+    surface: AttackSurface,
+    baseUrl: string
+  ): Promise<Vulnerability | null> {
     const payloads = [
       '../../../../etc/passwd',
       '..\\..\\..\\..\\windows\\win.ini',
@@ -58,14 +67,14 @@ export class PathTraversalDetector implements IActiveDetector {
         const result = await this.injector.inject(page, surface, payload, {
           encoding: PayloadEncoding.NONE,
           submit: true,
-          baseUrl
+          baseUrl,
         });
 
         const body = result.response?.body || '';
-        
+
         if (
-          body.includes('root:x:0:0') || 
-          body.includes('[extensions]') || 
+          body.includes('root:x:0:0') ||
+          body.includes('[extensions]') ||
           body.includes('16-bit app support')
         ) {
           const cwe = 'CWE-22';
@@ -83,11 +92,12 @@ export class PathTraversalDetector implements IActiveDetector {
             evidence: {
               payload,
               request: { body: payload },
-              response: { body: body.substring(0, 500) }
+              response: { body: body.substring(0, 500) },
             },
-            remediation: 'Validate user input against a whitelist of permitted values. Use filesystem APIs that do not allow path traversal characters (..).',
+            remediation:
+              'Validate user input against a whitelist of permitted values. Use filesystem APIs that do not allow path traversal characters (..).',
             references: ['https://owasp.org/www-community/attacks/Path_Traversal'],
-            timestamp: new Date()
+            timestamp: new Date(),
           };
         }
       } catch (e) {
@@ -110,9 +120,6 @@ export class PathTraversalDetector implements IActiveDetector {
   }
 
   getPayloads(): string[] {
-    return [
-      '../../../../etc/passwd',
-      '/etc/passwd'
-    ];
+    return ['../../../../etc/passwd', '/etc/passwd'];
   }
 }

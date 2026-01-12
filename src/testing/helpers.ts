@@ -1,8 +1,8 @@
 /**
  * Playwright test helpers for security testing
- * 
+ *
  * These utilities integrate security scanning into your Playwright tests.
- * 
+ *
  * @example Active Scan (finds SQL injection, XSS, etc):
  * ```typescript
  * test('should not have SQL injection', async ({ page }) => {
@@ -11,7 +11,7 @@
  *   expect(vulns).toHaveLength(0);
  * });
  * ```
- * 
+ *
  * @example Passive Scan (checks headers, data exposure):
  * ```typescript
  * test('should have security headers', async ({ page }) => {
@@ -27,7 +27,15 @@ import { ScanEngine } from '../core/engine/ScanEngine';
 import { ActiveScanner } from '../scanners/active/ActiveScanner';
 import { PassiveScanner } from '../scanners/passive/PassiveScanner';
 import { ScanConfiguration } from '../types/config';
-import { VulnerabilitySeverity, AuthType, BrowserType, LogLevel, VerbosityLevel, AggressivenessLevel, ReportFormat } from '../types/enums';
+import {
+  VulnerabilitySeverity,
+  AuthType,
+  BrowserType,
+  LogLevel,
+  VerbosityLevel,
+  AggressivenessLevel,
+  ReportFormat,
+} from '../types/enums';
 import { Vulnerability } from '../types/vulnerability';
 import { DetectorRegistry } from '../utils/DetectorRegistry';
 import { registerBuiltInDetectors } from '../utils/builtInDetectors';
@@ -61,20 +69,20 @@ export interface PassiveScanOptions {
 
 /**
  * Run an Active Security Scan - Tests for injection vulnerabilities
- * 
+ *
  * Active scanning involves sending payloads to find:
  * - SQL Injection
  * - Cross-Site Scripting (XSS)
  * - Error-based information disclosure
- * 
+ *
  * ⚠️ Note: Active scans are more intrusive and slower than passive scans
- * 
+ *
  * @example Basic usage (URL):
  * ```typescript
  * const vulns = await runActiveSecurityScan('https://myapp.com/search');
  * expect(vulns.filter(v => v.severity === 'critical')).toHaveLength(0);
  * ```
- * 
+ *
  * @example SPA usage (with Page object):
  * ```typescript
  * await page.goto('http://localhost:3000/#/search');
@@ -83,7 +91,7 @@ export interface PassiveScanOptions {
  *   maxPages: 5
  * });
  * ```
- * 
+ *
  * @example With options:
  * ```typescript
  * const vulns = await runActiveSecurityScan('https://myapp.com', {
@@ -134,10 +142,16 @@ export async function runActiveSecurityScan(
       },
     },
     detectors: {
-      enabled: options.detectors === 'all' ? ['*'] : 
-               options.detectors === 'sql' ? ['sql-injection'] :
-               options.detectors === 'xss' ? ['xss'] :
-               options.detectors === 'errors' ? ['error-based'] : ['*'],
+      enabled:
+        options.detectors === 'all'
+          ? ['*']
+          : options.detectors === 'sql'
+            ? ['sql-injection']
+            : options.detectors === 'xss'
+              ? ['xss']
+              : options.detectors === 'errors'
+                ? ['error-based']
+                : ['*'],
       disabled: [],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       sensitivity: 'normal' as any,
@@ -145,10 +159,10 @@ export async function runActiveSecurityScan(
         sqli: {
           booleanBased: {
             minRowCountDiff: 1,
-            baselineSamples: 3
-          }
-        }
-      }
+            baselineSamples: 3,
+          },
+        },
+      },
     },
     browser: {
       type: BrowserType.CHROMIUM,
@@ -170,57 +184,57 @@ export async function runActiveSecurityScan(
   // Initialize detector registry
   registerBuiltInDetectors();
   const registry = DetectorRegistry.getInstance();
-  
+
   const engine = new ScanEngine();
   const scanner = new ActiveScanner();
-  
+
   // Get detectors from registry based on config
   const detectors = registry.getActiveDetectors(config.detectors);
   scanner.registerDetectors(detectors);
   engine.registerScanner(scanner);
-  
+
   // If Page object provided, pass it to engine for SPA support
   if (existingPage) {
     engine.setExistingPage(existingPage);
   }
-  
+
   await engine.loadConfiguration(config);
   const result = await engine.scan();
-  
+
   // Don't cleanup if using existing page (test owns it)
   if (!existingPage) {
     await engine.cleanup();
   }
-  
+
   return result.vulnerabilities;
 }
 
 /**
  * Run a Passive Security Scan - Analyzes traffic without sending payloads
- * 
+ *
  * Passive scanning observes network traffic to find:
  * - Missing security headers (HSTS, CSP, X-Frame-Options, etc.)
  * - Insecure HTTP transmission
  * - Sensitive data exposure (phone numbers, emails, etc.)
  * - Insecure cookie configuration
- * 
+ *
  * ✅ Passive scans are fast, non-intrusive, and safe for production
- * 
+ *
  * @example Basic usage:
  * ```typescript
  * const vulns = await runPassiveSecurityScan('https://myapp.com');
  * assertNoVulnerabilities(vulns, VulnerabilitySeverity.HIGH);
  * ```
- * 
+ *
  * @example For SPAs (single page applications):
  * ```typescript
  * // Navigate first to let SPA load
  * await page.goto('https://spa.example.com/#/dashboard');
  * await page.waitForLoadState('networkidle');
- * 
+ *
  * const vulns = await runPassiveSecurityScan(page.url(), { maxPages: 1 });
  * ```
- * 
+ *
  * @example Check specific issues:
  * ```typescript
  * const vulns = await runPassiveSecurityScan('https://myapp.com', {
@@ -241,29 +255,36 @@ export async function runPassiveSecurityScan(
       timeout: 30000,
     },
     scanners: {
-      passive: { 
-        enabled: true
+      passive: {
+        enabled: true,
       },
-      active: { 
+      active: {
         enabled: false,
-        aggressiveness: AggressivenessLevel.LOW
+        aggressiveness: AggressivenessLevel.LOW,
       },
     },
     detectors: {
-      enabled: options.detectors === 'all' ? ['*'] :
-               options.detectors === 'headers' ? ['header-security'] :
-               options.detectors === 'transmission' ? ['insecure-transmission'] :
-               options.detectors === 'data' ? ['sensitive-data'] :
-               options.detectors === 'cookies' ? ['cookie-security'] : ['*'],
+      enabled:
+        options.detectors === 'all'
+          ? ['*']
+          : options.detectors === 'headers'
+            ? ['header-security']
+            : options.detectors === 'transmission'
+              ? ['insecure-transmission']
+              : options.detectors === 'data'
+                ? ['sensitive-data']
+                : options.detectors === 'cookies'
+                  ? ['cookie-security']
+                  : ['*'],
       disabled: [],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       sensitivity: 'normal' as any,
       tuning: {
         sensitiveData: {
           emailAllowlist: ['example.com', 'test.com', 'noreply', 'support'],
-          skipPaths: ['/config', '/assets', '.js', '.css']
-        }
-      }
+          skipPaths: ['/config', '/assets', '.js', '.css'],
+        },
+      },
     },
     browser: {
       type: BrowserType.CHROMIUM,
@@ -285,31 +306,31 @@ export async function runPassiveSecurityScan(
   // Initialize detector registry
   registerBuiltInDetectors();
   const registry = DetectorRegistry.getInstance();
-  
+
   const engine = new ScanEngine();
   const scanner = new PassiveScanner();
-  
+
   // Get detectors from registry based on config
   const detectors = registry.getPassiveDetectors(config.detectors);
   scanner.registerDetectors(detectors);
   engine.registerScanner(scanner);
-  
+
   await engine.loadConfiguration(config);
   const result = await engine.scan();
   await engine.cleanup();
-  
+
   return result.vulnerabilities;
 }
 
 /**
  * Assert no vulnerabilities above a certain severity
  * Throws an error with details if vulnerabilities are found
- * 
+ *
  * @example No critical or high vulnerabilities:
  * ```typescript
  * await assertNoVulnerabilities(vulns, VulnerabilitySeverity.MEDIUM);
  * ```
- * 
+ *
  * @example No vulnerabilities at all:
  * ```typescript
  * await assertNoVulnerabilities(vulns);
@@ -326,20 +347,18 @@ export function assertNoVulnerabilities(
     VulnerabilitySeverity.HIGH,
     VulnerabilitySeverity.CRITICAL,
   ];
-  
+
   const maxIndex = severityOrder.indexOf(maxAllowedSeverity);
-  const violations = vulnerabilities.filter(v => 
-    severityOrder.indexOf(v.severity) > maxIndex
-  );
-  
+  const violations = vulnerabilities.filter((v) => severityOrder.indexOf(v.severity) > maxIndex);
+
   if (violations.length > 0) {
     const summary = violations
-      .map(v => `  - [${v.severity.toUpperCase()}] ${v.title}`)
+      .map((v) => `  - [${v.severity.toUpperCase()}] ${v.title}`)
       .join('\n');
-    
+
     throw new Error(
       `Security vulnerabilities found above ${maxAllowedSeverity} severity:\n${summary}\n\n` +
-      `Total: ${violations.length} vulnerability(ies)`
+        `Total: ${violations.length} vulnerability(ies)`
     );
   }
 }
@@ -354,4 +373,3 @@ export async function runSecurityScan(
 ): Promise<Vulnerability[]> {
   return runActiveSecurityScan(targetUrl, options);
 }
-

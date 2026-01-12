@@ -39,9 +39,9 @@ export class TimeoutManager {
     this.strategy = strategy;
     this.config = { ...DEFAULT_TIMEOUTS, ...config };
     this.adaptiveState = this.initializeAdaptiveState();
-    
+
     // Initialize operation time tracking
-    Object.values(OperationType).forEach(op => {
+    Object.values(OperationType).forEach((op) => {
       this.operationTimes.set(op as OperationType, []);
     });
   }
@@ -67,14 +67,14 @@ export class TimeoutManager {
    */
   public getTimeout(operation: OperationType): number {
     const baseTimeout = this.getBaseTimeout(operation);
-    
+
     if (this.strategy === TimeoutStrategy.FIXED) {
       return baseTimeout;
     }
-    
+
     // Apply adaptive multiplier
     const adaptedTimeout = Math.round(baseTimeout * this.adaptiveState.multiplier);
-    
+
     // Cap at 2x base timeout to prevent infinite waits
     return Math.min(adaptedTimeout, baseTimeout * 2);
   }
@@ -93,7 +93,7 @@ export class TimeoutManager {
       [OperationType.FORM_SUBMIT]: 'formSubmit',
       [OperationType.API_REQUEST]: 'apiRequest',
     };
-    
+
     const configKey = timeoutMap[operation];
     return this.config[configKey] || this.config.navigation;
   }
@@ -114,10 +114,10 @@ export class TimeoutManager {
     const operationId = `${operation}-${Date.now()}`;
     const controller = new AbortController();
     this.abortControllers.set(operationId, controller);
-    
+
     const startTime = Date.now();
     let progressInterval: NodeJS.Timeout | undefined;
-    
+
     // Set up progress reporting
     if (options.onProgress) {
       progressInterval = setInterval(() => {
@@ -131,25 +131,25 @@ export class TimeoutManager {
         });
       }, 1000);
     }
-    
+
     try {
       const result = await Promise.race([
         fn(controller.signal),
         this.createTimeoutPromise<T>(timeout, operation, options.context),
       ]);
-      
+
       const duration = Date.now() - startTime;
       this.recordSuccess(operation, duration);
-      
+
       return { result, timedOut: false, duration };
     } catch (error: unknown) {
       const duration = Date.now() - startTime;
-      
+
       if (error instanceof TimeoutError) {
         this.recordTimeout(operation, timeout, duration, options.context);
         return { result: null, timedOut: true, duration };
       }
-      
+
       // Re-throw non-timeout errors
       throw error;
     } finally {
@@ -180,20 +180,20 @@ export class TimeoutManager {
   private recordSuccess(operation: OperationType, duration: number): void {
     this.adaptiveState.successCount++;
     this.updateTimeoutRate();
-    
+
     // Track operation times for adaptive learning
     const times = this.operationTimes.get(operation) || [];
     times.push(duration);
-    
+
     // Keep only last 20 samples
     if (times.length > 20) times.shift();
     this.operationTimes.set(operation, times);
-    
+
     // Update baseline for navigation operations
     if (operation === OperationType.NAVIGATION || operation === OperationType.API_REQUEST) {
       this.updateBaseline(duration);
     }
-    
+
     this.logger.debug(`Operation ${operation} completed in ${duration}ms`);
   }
 
@@ -208,7 +208,7 @@ export class TimeoutManager {
   ): void {
     this.adaptiveState.timeoutCount++;
     this.updateTimeoutRate();
-    
+
     const event: TimeoutEvent = {
       operation,
       timeout,
@@ -217,13 +217,15 @@ export class TimeoutManager {
       timestamp: new Date(),
     };
     this.timeoutEvents.push(event);
-    
+
     // Adjust multiplier if timeout rate is high
     if (this.adaptiveState.timeoutRate > 0.1) {
       this.adaptiveState.multiplier = Math.min(this.adaptiveState.multiplier * 1.2, 2.0);
-      this.logger.info(`High timeout rate (${(this.adaptiveState.timeoutRate * 100).toFixed(1)}%), increasing multiplier to ${this.adaptiveState.multiplier.toFixed(2)}`);
+      this.logger.info(
+        `High timeout rate (${(this.adaptiveState.timeoutRate * 100).toFixed(1)}%), increasing multiplier to ${this.adaptiveState.multiplier.toFixed(2)}`
+      );
     }
-    
+
     this.logger.warn(`Operation ${operation} timed out after ${elapsed}ms (limit: ${timeout}ms)`);
   }
 
@@ -241,17 +243,17 @@ export class TimeoutManager {
    */
   private updateBaseline(duration: number): void {
     this.adaptiveState.baselineTimes.push(duration);
-    
+
     // Keep only last 10 samples
     if (this.adaptiveState.baselineTimes.length > 10) {
       this.adaptiveState.baselineTimes.shift();
     }
-    
+
     // Calculate average and standard deviation
     const times = this.adaptiveState.baselineTimes;
     const avg = times.reduce((a, b) => a + b, 0) / times.length;
     const variance = times.reduce((sum, t) => sum + Math.pow(t - avg, 2), 0) / times.length;
-    
+
     this.adaptiveState.averageBaseline = avg;
     this.adaptiveState.baselineStdDev = Math.sqrt(variance);
   }
@@ -262,10 +264,10 @@ export class TimeoutManager {
   public getTimeBasedInjectionTimeout(expectedDelay: number): number {
     const baseline = this.adaptiveState.averageBaseline || 1000;
     const stdDev = this.adaptiveState.baselineStdDev || 500;
-    
+
     // timeout = baseline + expected delay + 2 standard deviations + 2 second buffer
-    const calculated = baseline + expectedDelay + (2 * stdDev) + 2000;
-    
+    const calculated = baseline + expectedDelay + 2 * stdDev + 2000;
+
     // Minimum 5 seconds, maximum 30 seconds
     return Math.max(5000, Math.min(30000, calculated));
   }
@@ -276,13 +278,13 @@ export class TimeoutManager {
   public isDelaySignificant(observedDelay: number, expectedDelay: number): boolean {
     const baseline = this.adaptiveState.averageBaseline || 1000;
     const stdDev = this.adaptiveState.baselineStdDev || 500;
-    
+
     // Delay should be at least (baseline + expected - 1 std dev)
     const minExpected = baseline + expectedDelay - stdDev;
-    
+
     // And not more than (baseline + expected + 2 std dev)
-    const maxExpected = baseline + expectedDelay + (2 * stdDev);
-    
+    const maxExpected = baseline + expectedDelay + 2 * stdDev;
+
     return observedDelay >= minExpected && observedDelay <= maxExpected;
   }
 
@@ -301,19 +303,24 @@ export class TimeoutManager {
    * Get statistics
    */
   public getStatistics(): TimeoutStatistics {
-    const timeoutRateByOperation: Record<OperationType, number> = {} as Record<OperationType, number>;
-    const averageTimeByOperation: Record<OperationType, number> = {} as Record<OperationType, number>;
-    
+    const timeoutRateByOperation: Record<OperationType, number> = {} as Record<
+      OperationType,
+      number
+    >;
+    const averageTimeByOperation: Record<OperationType, number> = {} as Record<
+      OperationType,
+      number
+    >;
+
     this.operationTimes.forEach((times, operation) => {
-      const timeoutCount = this.timeoutEvents.filter(e => e.operation === operation).length;
+      const timeoutCount = this.timeoutEvents.filter((e) => e.operation === operation).length;
       const totalOps = times.length + timeoutCount;
-      
+
       timeoutRateByOperation[operation] = totalOps > 0 ? timeoutCount / totalOps : 0;
-      averageTimeByOperation[operation] = times.length > 0 
-        ? times.reduce((a, b) => a + b, 0) / times.length 
-        : 0;
+      averageTimeByOperation[operation] =
+        times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
     });
-    
+
     return {
       totalOperations: this.adaptiveState.successCount + this.adaptiveState.timeoutCount,
       timedOut: this.adaptiveState.timeoutCount,

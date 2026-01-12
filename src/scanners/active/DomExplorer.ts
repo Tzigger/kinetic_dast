@@ -91,7 +91,7 @@ export class DomExplorer {
 
     this.logger.debug('Starting passive-to-active network monitoring');
     this.networkListener = (request: Request) => {
-      this.handleNetworkRequest(request).catch(err => 
+      this.handleNetworkRequest(request).catch((err) =>
         this.logger.debug(`Error handling network request: ${err}`)
       );
     };
@@ -122,7 +122,7 @@ export class DomExplorer {
   private async handleNetworkRequest(request: Request): Promise<void> {
     try {
       if (request.method() !== 'POST') return;
-      
+
       const postData = request.postDataJSON();
       if (!postData) return;
 
@@ -134,9 +134,11 @@ export class DomExplorer {
         if (typeof value === 'object' || value === null) continue;
 
         const priority = this.calculateEndpointPriority(url, key);
-        
+
         // Avoid duplicates
-        if (this.dynamicApiSurfaces.some(s => s.metadata.url === request.url() && s.name === key)) {
+        if (
+          this.dynamicApiSurfaces.some((s) => s.metadata.url === request.url() && s.name === key)
+        ) {
           continue;
         }
 
@@ -155,8 +157,8 @@ export class DomExplorer {
             originalBody: postData,
             headers,
             priority,
-            source: 'passive-monitoring'
-          }
+            source: 'passive-monitoring',
+          },
         };
 
         this.dynamicApiSurfaces.push(surface);
@@ -174,7 +176,7 @@ export class DomExplorer {
     try {
       const hasHash = page.url().includes('#/');
       // Use string-based evaluate to avoid TypeScript DOM type issues
-      const detectionResult = await page.evaluate(`(() => {
+      const detectionResult = (await page.evaluate(`(() => {
         const angularDetected = !!window.angular || 
                !!document.querySelector('[ng-app]') || 
                !!document.querySelector('[ng-controller]') ||
@@ -183,14 +185,19 @@ export class DomExplorer {
         const vueDetected = !!window.__VUE__ || !!window.Vue;
         
         return { angularDetected, reactDetected, vueDetected };
-      })()`) as { angularDetected: boolean; reactDetected: boolean; vueDetected: boolean };
+      })()`)) as { angularDetected: boolean; reactDetected: boolean; vueDetected: boolean };
 
-      if (hasHash || detectionResult.angularDetected || detectionResult.reactDetected || detectionResult.vueDetected) {
+      if (
+        hasHash ||
+        detectionResult.angularDetected ||
+        detectionResult.reactDetected ||
+        detectionResult.vueDetected
+      ) {
         if (detectionResult.angularDetected) this.spaFramework = 'Angular';
         else if (detectionResult.reactDetected) this.spaFramework = 'React';
         else if (detectionResult.vueDetected) this.spaFramework = 'Vue';
         else this.spaFramework = 'Unknown SPA';
-        
+
         this.logger.info(`SPA detected: ${this.spaFramework}`);
       }
     } catch (error) {
@@ -219,14 +226,16 @@ export class DomExplorer {
       const links = await page.$$eval('a[href*="#/"]', (elements) =>
         elements.map((el: any) => el.href)
       );
-      routes.push(...links.map(link => {
-        try {
-          return new URL(link).hash;
-        } catch {
-          return link;
-        }
-      }));
-      
+      routes.push(
+        ...links.map((link) => {
+          try {
+            return new URL(link).hash;
+          } catch {
+            return link;
+          }
+        })
+      );
+
       this.logger.debug(`Extracted ${routes.length} hash routes`);
     } catch (error) {
       this.logger.debug(`Error extracting hash routes: ${error}`);
@@ -236,11 +245,11 @@ export class DomExplorer {
 
   public async extractEndpointsFromJS(page: Page): Promise<string[]> {
     this.logger.info('Analyzing JavaScript files for hidden endpoints...');
-    
-    const scriptUrls = await page.evaluate(() => 
+
+    const scriptUrls = await page.evaluate(() =>
       Array.from(document.querySelectorAll('script[src]'))
         .map((s: any) => s.src)
-        .filter(src => src.startsWith(location.origin))
+        .filter((src) => src.startsWith(location.origin))
     );
 
     const discoveredEndpoints = new Set<string>();
@@ -255,12 +264,14 @@ export class DomExplorer {
           let match;
           while ((match = endpointRegex.exec(content)) !== null) {
             const capturedPath = match[1];
-            
-            if (capturedPath && 
-                !capturedPath.endsWith('.png') && 
-                !capturedPath.endsWith('.jpg') && 
-                !capturedPath.includes('node_modules')) {
-                discoveredEndpoints.add(capturedPath);
+
+            if (
+              capturedPath &&
+              !capturedPath.endsWith('.png') &&
+              !capturedPath.endsWith('.jpg') &&
+              !capturedPath.includes('node_modules')
+            ) {
+              discoveredEndpoints.add(capturedPath);
             }
           }
         }
@@ -269,7 +280,7 @@ export class DomExplorer {
 
     const results = Array.from(discoveredEndpoints);
     if (results.length > 0) {
-        this.logger.info(`Discovered ${results.length} hidden endpoints in JS files`);
+      this.logger.info(`Discovered ${results.length} hidden endpoints in JS files`);
     }
     return results;
   }
@@ -284,7 +295,7 @@ export class DomExplorer {
       '/v2/api-docs',
       '/v3/api-docs',
       '/openapi.json',
-      '/swagger/v1/swagger.json'
+      '/swagger/v1/swagger.json',
     ];
 
     const surfaces: AttackSurface[] = [];
@@ -294,13 +305,13 @@ export class DomExplorer {
       try {
         const fullUrl = new URL(path, baseUrl).toString();
         this.logger.debug(`Checking for Swagger at ${fullUrl}`);
-        
+
         await getGlobalRateLimiter().waitForToken();
         const response = await page.request.get(fullUrl);
         getGlobalRateLimiter().handleResponse(response.status());
         if (!response.ok()) {
-            this.logger.debug(`Swagger check failed for ${fullUrl}: ${response.status()}`);
-            continue;
+          this.logger.debug(`Swagger check failed for ${fullUrl}: ${response.status()}`);
+          continue;
         }
 
         let spec: any = null;
@@ -322,35 +333,35 @@ export class DomExplorer {
               this.logger.warn(`Failed to parse embedded Swagger spec in ${fullUrl}: ${e}`);
             }
           } else {
-             this.logger.debug(`No embedded Swagger spec found in ${fullUrl}`);
+            this.logger.debug(`No embedded Swagger spec found in ${fullUrl}`);
           }
         }
-          
-        if (spec && spec.paths) {
-            for (const [endpointPath, methods] of Object.entries(spec.paths)) {
-              for (const [method] of Object.entries(methods as any)) {
-                // Convert Swagger path parameters {param} to actual values for testing
-                // Simple heuristic: replace {id} with 1, others with 'test'
-                const testPath = endpointPath.replace(/\{([^}]+)\}/g, (_, param) => {
-                  if (param.toLowerCase().includes('id')) return '1';
-                  return 'test';
-                });
 
-                surfaces.push({
-                  id: `swagger-${method}-${testPath}`,
-                  type: AttackSurfaceType.API_ENDPOINT,
-                  name: endpointPath,
-                  context: InjectionContext.URL_PATH,
-                  metadata: {
-                    url: testPath,
-                    method: method.toUpperCase(),
-                    source: 'swagger',
-                    basePath: path
-                  }
-                });
-              }
+        if (spec && spec.paths) {
+          for (const [endpointPath, methods] of Object.entries(spec.paths)) {
+            for (const [method] of Object.entries(methods as any)) {
+              // Convert Swagger path parameters {param} to actual values for testing
+              // Simple heuristic: replace {id} with 1, others with 'test'
+              const testPath = endpointPath.replace(/\{([^}]+)\}/g, (_, param) => {
+                if (param.toLowerCase().includes('id')) return '1';
+                return 'test';
+              });
+
+              surfaces.push({
+                id: `swagger-${method}-${testPath}`,
+                type: AttackSurfaceType.API_ENDPOINT,
+                name: endpointPath,
+                context: InjectionContext.URL_PATH,
+                metadata: {
+                  url: testPath,
+                  method: method.toUpperCase(),
+                  source: 'swagger',
+                  basePath: path,
+                },
+              });
             }
           }
+        }
       } catch (e) {
         // Ignore 404s and other errors
       }
@@ -363,52 +374,55 @@ export class DomExplorer {
   }
 
   public async prepareForms(page: Page): Promise<void> {
-      try {
-          const inputs = await page.$$('input:visible, textarea:visible, select:visible');
-          
-          for (const input of inputs) {
-              const value = await input.inputValue().catch(() => '');
-              if (value) continue;
+    try {
+      const inputs = await page.$$('input:visible, textarea:visible, select:visible');
 
-              const type = await input.getAttribute('type').catch(() => 'text');
-              const name = (await input.getAttribute('name') || '').toLowerCase();
-              const tagName = await input.evaluate(el => el.tagName.toLowerCase());
+      for (const input of inputs) {
+        const value = await input.inputValue().catch(() => '');
+        if (value) continue;
 
-              if (tagName === 'select') {
-                  await input.evaluate((el: any) => {
-                      if (el.options.length > 1) {
-                          el.selectedIndex = 1; // Choose second option (often first is "Select...")
-                          el.dispatchEvent(new Event('change', { bubbles: true }));
-                      } else if (el.options.length > 0) {
-                          el.selectedIndex = 0;
-                          el.dispatchEvent(new Event('change', { bubbles: true }));
-                      }
-                  });
-                  continue;
-              }
+        const type = await input.getAttribute('type').catch(() => 'text');
+        const name = ((await input.getAttribute('name')) || '').toLowerCase();
+        const tagName = await input.evaluate((el) => el.tagName.toLowerCase());
 
-              if (type === 'email' || name.includes('email')) {
-                  await input.fill('admin@juice-sh.op');
-              } else if (type === 'password' || name.includes('password')) {
-                  await input.fill('Password123!');
-              } else if (type === 'number' || name.includes('zip') || name.includes('age') || name.includes('year')) {
-                  await input.fill('12345');
-              } else if (name.includes('search') || name.includes('query')) {
-                  await input.fill('test');
-              } else if (name.includes('date')) {
-                  await input.fill('2023-01-01');
-              } else if (name.includes('url') || type === 'url') {
-                  await input.fill('http://example.com');
-              } else {
-                  await input.fill('test_data');
-              }
-          }
-      } catch (e) {
-          this.logger.debug(`Form preparation partial error: ${e}`);
+        if (tagName === 'select') {
+          await input.evaluate((el: any) => {
+            if (el.options.length > 1) {
+              el.selectedIndex = 1; // Choose second option (often first is "Select...")
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else if (el.options.length > 0) {
+              el.selectedIndex = 0;
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          });
+          continue;
+        }
+
+        if (type === 'email' || name.includes('email')) {
+          await input.fill('admin@juice-sh.op');
+        } else if (type === 'password' || name.includes('password')) {
+          await input.fill('Password123!');
+        } else if (
+          type === 'number' ||
+          name.includes('zip') ||
+          name.includes('age') ||
+          name.includes('year')
+        ) {
+          await input.fill('12345');
+        } else if (name.includes('search') || name.includes('query')) {
+          await input.fill('test');
+        } else if (name.includes('date')) {
+          await input.fill('2023-01-01');
+        } else if (name.includes('url') || type === 'url') {
+          await input.fill('http://example.com');
+        } else {
+          await input.fill('test_data');
+        }
       }
+    } catch (e) {
+      this.logger.debug(`Form preparation partial error: ${e}`);
+    }
   }
-
-
 
   /**
    * Explorează pagina pentru toate suprafețele de atac
@@ -416,7 +430,7 @@ export class DomExplorer {
   public async explore(page: Page, collectedRequests: Request[] = []): Promise<AttackSurface[]> {
     this.logger.info('Starting DOM exploration');
     const surfaces: AttackSurface[] = [];
-    
+
     try {
       await this.prepareForms(page);
 
@@ -424,13 +438,17 @@ export class DomExplorer {
       const formSurfaces = await this.discoverFormInputs(page);
       surfaces.push(...formSurfaces);
       this.logger.debug(`[DomExplorer] Form inputs discovered: ${formSurfaces.length}`);
-      formSurfaces.forEach(s => this.logger.debug(`  - ${s.type}: ${s.name} (context: ${s.context})${s.metadata?.inputType ? `, inputType: ${s.metadata.inputType}` : ''}`));
+      formSurfaces.forEach((s) =>
+        this.logger.debug(
+          `  - ${s.type}: ${s.name} (context: ${s.context})${s.metadata?.inputType ? `, inputType: ${s.metadata.inputType}` : ''}`
+        )
+      );
 
       // 2. Descoperă parametri URL
       const urlSurfaces = await this.discoverUrlParameters(page);
       surfaces.push(...urlSurfaces);
       this.logger.debug(`[DomExplorer] URL parameters discovered: ${urlSurfaces.length}`);
-      urlSurfaces.forEach(s => this.logger.debug(`  - ${s.type}: ${s.name}=${s.value}`));
+      urlSurfaces.forEach((s) => this.logger.debug(`  - ${s.type}: ${s.name}=${s.value}`));
 
       // 3. Descoperă link-uri pentru crawling
       const linkSurfaces = await this.discoverLinks(page);
@@ -441,41 +459,49 @@ export class DomExplorer {
       const cookieSurfaces = await this.discoverCookies(page);
       surfaces.push(...cookieSurfaces);
       this.logger.debug(`[DomExplorer] Cookies discovered: ${cookieSurfaces.length}`);
-      cookieSurfaces.forEach(s => this.logger.debug(`  - cookie: ${s.name}=${s.value?.substring(0, 30)}...`));
+      cookieSurfaces.forEach((s) =>
+        this.logger.debug(`  - cookie: ${s.name}=${s.value?.substring(0, 30)}...`)
+      );
 
       // 5. Analizează traficul API (Smart Exploration)
       if (collectedRequests.length > 0) {
         const apiSurfaces = await this.discoverApiEndpoints(collectedRequests);
         surfaces.push(...apiSurfaces);
-        this.logger.debug(`[DomExplorer] API endpoints discovered from history: ${apiSurfaces.length}`);
+        this.logger.debug(
+          `[DomExplorer] API endpoints discovered from history: ${apiSurfaces.length}`
+        );
       }
-      
+
       // 5b. Add dynamic surfaces from passive monitoring
       if (this.dynamicApiSurfaces.length > 0) {
         surfaces.push(...this.dynamicApiSurfaces);
-        this.logger.debug(`[DomExplorer] Dynamic API surfaces added: ${this.dynamicApiSurfaces.length}`);
-        this.dynamicApiSurfaces.forEach(s => this.logger.debug(`  - ${s.type}: ${s.name} (dynamic)`));
+        this.logger.debug(
+          `[DomExplorer] Dynamic API surfaces added: ${this.dynamicApiSurfaces.length}`
+        );
+        this.dynamicApiSurfaces.forEach((s) =>
+          this.logger.debug(`  - ${s.type}: ${s.name} (dynamic)`)
+        );
       }
 
       // 6. Static JS Analysis (Deep Discovery)
       const jsEndpoints = await this.extractEndpointsFromJS(page);
       for (const endpoint of jsEndpoints) {
-          let fullUrl = endpoint;
-          if (endpoint.startsWith('/')) {
-              fullUrl = new URL(endpoint, page.url()).toString();
-          }
-          
-          surfaces.push({
-              id: `js-endpoint-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-              type: AttackSurfaceType.LINK,
-              name: 'js-discovered-endpoint',
-              value: fullUrl,
-              context: InjectionContext.URL,
-              metadata: { source: 'static-js-analysis' }
-          });
+        let fullUrl = endpoint;
+        if (endpoint.startsWith('/')) {
+          fullUrl = new URL(endpoint, page.url()).toString();
+        }
+
+        surfaces.push({
+          id: `js-endpoint-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          type: AttackSurfaceType.LINK,
+          name: 'js-discovered-endpoint',
+          value: fullUrl,
+          context: InjectionContext.URL,
+          metadata: { source: 'static-js-analysis' },
+        });
       }
       if (jsEndpoints.length > 0) {
-          this.logger.debug(`[DomExplorer] JS endpoints added as links: ${jsEndpoints.length}`);
+        this.logger.debug(`[DomExplorer] JS endpoints added as links: ${jsEndpoints.length}`);
       }
 
       // 7. Descoperă elemente clickabile (pentru SPA crawling)
@@ -485,9 +511,15 @@ export class DomExplorer {
 
       // INFO-level summary by type
       const byType: Record<string, number> = {};
-      surfaces.forEach(s => { byType[s.type] = (byType[s.type] || 0) + 1; });
+      surfaces.forEach((s) => {
+        byType[s.type] = (byType[s.type] || 0) + 1;
+      });
       this.logger.info(`DOM exploration completed. Found ${surfaces.length} attack surfaces`);
-      this.logger.info(`[DomExplorer] Breakdown: ${Object.entries(byType).map(([t, c]) => `${t}:${c}`).join(', ')}`);
+      this.logger.info(
+        `[DomExplorer] Breakdown: ${Object.entries(byType)
+          .map(([t, c]) => `${t}:${c}`)
+          .join(', ')}`
+      );
     } catch (error) {
       this.logger.error(`Error during DOM exploration: ${error}`);
     }
@@ -503,23 +535,25 @@ export class DomExplorer {
     try {
       // Selectează butoane și elemente care par interactive, inclusiv directive SPA
       // Note: @click must be escaped as [\\@click] for Playwright/CSS selector parsing
-      const elements = await page.$$('button, div[role="button"], a:not([href]), a[href="#"], span[onclick], [ng-click], [click], [\\@click], [v-on\\:click]');
-      
+      const elements = await page.$$(
+        'button, div[role="button"], a:not([href]), a[href="#"], span[onclick], [ng-click], [click], [\\@click], [v-on\\:click]'
+      );
+
       const logoutKeywords = ['logout', 'sign out', 'signout', 'log off', 'disconnect', 'exit'];
 
       for (let i = 0; i < elements.length; i++) {
         const el = elements[i];
         if (!el) continue;
-        
+
         const text = (await el.textContent())?.trim() || 'unknown';
         const isVisible = await el.isVisible();
-        
+
         // Safety check: Ignore logout buttons
-        if (logoutKeywords.some(kw => text.toLowerCase().includes(kw))) {
+        if (logoutKeywords.some((kw) => text.toLowerCase().includes(kw))) {
           this.logger.debug(`Skipping potential logout button: "${text}"`);
           continue;
         }
-        
+
         if (isVisible) {
           surfaces.push({
             id: `clickable-${i}`,
@@ -531,8 +565,8 @@ export class DomExplorer {
             context: InjectionContext.HTML,
             metadata: {
               text,
-              tagName: await el.evaluate((e: any) => e.tagName.toLowerCase())
-            }
+              tagName: await el.evaluate((e: any) => e.tagName.toLowerCase()),
+            },
           });
         }
       }
@@ -548,21 +582,30 @@ export class DomExplorer {
    */
   private calculateEndpointPriority(url: URL, paramName: string): number {
     let score = 0;
-    
+
     // High-value endpoints
     if (url.pathname.includes('/rest/')) score += 10;
     if (url.pathname.includes('/api/')) score += 10;
     if (url.pathname.includes('/graphql')) score += 15;
-    
+
     // High-value parameters
-    const highValueParams = ['q', 'id', 'search', 'query', 'email', 'orderId', 'userId', 'productId'];
+    const highValueParams = [
+      'q',
+      'id',
+      'search',
+      'query',
+      'email',
+      'orderId',
+      'userId',
+      'productId',
+    ];
     if (highValueParams.includes(paramName.toLowerCase())) score += 5;
-    
+
     // Low-value endpoints (skip these)
     if (url.pathname.includes('/assets/')) score -= 20;
     if (url.pathname.includes('/i18n/')) score -= 20;
     if (url.pathname.includes('/static/')) score -= 20;
-    
+
     return score;
   }
 
@@ -581,25 +624,28 @@ export class DomExplorer {
 
         // Ignoră resursele statice
         if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) continue;
-        
+
         // Skip low-priority endpoints and infrastructure endpoints
-        if (url.pathname.includes('/assets/') || 
-            url.pathname.includes('/i18n/') || 
-            url.pathname.includes('/static/') ||
-            url.pathname.includes('/socket.io') ||  // WebSocket infrastructure
-            url.pathname.includes('/_next/') ||      // Next.js internals
-            url.pathname.includes('/__webpack') ||   // Webpack hot reload
-            url.pathname.includes('/favicon') ||     // Favicons
-            url.pathname.includes('/manifest.json')) continue;
+        if (
+          url.pathname.includes('/assets/') ||
+          url.pathname.includes('/i18n/') ||
+          url.pathname.includes('/static/') ||
+          url.pathname.includes('/socket.io') || // WebSocket infrastructure
+          url.pathname.includes('/_next/') || // Next.js internals
+          url.pathname.includes('/__webpack') || // Webpack hot reload
+          url.pathname.includes('/favicon') || // Favicons
+          url.pathname.includes('/manifest.json')
+        )
+          continue;
 
         // 1. Parametri din Query String pentru cereri API
         if (resourceType === 'xhr' || resourceType === 'fetch') {
           url.searchParams.forEach((value, key) => {
             const priority = this.calculateEndpointPriority(url, key);
-            
+
             // Skip technical/infrastructure parameters
             if (['EIO', 'transport', 'sid', 't', '__t'].includes(key)) return;
-            
+
             surfaces.push({
               id: `api-query-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
               type: AttackSurfaceType.API_PARAM,
@@ -611,8 +657,8 @@ export class DomExplorer {
                 method,
                 parameterType: 'query',
                 resourceType,
-                priority
-              }
+                priority,
+              },
             });
           });
         }
@@ -622,10 +668,10 @@ export class DomExplorer {
           const postData = request.postDataJSON();
           if (postData) {
             const flattened = this.flattenJson(postData);
-            
+
             // ENHANCEMENT: Capture request headers for replay
             const headers = request.headers();
-            
+
             for (const [key, value] of Object.entries(flattened)) {
               // Ignoră valori complexe sau nule
               if (typeof value === 'object' || value === null) continue;
@@ -645,8 +691,8 @@ export class DomExplorer {
                   originalKey: key, // Păstrăm cheia originală (dot notation)
                   originalBody: postData, // Store original body for reconstruction
                   headers, // Store headers for proper replay
-                  priority
-                }
+                  priority,
+                },
               });
             }
           }
@@ -655,7 +701,7 @@ export class DomExplorer {
         // Ignorăm erorile de parsing pentru cereri individuale
       }
     }
-    
+
     this.logger.debug(`Discovered ${surfaces.length} API attack surfaces`);
     return surfaces;
   }
@@ -691,24 +737,32 @@ export class DomExplorer {
 
     try {
       const formElements = await page.$$('form');
-      
+
       for (const form of formElements) {
         const action = (await form.getAttribute('action')) || page.url();
         const method = ((await form.getAttribute('method')) || 'GET').toUpperCase();
-        
+
         const inputs: AttackSurface[] = [];
         const inputElements = await form.$$('input, textarea, select');
-        
+
         for (let i = 0; i < inputElements.length; i++) {
           const input = inputElements[i];
           if (!input) continue;
           const name = await input.getAttribute('name');
-          const type = await input.getAttribute('type') || 'text';
-          const value = await input.getAttribute('value') || '';
-          
+          const type = (await input.getAttribute('type')) || 'text';
+          const value = (await input.getAttribute('value')) || '';
+
           if (name && type !== 'submit' && type !== 'button') {
             // Skip ASP.NET infrastructure fields
-            if (['__VIEWSTATE', '__EVENTVALIDATION', '__EVENTTARGET', '__EVENTARGUMENT', '__VIEWSTATEGENERATOR'].includes(name)) {
+            if (
+              [
+                '__VIEWSTATE',
+                '__EVENTVALIDATION',
+                '__EVENTTARGET',
+                '__EVENTARGUMENT',
+                '__VIEWSTATEGENERATOR',
+              ].includes(name)
+            ) {
               continue;
             }
 
@@ -730,7 +784,7 @@ export class DomExplorer {
         }
 
         const submitButton = await form.$('button[type="submit"], input[type="submit"]');
-        
+
         forms.push({
           action,
           method,
@@ -752,10 +806,10 @@ export class DomExplorer {
    */
   private async discoverFormInputs(page: Page): Promise<AttackSurface[]> {
     const surfaces: AttackSurface[] = [];
-    
+
     // 1. Standard HTML forms
     const forms = await this.discoverForms(page);
-    forms.forEach(form => {
+    forms.forEach((form) => {
       surfaces.push(...form.inputs);
     });
 
@@ -773,23 +827,25 @@ export class DomExplorer {
    */
   private async discoverSPAInputs(page: Page): Promise<AttackSurface[]> {
     const surfaces: AttackSurface[] = [];
-    
+
     try {
       // Angular reactive forms
       const angularInputs = await page.$$('[formControlName], [formcontrolname]');
       for (let i = 0; i < angularInputs.length; i++) {
         const input = angularInputs[i];
         if (!input) continue;
-        
+
         const isVisible = await input.isVisible().catch(() => false);
         if (!isVisible) continue;
-        
-        const formControlName = await input.getAttribute('formControlName') || 
-                                await input.getAttribute('formcontrolname') || '';
-        const type = await input.getAttribute('type') || 'text';
+
+        const formControlName =
+          (await input.getAttribute('formControlName')) ||
+          (await input.getAttribute('formcontrolname')) ||
+          '';
+        const type = (await input.getAttribute('type')) || 'text';
         const value = await input.inputValue().catch(() => '');
-        const placeholder = await input.getAttribute('placeholder') || '';
-        
+        const placeholder = (await input.getAttribute('placeholder')) || '';
+
         if (formControlName && type !== 'submit' && type !== 'button') {
           surfaces.push({
             id: `spa-input-angular-${i}`,
@@ -818,28 +874,34 @@ export class DomExplorer {
           value: string;
           id: string;
         }> = [];
-        
+
         // Find all inputs, textareas, selects
         const allInputs = document.querySelectorAll('input, textarea, select');
         allInputs.forEach((el, idx) => {
           // Check for Angular bindings in attributes
-          const hasNgModel = Array.from(el.attributes).some(attr => 
-            attr.name.includes('ngmodel') || 
-            attr.name.includes('ng-model') ||
-            attr.name === '[(ngmodel)]' ||
-            attr.name === '[ngmodel]'
+          const hasNgModel = Array.from(el.attributes).some(
+            (attr) =>
+              attr.name.includes('ngmodel') ||
+              attr.name.includes('ng-model') ||
+              attr.name === '[(ngmodel)]' ||
+              attr.name === '[ngmodel]'
           );
-          
-          if (hasNgModel || el.hasAttribute('formControlName') || el.hasAttribute('formcontrolname')) {
-            const name = el.getAttribute('name') || 
-                        el.getAttribute('id') ||
-                        el.getAttribute('formControlName') ||
-                        el.getAttribute('formcontrolname') ||
-                        el.getAttribute('aria-label') ||
-                        `input-${idx}`;
+
+          if (
+            hasNgModel ||
+            el.hasAttribute('formControlName') ||
+            el.hasAttribute('formcontrolname')
+          ) {
+            const name =
+              el.getAttribute('name') ||
+              el.getAttribute('id') ||
+              el.getAttribute('formControlName') ||
+              el.getAttribute('formcontrolname') ||
+              el.getAttribute('aria-label') ||
+              `input-${idx}`;
             const type = el.getAttribute('type') || 'text';
             const id = el.id || `ng-input-${idx}`;
-            
+
             // Build a unique selector
             let selector = '';
             if (el.id) {
@@ -849,17 +911,17 @@ export class DomExplorer {
             } else {
               selector = `input:nth-of-type(${idx + 1})`;
             }
-            
+
             inputs.push({
               selector,
               name,
               type,
               value: (el as HTMLInputElement).value || '',
-              id
+              id,
             });
           }
         });
-        
+
         return inputs;
       });
 
@@ -867,10 +929,10 @@ export class DomExplorer {
         const type = inputInfo.type;
         if (type !== 'submit' && type !== 'button') {
           // Check if already captured via formControlName
-          const alreadyCaptured = surfaces.some(s => 
-            s.name === inputInfo.name && s.metadata?.['framework'] === 'Angular'
+          const alreadyCaptured = surfaces.some(
+            (s) => s.name === inputInfo.name && s.metadata?.['framework'] === 'Angular'
           );
-          
+
           if (!alreadyCaptured) {
             const element = await page.$(inputInfo.selector).catch(() => null);
             surfaces.push({
@@ -895,25 +957,26 @@ export class DomExplorer {
       for (let i = 0; i < allVisibleInputs.length; i++) {
         const input = allVisibleInputs[i];
         if (!input) continue;
-        
+
         const isEditable = await input.isEditable().catch(() => false);
         if (!isEditable) continue;
-        
-        const name = await input.getAttribute('name') || 
-                     await input.getAttribute('id') ||
-                     await input.getAttribute('data-testid') ||
-                     await input.getAttribute('aria-label') ||
-                     `input-${i}`;
-        const type = await input.getAttribute('type') || 'text';
+
+        const name =
+          (await input.getAttribute('name')) ||
+          (await input.getAttribute('id')) ||
+          (await input.getAttribute('data-testid')) ||
+          (await input.getAttribute('aria-label')) ||
+          `input-${i}`;
+        const type = (await input.getAttribute('type')) || 'text';
         const value = await input.inputValue().catch(() => '');
-        
+
         // Skip submit/button types and already captured
         if (type === 'submit' || type === 'button' || type === 'hidden') continue;
-        
+
         // Check if already captured
-        const alreadyCaptured = surfaces.some(s => s.name === name);
+        const alreadyCaptured = surfaces.some((s) => s.name === name);
         if (alreadyCaptured) continue;
-        
+
         surfaces.push({
           id: `spa-input-generic-${i}`,
           type: AttackSurfaceType.FORM_INPUT,
@@ -933,7 +996,7 @@ export class DomExplorer {
     } catch (error) {
       this.logger.debug(`Error discovering SPA inputs: ${error}`);
     }
-    
+
     return surfaces;
   }
 
@@ -946,7 +1009,7 @@ export class DomExplorer {
     try {
       const currentUrl = page.url();
       const url = new URL(currentUrl);
-      
+
       // 1. Standard URL parameters
       let index = 0;
       url.searchParams.forEach((value, key) => {
@@ -960,7 +1023,7 @@ export class DomExplorer {
           metadata: {
             url: page.url(),
             parameterName: key,
-            source: 'query'
+            source: 'query',
           },
         });
       });
@@ -972,22 +1035,22 @@ export class DomExplorer {
         if (hashQuery) {
           const hashParams = new URLSearchParams(hashQuery);
           hashParams.forEach((value, key) => {
-             this.logger.info(`[DomExplorer] Found hash param: ${key}=${value}`);
-             // Avoid duplicates if same param is in both
-             if (!surfaces.some(s => s.name === key)) {
-                surfaces.push({
-                  id: `url-param-hash-${index++}`,
-                  type: AttackSurfaceType.URL_PARAMETER,
-                  name: key,
-                  value,
-                  context: InjectionContext.URL,
-                  metadata: {
-                    url: page.url(),
-                    parameterName: key,
-                    source: 'hash'
-                  },
-                });
-             }
+            this.logger.info(`[DomExplorer] Found hash param: ${key}=${value}`);
+            // Avoid duplicates if same param is in both
+            if (!surfaces.some((s) => s.name === key)) {
+              surfaces.push({
+                id: `url-param-hash-${index++}`,
+                type: AttackSurfaceType.URL_PARAMETER,
+                name: key,
+                value,
+                context: InjectionContext.URL,
+                metadata: {
+                  url: page.url(),
+                  parameterName: key,
+                  source: 'hash',
+                },
+              });
+            }
           });
         }
       }
@@ -1149,7 +1212,4 @@ export class DomExplorer {
         s.type === AttackSurfaceType.URL_PARAMETER
     );
   }
-
-
-
 }

@@ -1,7 +1,7 @@
 /**
  * Kinetic Security Scanner
  * High-performance Dynamic Application Security Testing (DAST) Engine powered by Playwright
- * 
+ *
  * @packageDocumentation
  */
 
@@ -41,8 +41,17 @@ export { VerificationEngine } from './core/verification/VerificationEngine';
 export * from './types/verification';
 
 // NEW: Response Analysis
-export { ResponseAnalyzer, type ResponseVulnerability, type ResponseAnalyzerConfig } from './core/analysis/ResponseAnalyzer';
+export {
+  ResponseAnalyzer,
+  type ResponseVulnerability,
+  type ResponseAnalyzerConfig,
+} from './core/analysis/ResponseAnalyzer';
 
 // NEW: SPA Content Waiting
-export { SPAContentWaiter, SPAFramework, waitForSPAContent, type FrameworkDetection, type SPAWaitConfig } from './utils/spa/SPAContentWaiter';
-
+export {
+  SPAContentWaiter,
+  SPAFramework,
+  waitForSPAContent,
+  type FrameworkDetection,
+  type SPAWaitConfig,
+} from './utils/spa/SPAContentWaiter';

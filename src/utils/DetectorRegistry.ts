@@ -11,19 +11,19 @@ import { Logger } from './logger/Logger';
 export interface DetectorMetadata {
   /** Unique detector ID */
   id: string;
-  
+
   /** Detector name */
   name: string;
-  
+
   /** Detector type */
   type: 'active' | 'passive';
-  
+
   /** Detector category (sql, xss, headers, etc.) */
   category: string;
-  
+
   /** Detector description */
   description: string;
-  
+
   /** Whether enabled by default */
   enabledByDefault: boolean;
 }
@@ -35,10 +35,16 @@ export interface DetectorMetadata {
 export class DetectorRegistry {
   private static instance: DetectorRegistry;
   private logger: Logger;
-  
+
   // Registered detectors with metadata
-  private activeDetectors = new Map<string, { detector: IActiveDetector; metadata: DetectorMetadata }>();
-  private passiveDetectors = new Map<string, { detector: IPassiveDetector; metadata: DetectorMetadata }>();
+  private activeDetectors = new Map<
+    string,
+    { detector: IActiveDetector; metadata: DetectorMetadata }
+  >();
+  private passiveDetectors = new Map<
+    string,
+    { detector: IPassiveDetector; metadata: DetectorMetadata }
+  >();
 
   private constructor() {
     this.logger = new Logger(LogLevel.INFO, 'DetectorRegistry');
@@ -112,7 +118,7 @@ export class DetectorRegistry {
 
       // Check if matches enabled patterns
       const isEnabled = this.matchesPatterns(id, metadata, enabledPatterns);
-      
+
       if (isEnabled) {
         detectors.push(detector);
         this.logger.debug(`Detector ${id} enabled`);
@@ -128,11 +134,7 @@ export class DetectorRegistry {
   /**
    * Check if detector matches enabled patterns
    */
-  private matchesPatterns(
-    id: string,
-    metadata: DetectorMetadata,
-    patterns: string[]
-  ): boolean {
+  private matchesPatterns(id: string, metadata: DetectorMetadata, patterns: string[]): boolean {
     // If '*' is present, enable all
     if (patterns.includes('*')) {
       return true;
@@ -172,7 +174,7 @@ export class DetectorRegistry {
     const regexPattern = pattern
       .replace(/[.+^${}()|[\]\\]/g, '\\$&') // Escape regex special chars
       .replace(/\*/g, '.*'); // Replace * with .*
-    
+
     const regex = new RegExp(`^${regexPattern}$`);
     return regex.test(value);
   }
@@ -193,10 +195,10 @@ export class DetectorRegistry {
   public getDetectorMetadata(id: string): DetectorMetadata | undefined {
     const active = this.activeDetectors.get(id);
     if (active) return active.metadata;
-    
+
     const passive = this.passiveDetectors.get(id);
     if (passive) return passive.metadata;
-    
+
     return undefined;
   }
 
@@ -205,15 +207,15 @@ export class DetectorRegistry {
    */
   public listDetectors(): DetectorMetadata[] {
     const all: DetectorMetadata[] = [];
-    
+
     for (const { metadata } of this.activeDetectors.values()) {
       all.push(metadata);
     }
-    
+
     for (const { metadata } of this.passiveDetectors.values()) {
       all.push(metadata);
     }
-    
+
     return all.sort((a, b) => a.id.localeCompare(b.id));
   }
 

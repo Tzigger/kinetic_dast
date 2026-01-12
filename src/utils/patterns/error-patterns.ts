@@ -11,32 +11,32 @@ export const SQL_ERROR_PATTERNS = [
   /syntax error.*?SQL/i,
   /unclosed quotation mark/i,
   /quoted string not properly terminated/i,
-  
+
   // MySQL
   /mysql_fetch_array\(\)/i,
   /mysql_fetch_assoc\(\)/i,
   /mysql_num_rows\(\)/i,
   /You have an error in your SQL syntax/i,
   /supplied argument is not a valid MySQL/i,
-  
+
   // PostgreSQL
   /PostgreSQL.*?ERROR/i,
   /pg_query\(\)/i,
   /pg_exec\(\)/i,
   /unterminated quoted string/i,
-  
+
   // MSSQL
   /Microsoft SQL Server/i,
   /ODBC SQL Server Driver/i,
   /SQLServer JDBC Driver/i,
   /OLE DB.*?SQL Server/i,
   /Unclosed quotation mark after the character string/i,
-  
+
   // Oracle
   /ORA-\d{5}/i,
   /Oracle.*?Driver/i,
   /oracle\.jdbc/i,
-  
+
   // SQLite
   /SQLite\/JDBCDriver/i,
   /System\.Data\.SQLite/i,
@@ -75,25 +75,25 @@ export const STACK_TRACE_PATTERNS = [
   // Python
   /Traceback \(most recent call last\)/i,
   /File ".*?", line \d+/i,
-  
+
   // Java
   /at java\./i,
   /at javax\./i,
   /at org\./i,
   /\.java:\d+\)/i,
   /Exception in thread/i,
-  
+
   // .NET
   /at System\./i,
   /\.cs:line \d+/i,
   /Server Error in '\/'/i,
-  
+
   // PHP
   /Fatal error:/i,
   /Warning:/i,
   /on line \d+ in/i,
   /Call Stack:/i,
-  
+
   // Node.js
   /at [A-Za-z]+\s+\(.*?:\d+:\d+\)/i,
   /at Module\./i,
@@ -106,7 +106,7 @@ export const PATH_DISCLOSURE_PATTERNS = [
   // Windows paths
   /[A-Z]:\\[^<>"']+/i,
   /\\\\[A-Za-z0-9_.-]+\\/i,
-  
+
   // Unix paths
   /\/(?:home|usr|var|etc)\/[^\s<>"']+/i,
   /\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\//i,
@@ -163,7 +163,7 @@ export const ALL_ERROR_PATTERNS = [
  * Check if text contains error patterns
  */
 export function containsErrorPattern(text: string): boolean {
-  return ALL_ERROR_PATTERNS.some(pattern => pattern.test(text));
+  return ALL_ERROR_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 /**
@@ -171,14 +171,14 @@ export function containsErrorPattern(text: string): boolean {
  */
 export function findErrorPatterns(text: string): { pattern: RegExp; matches: string[] }[] {
   const results: { pattern: RegExp; matches: string[] }[] = [];
-  
+
   for (const pattern of ALL_ERROR_PATTERNS) {
     const matches = text.match(pattern);
     if (matches && matches.length > 0) {
       results.push({ pattern, matches });
     }
   }
-  
+
   return results;
 }
 
@@ -186,20 +186,20 @@ export function findErrorPatterns(text: string): { pattern: RegExp; matches: str
  * Check if text contains error patterns (permissive mode)
  */
 export function containsErrorPatternPermissive(text: string): boolean {
-  return containsErrorPattern(text) || BWAPP_SQL_PATTERNS.some(pattern => pattern.test(text));
+  return containsErrorPattern(text) || BWAPP_SQL_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 /**
  * Categorize error type
  */
 export function categorizeError(text: string): string | null {
-  if (SQL_ERROR_PATTERNS.some(p => p.test(text))) return 'SQL Error';
-  if (STACK_TRACE_PATTERNS.some(p => p.test(text))) return 'Stack Trace';
-  if (PATH_DISCLOSURE_PATTERNS.some(p => p.test(text))) return 'Path Disclosure';
-  if (DATABASE_ERROR_PATTERNS.some(p => p.test(text))) return 'Database Error';
-  if (AUTH_ERROR_PATTERNS.some(p => p.test(text))) return 'Authentication Error';
-  if (COMMAND_INJECTION_ERROR_PATTERNS.some(p => p.test(text))) return 'Command Injection';
-  if (APPLICATION_ERROR_PATTERNS.some(p => p.test(text))) return 'Application Error';
-  
+  if (SQL_ERROR_PATTERNS.some((p) => p.test(text))) return 'SQL Error';
+  if (STACK_TRACE_PATTERNS.some((p) => p.test(text))) return 'Stack Trace';
+  if (PATH_DISCLOSURE_PATTERNS.some((p) => p.test(text))) return 'Path Disclosure';
+  if (DATABASE_ERROR_PATTERNS.some((p) => p.test(text))) return 'Database Error';
+  if (AUTH_ERROR_PATTERNS.some((p) => p.test(text))) return 'Authentication Error';
+  if (COMMAND_INJECTION_ERROR_PATTERNS.some((p) => p.test(text))) return 'Command Injection';
+  if (APPLICATION_ERROR_PATTERNS.some((p) => p.test(text))) return 'Application Error';
+
   return null;
 }

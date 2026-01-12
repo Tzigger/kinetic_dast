@@ -76,9 +76,9 @@ export class Logger {
     const timestamp = new Date().toISOString();
     const levelStr = level.toUpperCase().padEnd(5);
     const prefixStr = this.prefix ? `[${this.prefix}] ` : '';
-    
+
     const formattedMessage = `${timestamp} ${levelStr} ${prefixStr}${message}`;
-    
+
     switch (level) {
       case LogLevel.ERROR:
         console.error(formattedMessage, ...args);
@@ -99,7 +99,7 @@ export class Logger {
     const levels = [LogLevel.ERROR, LogLevel.WARN, LogLevel.INFO, LogLevel.DEBUG];
     const currentLevelIndex = levels.indexOf(this.level);
     const messageLevelIndex = levels.indexOf(messageLevel);
-    
+
     return messageLevelIndex <= currentLevelIndex;
   }
 }

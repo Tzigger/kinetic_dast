@@ -71,7 +71,7 @@ export class HeaderSecurityDetector implements IPassiveDetector {
         name: 'x-frame-options',
         severity: VulnerabilitySeverity.MEDIUM,
         description: 'X-Frame-Options header missing - vulnerable to clickjacking attacks',
-        remediation: "Add X-Frame-Options header with: DENY or SAMEORIGIN",
+        remediation: 'Add X-Frame-Options header with: DENY or SAMEORIGIN',
         cwe: 'CWE-1021',
       },
       {
@@ -157,7 +157,9 @@ export class HeaderSecurityDetector implements IPassiveDetector {
         vulnerabilities.push(...csrfVulns);
       }
 
-      this.logger.info(`Security headers detection completed. Found ${vulnerabilities.length} issues`);
+      this.logger.info(
+        `Security headers detection completed. Found ${vulnerabilities.length} issues`
+      );
     } catch (error) {
       this.logger.error(`Error during detection: ${error}`);
     }
@@ -174,15 +176,17 @@ export class HeaderSecurityDetector implements IPassiveDetector {
     try {
       // Verifică toate formularele din pagină
       const forms = await page.$$('form');
-      
+
       for (const form of forms) {
         const method = await form.getAttribute('method');
         if (method && method.toLowerCase() === 'post') {
           // Verifică dacă formularul are token CSRF
-          const hasCSRFToken = await form.$('input[name*="csrf"], input[name*="token"], input[name*="_token"]');
-          
+          const hasCSRFToken = await form.$(
+            'input[name*="csrf"], input[name*="token"], input[name*="_token"]'
+          );
+
           if (!hasCSRFToken) {
-            const action = await form.getAttribute('action') || 'unknown';
+            const action = (await form.getAttribute('action')) || 'unknown';
             vulnerabilities.push({
               id: uuidv4(),
               title: 'Absence of Anti-CSRF Tokens',
@@ -192,22 +196,23 @@ export class HeaderSecurityDetector implements IPassiveDetector {
               cwe: 'CWE-352',
               owasp: 'A01:2025',
               url: page.url(),
-              remediation: 'Implement CSRF token protection for all state-changing forms. Generate unique tokens per session and validate on server side.',
+              remediation:
+                'Implement CSRF token protection for all state-changing forms. Generate unique tokens per session and validate on server side.',
               evidence: {
                 description: 'Form without CSRF protection',
                 metadata: {
                   type: 'form',
                   action,
                   method,
-                  hasCSRFToken: false
-                }
+                  hasCSRFToken: false,
+                },
               },
               confidence: 0.9,
               timestamp: Date.now(),
               references: [
                 'https://cwe.mitre.org/data/definitions/352.html',
-                'https://owasp.org/Top10/A01_2025-Broken_Access_Control/'
-              ]
+                'https://owasp.org/Top10/A01_2025-Broken_Access_Control/',
+              ],
             });
           }
         }
@@ -239,20 +244,21 @@ export class HeaderSecurityDetector implements IPassiveDetector {
         cwe: 'CWE-942',
         owasp: 'A02:2025',
         url: response.url,
-        remediation: 'Configure CORS to allow specific origins only, or disable credentials for wildcard origins',
+        remediation:
+          'Configure CORS to allow specific origins only, or disable credentials for wildcard origins',
         evidence: {
           description: 'CORS misconfiguration detected',
           responseHeaders: {
             'access-control-allow-origin': acao || '',
-            'access-control-allow-credentials': acac || ''
-          }
+            'access-control-allow-credentials': acac || '',
+          },
         },
         confidence: 1.0,
         timestamp: Date.now(),
         references: [
           'https://cwe.mitre.org/data/definitions/942.html',
-          'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/'
-        ]
+          'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/',
+        ],
       });
     } else if (acao && acao !== response.url && !acao.includes(new URL(response.url).hostname)) {
       vulnerabilities.push({
@@ -267,14 +273,14 @@ export class HeaderSecurityDetector implements IPassiveDetector {
         remediation: 'Review and restrict CORS policy to trusted domains only',
         evidence: {
           description: 'Cross-domain CORS policy detected',
-          responseHeaders: { 'access-control-allow-origin': acao || '' }
+          responseHeaders: { 'access-control-allow-origin': acao || '' },
         },
         confidence: 0.8,
         timestamp: Date.now(),
         references: [
           'https://cwe.mitre.org/data/definitions/942.html',
-          'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/'
-        ]
+          'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/',
+        ],
       });
     }
 
@@ -310,17 +316,18 @@ export class HeaderSecurityDetector implements IPassiveDetector {
             cwe: 'CWE-829',
             owasp: 'A03:2025',
             url: response.url,
-            remediation: 'Host JavaScript files locally or use Subresource Integrity (SRI) hashes for external scripts',
+            remediation:
+              'Host JavaScript files locally or use Subresource Integrity (SRI) hashes for external scripts',
             evidence: {
               description: 'External JavaScript source detected',
-              metadata: { src: scriptSrc, domain: scriptUrl.hostname }
+              metadata: { src: scriptSrc, domain: scriptUrl.hostname },
             },
             confidence: 1.0,
             timestamp: Date.now(),
             references: [
               'https://cwe.mitre.org/data/definitions/829.html',
-              'https://owasp.org/Top10/A03_2025-Software_Supply_Chain_Failures/'
-            ]
+              'https://owasp.org/Top10/A03_2025-Software_Supply_Chain_Failures/',
+            ],
           });
         }
       } catch (e) {
@@ -339,9 +346,38 @@ export class HeaderSecurityDetector implements IPassiveDetector {
     const body = response.body || '';
 
     const vulnerableLibraries = [
-      { name: 'jquery', versions: ['1.0', '1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8', '1.9', '1.10', '1.11', '1.12', '2.0', '2.1', '2.2'], pattern: /jquery[/-]?(\d+\.\d+(?:\.\d+)?)/i },
-      { name: 'angular', versions: ['1.0', '1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7'], pattern: /angular(?:js)?[/-]?(\d+\.\d+(?:\.\d+)?)/i },
-      { name: 'bootstrap', versions: ['2.0', '2.1', '2.2', '2.3', '3.0', '3.1', '3.2', '3.3'], pattern: /bootstrap[/-]?(\d+\.\d+(?:\.\d+)?)/i },
+      {
+        name: 'jquery',
+        versions: [
+          '1.0',
+          '1.1',
+          '1.2',
+          '1.3',
+          '1.4',
+          '1.5',
+          '1.6',
+          '1.7',
+          '1.8',
+          '1.9',
+          '1.10',
+          '1.11',
+          '1.12',
+          '2.0',
+          '2.1',
+          '2.2',
+        ],
+        pattern: /jquery[/-]?(\d+\.\d+(?:\.\d+)?)/i,
+      },
+      {
+        name: 'angular',
+        versions: ['1.0', '1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7'],
+        pattern: /angular(?:js)?[/-]?(\d+\.\d+(?:\.\d+)?)/i,
+      },
+      {
+        name: 'bootstrap',
+        versions: ['2.0', '2.1', '2.2', '2.3', '3.0', '3.1', '3.2', '3.3'],
+        pattern: /bootstrap[/-]?(\d+\.\d+(?:\.\d+)?)/i,
+      },
     ];
 
     for (const lib of vulnerableLibraries) {
@@ -362,14 +398,14 @@ export class HeaderSecurityDetector implements IPassiveDetector {
             remediation: `Update ${lib.name} to the latest stable version`,
             evidence: {
               description: 'Vulnerable JavaScript library detected',
-              metadata: { library: lib.name, version }
+              metadata: { library: lib.name, version },
             },
             confidence: 0.9,
             timestamp: Date.now(),
             references: [
               'https://cwe.mitre.org/data/definitions/829.html',
-              'https://owasp.org/Top10/A03_2025-Software_Supply_Chain_Failures/'
-            ]
+              'https://owasp.org/Top10/A03_2025-Software_Supply_Chain_Failures/',
+            ],
           });
         }
       }
@@ -387,7 +423,10 @@ export class HeaderSecurityDetector implements IPassiveDetector {
 
     const suspiciousPatterns = [
       { pattern: /<!--.*?(?:TODO|FIXME|HACK|XXX|BUG|DEBUG).*?-->/gi, type: 'Development comments' },
-      { pattern: /<!--.*?(?:password|secret|key|token|api[_-]?key).*?-->/gi, type: 'Sensitive information' },
+      {
+        pattern: /<!--.*?(?:password|secret|key|token|api[_-]?key).*?-->/gi,
+        type: 'Sensitive information',
+      },
       { pattern: /<!--.*?(?:username|email|phone)\s*[:=].*?-->/gi, type: 'PII in comments' },
       { pattern: /\/\/.*?(?:TODO|FIXME|HACK|XXX|BUG|DEBUG)/gi, type: 'Development comments (JS)' },
     ];
@@ -407,14 +446,14 @@ export class HeaderSecurityDetector implements IPassiveDetector {
           remediation: 'Remove development comments and sensitive information from production code',
           evidence: {
             description: 'Suspicious comment found in source code',
-            metadata: { comment: match[0].substring(0, 200), commentType: type }
+            metadata: { comment: match[0].substring(0, 200), commentType: type },
           },
           confidence: 1.0,
           timestamp: Date.now(),
           references: [
             'https://cwe.mitre.org/data/definitions/615.html',
-            'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/'
-          ]
+            'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/',
+          ],
         });
       }
     }
@@ -437,7 +476,10 @@ export class HeaderSecurityDetector implements IPassiveDetector {
       { name: 'Google Font API', pattern: /fonts\.googleapis\.com/i },
       { name: 'Google Hosted Libraries', pattern: /ajax\.googleapis\.com/i },
       { name: 'jQuery', pattern: /jquery[/-]?\d+/i },
-      { name: 'jQuery CDN', pattern: /code\.jquery\.com|ajax\.googleapis\.com\/ajax\/libs\/jquery/i },
+      {
+        name: 'jQuery CDN',
+        pattern: /code\.jquery\.com|ajax\.googleapis\.com\/ajax\/libs\/jquery/i,
+      },
     ];
 
     // Check server header for Nginx
@@ -454,14 +496,14 @@ export class HeaderSecurityDetector implements IPassiveDetector {
         remediation: 'Consider hiding server version information',
         evidence: {
           description: 'Server version information detected',
-          responseHeaders: { 'server': headers['server'] || '' }
+          responseHeaders: { server: headers['server'] || '' },
         },
         confidence: 1.0,
         timestamp: Date.now(),
         references: [
           'https://cwe.mitre.org/data/definitions/200.html',
-          'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/'
-        ]
+          'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/',
+        ],
       });
     }
 
@@ -479,14 +521,14 @@ export class HeaderSecurityDetector implements IPassiveDetector {
           remediation: 'Ensure all third-party libraries are updated to latest secure versions',
           evidence: {
             description: 'Technology fingerprint detected',
-            metadata: { technology: tech.name }
+            metadata: { technology: tech.name },
           },
           confidence: 0.9,
           timestamp: Date.now(),
           references: [
             'https://cwe.mitre.org/data/definitions/200.html',
-            'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/'
-          ]
+            'https://owasp.org/Top10/A02_2025-Security_Misconfiguration/',
+          ],
         });
       }
     }
@@ -546,7 +588,7 @@ export class HeaderSecurityDetector implements IPassiveDetector {
     if (headers.has('strict-transport-security')) {
       const hstsValue = headers.get('strict-transport-security')!;
       const maxAgeMatch = hstsValue.match(/max-age=(\d+)/);
-      
+
       if (maxAgeMatch && maxAgeMatch[1]) {
         const maxAge = parseInt(maxAgeMatch[1]);
         if (maxAge < 31536000) {
@@ -581,7 +623,7 @@ export class HeaderSecurityDetector implements IPassiveDetector {
     // Verifică CSP weak/unsafe configuration
     if (headers.has('content-security-policy')) {
       const cspValue = headers.get('content-security-policy')!;
-      
+
       if (cspValue.includes("'unsafe-inline'") || cspValue.includes("'unsafe-eval'")) {
         vulnerabilities.push(
           this.createMisconfigurationVulnerability(

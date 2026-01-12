@@ -1,6 +1,6 @@
 /**
  * Page Vulnerability Scan Types
- * 
+ *
  * Types for targeted page scanning - scan only specified pages
  * instead of crawling the entire application.
  */
@@ -13,28 +13,28 @@ import { VulnerabilityCategory } from './enums';
 export interface PageTarget {
   /** URL or path to the page (e.g., '/login', '/register', 'http://example.com/login') */
   url: string;
-  
+
   /** Human-readable name for the page */
   name?: string;
-  
+
   /** Description of the page's purpose */
   description?: string;
-  
+
   /** Specific vulnerability categories to test on this page */
   testCategories?: ReadonlyArray<VulnerabilityCategory>;
-  
+
   /** Whether to fill forms before testing (default: true) */
   fillForms?: boolean;
-  
+
   /** Custom form values to use for this page */
   formValues?: Record<string, string>;
-  
+
   /** Wait condition before scanning */
   waitFor?: PageWaitCondition;
-  
+
   /** Actions to perform before scanning */
   preActions?: PageAction[];
-  
+
   /** Whether to include this page in scan (default: true) */
   enabled?: boolean;
 }
@@ -45,10 +45,10 @@ export interface PageTarget {
 export interface PageWaitCondition {
   /** Type of wait condition */
   type: 'selector' | 'navigation' | 'networkidle' | 'timeout' | 'function';
-  
+
   /** Value for the wait condition (selector, URL pattern, timeout ms, or function) */
   value?: string | number;
-  
+
   /** Timeout for the wait condition in ms */
   timeout?: number;
 }
@@ -59,16 +59,16 @@ export interface PageWaitCondition {
 export interface PageAction {
   /** Type of action */
   type: 'click' | 'fill' | 'select' | 'hover' | 'wait' | 'scroll' | 'navigate' | 'dismiss-dialog';
-  
+
   /** CSS selector for the target element */
   selector?: string;
-  
+
   /** Value for fill/select actions */
   value?: string;
-  
+
   /** Timeout for this action */
   timeout?: number;
-  
+
   /** Description of the action */
   description?: string;
 }
@@ -95,25 +95,25 @@ export interface BwappAuthConfig {
 export interface PageScanConfig {
   /** Base URL of the application */
   baseUrl: string;
-  
+
   /** Pages to scan */
   pages: PageTarget[];
-  
+
   /** Whether to scan pages in parallel (default: false for stability) */
   parallel?: boolean;
-  
+
   /** Global timeout for page operations in ms */
   pageTimeout?: number;
-  
+
   /** Delay between page scans in ms */
   delayBetweenPages?: number;
-  
+
   /** Whether to continue on page errors (default: true) */
   continueOnError?: boolean;
-  
+
   /** Global pre-scan actions (e.g., dismiss cookie banners) */
   globalPreActions?: PageAction[];
-  
+
   /** Authentication to perform before page scans */
   authentication?: PageAuthConfig;
 
@@ -127,10 +127,10 @@ export interface PageScanConfig {
 export interface PageAuthConfig {
   /** Login page URL */
   loginUrl: string;
-  
+
   /** Actions to perform authentication */
   loginActions: PageAction[];
-  
+
   /** Selector or URL to verify successful login */
   successIndicator?: {
     type: 'selector' | 'url';
@@ -144,25 +144,25 @@ export interface PageAuthConfig {
 export interface PageScanResult {
   /** Page that was scanned */
   page: PageTarget;
-  
+
   /** Whether the scan was successful */
   success: boolean;
-  
+
   /** Error message if scan failed */
   error?: string;
-  
+
   /** Number of vulnerabilities found on this page */
   vulnerabilityCount: number;
-  
+
   /** Time taken to scan this page in ms */
   duration: number;
-  
+
   /** Attack surfaces found on this page */
   attackSurfacesFound: number;
-  
+
   /** Forms found on this page */
   formsFound: number;
-  
+
   /** API calls intercepted */
   apiCallsIntercepted: number;
 }
@@ -173,19 +173,19 @@ export interface PageScanResult {
 export interface PageVulnerabilityScanResult {
   /** All page results */
   pageResults: PageScanResult[];
-  
+
   /** Total vulnerabilities found */
   totalVulnerabilities: number;
-  
+
   /** Pages successfully scanned */
   successfulPages: number;
-  
+
   /** Pages that failed */
   failedPages: number;
-  
+
   /** Total scan duration in ms */
   totalDuration: number;
-  
+
   /** Summary by page */
   summary: {
     pageName: string;
@@ -208,7 +208,7 @@ export const CommonPagePatterns = {
     { url: '/reset-password', name: 'Reset Password Page' },
     { url: '/logout', name: 'Logout Page' },
   ],
-  
+
   /** User profile pages */
   USER_PAGES: [
     { url: '/profile', name: 'Profile Page' },
@@ -216,7 +216,7 @@ export const CommonPagePatterns = {
     { url: '/account', name: 'Account Page' },
     { url: '/preferences', name: 'Preferences Page' },
   ],
-  
+
   /** Search and data entry */
   INPUT_PAGES: [
     { url: '/search', name: 'Search Page' },
@@ -224,7 +224,7 @@ export const CommonPagePatterns = {
     { url: '/feedback', name: 'Feedback Page' },
     { url: '/comment', name: 'Comment Page' },
   ],
-  
+
   /** E-commerce pages */
   ECOMMERCE_PAGES: [
     { url: '/cart', name: 'Shopping Cart' },
@@ -232,5 +232,4 @@ export const CommonPagePatterns = {
     { url: '/payment', name: 'Payment Page' },
     { url: '/order', name: 'Order Page' },
   ],
-  
 } as const;

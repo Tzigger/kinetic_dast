@@ -16,21 +16,21 @@ import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
  * Configuration for ActiveScanner
  */
 export interface ActiveScannerConfig {
-  maxDepth?: number;              // Maximum crawl depth
-  maxPages?: number;              // Maximum pages to scan
-  parallelism?: number;           // Number of parallel workers
-  delayBetweenRequests?: number;  // Delay between requests (ms)
-  followRedirects?: boolean;      // Follow redirects
-  respectRobotsTxt?: boolean;     // Respect robots.txt
-  userAgent?: string;             // Custom user agent
-  skipStaticResources?: boolean;  // Skip images, CSS, JS
+  maxDepth?: number; // Maximum crawl depth
+  maxPages?: number; // Maximum pages to scan
+  parallelism?: number; // Number of parallel workers
+  delayBetweenRequests?: number; // Delay between requests (ms)
+  followRedirects?: boolean; // Follow redirects
+  respectRobotsTxt?: boolean; // Respect robots.txt
+  userAgent?: string; // Custom user agent
+  skipStaticResources?: boolean; // Skip images, CSS, JS
   aggressiveness?: 'low' | 'medium' | 'high'; // Aggressiveness level
-  safeMode?: boolean;             // Explicit safe mode override
+  safeMode?: boolean; // Explicit safe mode override
 }
 
 /**
  * ActiveScanner - Active scanner that injects payloads to detect vulnerabilities
- * 
+ *
  * Features v0.2+:
  * - Smart Timeout Management (Anti-Hang)
  * - SPA Wait Strategy (Angular/React support)
@@ -43,7 +43,8 @@ export class ActiveScanner extends BaseScanner {
   public readonly name = 'Active Scanner';
   public readonly version = '1.1.0';
   public readonly type = 'active' as const;
-  public readonly description = 'Active scanner with payload injection, fuzzing, and smart SPA navigation';
+  public readonly description =
+    'Active scanner with payload injection, fuzzing, and smart SPA navigation';
 
   private config: ActiveScannerConfig;
   private detectors: Map<string, IActiveDetector> = new Map();
@@ -71,9 +72,9 @@ export class ActiveScanner extends BaseScanner {
 
     this.domExplorer = new DomExplorer(LogLevel.INFO);
     // Use Singleton instances to ensure shared state across the application
-    this.verificationEngine = VerificationEngine.getInstance(); 
-    this.timeoutManager = getGlobalTimeoutManager(); 
-    this.spaWaitStrategy = getGlobalSPAWaitStrategy(); 
+    this.verificationEngine = VerificationEngine.getInstance();
+    this.timeoutManager = getGlobalTimeoutManager();
+    this.spaWaitStrategy = getGlobalSPAWaitStrategy();
     this.sessionManager = new SessionManager(LogLevel.INFO);
   }
 
@@ -89,7 +90,7 @@ export class ActiveScanner extends BaseScanner {
   protected override async onInitialize(): Promise<void> {
     const context = this.getContext();
     context.logger.info('Initializing ActiveScanner');
-    
+
     this.visitedUrls.clear();
     this.crawlQueue = [];
 
@@ -102,19 +103,19 @@ export class ActiveScanner extends BaseScanner {
     // Configure Session Manager from Config
     const authConfig = context.config.target.authentication;
     if (authConfig?.credentials && authConfig.credentials.username) {
-        this.sessionManager.configure(
-            authConfig.loginPage?.url || context.config.target.url,
-            authConfig.credentials.username,
-            authConfig.credentials.password || ''
-        );
-        context.logger.info('Session Manager configured with credentials.');
+      this.sessionManager.configure(
+        authConfig.loginPage?.url || context.config.target.url,
+        authConfig.credentials.username,
+        authConfig.credentials.password || ''
+      );
+      context.logger.info('Session Manager configured with credentials.');
     }
 
     // Configure Timeout Manager based on aggressiveness
     if (this.config.aggressiveness === 'high') {
-        this.timeoutManager.usePreset('thorough');
+      this.timeoutManager.usePreset('thorough');
     } else {
-        this.timeoutManager.usePreset('default');
+      this.timeoutManager.usePreset('default');
     }
 
     // Validate detectors and apply tuning
@@ -142,40 +143,44 @@ export class ActiveScanner extends BaseScanner {
   public async execute(): Promise<ScanResult> {
     const context = this.getContext();
     const { page, config } = context;
-    
+
     const currentUrl = page.url();
     const targetUrl = currentUrl && currentUrl !== 'about:blank' ? currentUrl : config.target.url;
 
     context.logger.info(`Starting active scan on: ${targetUrl}`);
     const allVulnerabilities: Vulnerability[] = [];
-    
+
     // 1. Attempt Auto-Login if configured
     const loginSuccess = await this.sessionManager.performAutoLogin(page);
 
     const authConfig = context.config.target.authentication;
     if (authConfig?.credentials && !loginSuccess) {
-         context.logger.error('Auto-login failed.');
-         if (context.interactionHandler) {
-             const continueScan = await context.interactionHandler.askQuestion('Login failed. Do you want to continue the scan without authentication?');
-             if (!continueScan) {
-                 throw new Error('Scan aborted by user due to login failure.');
-             }
-         } else {
-             context.logger.warn('Login failed. Continuing scan without authentication.');
-         }
+      context.logger.error('Auto-login failed.');
+      if (context.interactionHandler) {
+        const continueScan = await context.interactionHandler.askQuestion(
+          'Login failed. Do you want to continue the scan without authentication?'
+        );
+        if (!continueScan) {
+          throw new Error('Scan aborted by user due to login failure.');
+        }
+      } else {
+        context.logger.warn('Login failed. Continuing scan without authentication.');
+      }
     }
 
     if (loginSuccess) {
-        const postLoginUrl = page.url();
-        // If redirected to a new page (e.g. dashboard), add it to queue
-        if (postLoginUrl !== targetUrl && this.isValidUrl(postLoginUrl, targetUrl)) {
-            context.logger.info(`Auto-login successful. Redirected to ${postLoginUrl}. Adding to crawl queue.`);
-            this.crawlQueue.push({ url: postLoginUrl, depth: 0 });
-        }
+      const postLoginUrl = page.url();
+      // If redirected to a new page (e.g. dashboard), add it to queue
+      if (postLoginUrl !== targetUrl && this.isValidUrl(postLoginUrl, targetUrl)) {
+        context.logger.info(
+          `Auto-login successful. Redirected to ${postLoginUrl}. Adding to crawl queue.`
+        );
+        this.crawlQueue.push({ url: postLoginUrl, depth: 0 });
+      }
     }
 
     this.crawlQueue.push({ url: targetUrl, depth: 0 });
-    
+
     // --- PARALLEL CRAWLING LOGIC ---
     const parallelism = this.config.parallelism || context.config.advanced?.parallelism || 1;
     context.logger.info(`Running active scan with parallelism: ${parallelism}`);
@@ -183,78 +188,81 @@ export class ActiveScanner extends BaseScanner {
     const pages: Page[] = [];
     // Use the main page as the first worker
     pages.push(page);
-    
+
     // Create additional pages if needed
     if (parallelism > 1) {
-        for (let i = 1; i < parallelism; i++) {
-            try {
-                const newPage = await context.browserContext.newPage();
-                pages.push(newPage);
-            } catch (e) {
-                context.logger.error(`Failed to create worker page ${i}: ${e}`);
-            }
+      for (let i = 1; i < parallelism; i++) {
+        try {
+          const newPage = await context.browserContext.newPage();
+          pages.push(newPage);
+        } catch (e) {
+          context.logger.error(`Failed to create worker page ${i}: ${e}`);
         }
+      }
     }
 
     let activeWorkers = 0;
-    
-    const worker = async (workerPage: Page, id: number) => {
-        while (true) {
-            let item: { url: string; depth: number } | undefined;
-            
-            // Queue Management
-            if (this.crawlQueue.length > 0) {
-                item = this.crawlQueue.shift();
-            } else if (activeWorkers === 0) {
-                break; // No work left and no one is producing work
-            } else {
-                // Wait for work
-                await new Promise(r => setTimeout(r, 100));
-                continue;
-            }
-            
-            if (!item) continue;
-            
-            if (this.visitedUrls.has(item.url)) continue;
-            if (this.visitedUrls.size >= this.config.maxPages!) continue;
-            if (item.depth > this.config.maxDepth!) continue;
 
-            this.visitedUrls.add(item.url);
-            activeWorkers++;
-            
-            try {
-                const vulns = await this.processPage(workerPage, item.url, item.depth);
-                allVulnerabilities.push(...vulns);
-                vulns.forEach(v => context.emitVulnerability?.(v));
-            } catch (e) {
-                context.logger.error(`Worker ${id} failed on ${item.url}: ${e}`);
-            } finally {
-                activeWorkers--;
-            }
+    const worker = async (workerPage: Page, id: number) => {
+      while (true) {
+        let item: { url: string; depth: number } | undefined;
+
+        // Queue Management
+        if (this.crawlQueue.length > 0) {
+          item = this.crawlQueue.shift();
+        } else if (activeWorkers === 0) {
+          break; // No work left and no one is producing work
+        } else {
+          // Wait for work
+          await new Promise((r) => setTimeout(r, 100));
+          continue;
         }
+
+        if (!item) continue;
+
+        if (this.visitedUrls.has(item.url)) continue;
+        if (this.visitedUrls.size >= this.config.maxPages!) continue;
+        if (item.depth > this.config.maxDepth!) continue;
+
+        this.visitedUrls.add(item.url);
+        activeWorkers++;
+
+        try {
+          const vulns = await this.processPage(workerPage, item.url, item.depth);
+          allVulnerabilities.push(...vulns);
+          vulns.forEach((v) => context.emitVulnerability?.(v));
+        } catch (e) {
+          context.logger.error(`Worker ${id} failed on ${item.url}: ${e}`);
+        } finally {
+          activeWorkers--;
+        }
+      }
     };
 
     await Promise.all(pages.map((p, i) => worker(p, i)));
 
     // Cleanup extra pages (keep the main page open as it's managed by ScanEngine)
     if (pages.length > 1) {
-        for (let i = 1; i < pages.length; i++) {
-            const pageToClose = pages[i];
-            if (pageToClose) {
-                await pageToClose.close().catch(() => {});
-            }
+      for (let i = 1; i < pages.length; i++) {
+        const pageToClose = pages[i];
+        if (pageToClose) {
+          await pageToClose.close().catch(() => {});
         }
+      }
     }
 
-    context.logger.info(`Active scan completed. Found ${allVulnerabilities.length} vulnerabilities`);
-    
+    context.logger.info(
+      `Active scan completed. Found ${allVulnerabilities.length} vulnerabilities`
+    );
+
     const endTime = new Date();
     const duration = endTime.getTime() - this.startTime!.getTime();
 
     // Calculate summary
     const summary: VulnerabilitySummary = {
       total: allVulnerabilities.length,
-      critical: allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.CRITICAL).length,
+      critical: allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.CRITICAL)
+        .length,
       high: allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.HIGH).length,
       medium: allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.MEDIUM).length,
       low: allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.LOW).length,
@@ -265,7 +273,7 @@ export class ActiveScanner extends BaseScanner {
     const statistics: ScanStatistics = {
       totalRequests: this.visitedUrls.size,
       totalResponses: this.visitedUrls.size,
-      totalElements: 0, 
+      totalElements: 0,
       totalInputs: 0,
       totalPayloads: 0,
       pagesCrawled: this.visitedUrls.size,
@@ -319,7 +327,7 @@ export class ActiveScanner extends BaseScanner {
     // --- NAVIGATION LOGIC ---
     const currentPageUrl = page.url();
     const needsNavigation = currentPageUrl !== url;
-    
+
     if (needsNavigation) {
       try {
         const timeout = this.timeoutManager.getTimeout(OperationType.NAVIGATION);
@@ -338,20 +346,22 @@ export class ActiveScanner extends BaseScanner {
 
     // --- DEEP API DISCOVERY (JS Analysis) ---
     try {
-        const jsEndpoints = await this.domExplorer.extractEndpointsFromJS(page);
-        for (const endpoint of jsEndpoints) {
-            try {
-                const fullApiUrl = new URL(endpoint, url).toString();
-                if (!this.visitedUrls.has(fullApiUrl) && this.isValidUrl(fullApiUrl, targetUrl)) {
-                    if (!this.crawlQueue.some(item => item.url === fullApiUrl)) {
-                        this.crawlQueue.push({ url: fullApiUrl, depth: depth + 1 });
-                        context.logger.debug(`Added hidden JS endpoint to queue: ${endpoint}`);
-                    }
-                }
-            } catch (e) { /* invalid url construction */ }
+      const jsEndpoints = await this.domExplorer.extractEndpointsFromJS(page);
+      for (const endpoint of jsEndpoints) {
+        try {
+          const fullApiUrl = new URL(endpoint, url).toString();
+          if (!this.visitedUrls.has(fullApiUrl) && this.isValidUrl(fullApiUrl, targetUrl)) {
+            if (!this.crawlQueue.some((item) => item.url === fullApiUrl)) {
+              this.crawlQueue.push({ url: fullApiUrl, depth: depth + 1 });
+              context.logger.debug(`Added hidden JS endpoint to queue: ${endpoint}`);
+            }
+          }
+        } catch (e) {
+          /* invalid url construction */
         }
+      }
     } catch (e) {
-        context.logger.warn(`JS Endpoint discovery failed: ${e}`);
+      context.logger.warn(`JS Endpoint discovery failed: ${e}`);
     }
 
     page.off('request', requestListener);
@@ -363,60 +373,62 @@ export class ActiveScanner extends BaseScanner {
     if (hashRoutes.length > 0) {
       context.logger.info(`Found ${hashRoutes.length} hash routes`);
       const baseUrl = page.url().split('#')[0];
-      hashRoutes.forEach(route => {
+      hashRoutes.forEach((route) => {
         const fullUrl = baseUrl + route;
         if (!this.visitedUrls.has(fullUrl)) {
-           if (!this.crawlQueue.some(item => item.url === fullUrl)) {
-              this.crawlQueue.push({ url: fullUrl, depth: depth + 1 });
-           }
+          if (!this.crawlQueue.some((item) => item.url === fullUrl)) {
+            this.crawlQueue.push({ url: fullUrl, depth: depth + 1 });
+          }
         }
       });
     }
 
     // Discover DOM Surfaces
     let domSurfaces = await this.domExplorer.explore(page, capturedRequests);
-    
+
     // Retry logic for slow SPAs
     if (domSurfaces.length === 0) {
-        context.logger.info('No surfaces found initially, waiting for potential SPA hydration...');
-        await this.spaWaitStrategy.waitForStability(page, 3000, 'navigation');
+      context.logger.info('No surfaces found initially, waiting for potential SPA hydration...');
+      await this.spaWaitStrategy.waitForStability(page, 3000, 'navigation');
+      domSurfaces = await this.domExplorer.explore(page, capturedRequests);
+
+      if (domSurfaces.length === 0) {
+        await this.spaWaitStrategy.waitForStability(page, 2000, 'navigation');
         domSurfaces = await this.domExplorer.explore(page, capturedRequests);
-        
-        if (domSurfaces.length === 0) {
-             await this.spaWaitStrategy.waitForStability(page, 2000, 'navigation');
-             domSurfaces = await this.domExplorer.explore(page, capturedRequests);
-        }
+      }
     }
 
     let allSurfaces = [...domSurfaces];
 
     // --- SWAGGER DISCOVERY ---
     try {
-        const swaggerSurfaces = await this.domExplorer.discoverSwaggerEndpoints(page);
-        if (swaggerSurfaces.length > 0) {
-            context.logger.info(`Merging ${swaggerSurfaces.length} Swagger endpoints into attack surfaces`);
-            allSurfaces = [...allSurfaces, ...swaggerSurfaces];
-        }
+      const swaggerSurfaces = await this.domExplorer.discoverSwaggerEndpoints(page);
+      if (swaggerSurfaces.length > 0) {
+        context.logger.info(
+          `Merging ${swaggerSurfaces.length} Swagger endpoints into attack surfaces`
+        );
+        allSurfaces = [...allSurfaces, ...swaggerSurfaces];
+      }
     } catch (e) {
-        context.logger.warn(`Swagger discovery failed: ${e}`);
+      context.logger.warn(`Swagger discovery failed: ${e}`);
     }
-    
-    const attackSurfaces = allSurfaces.filter(s => 
+
+    const attackSurfaces = allSurfaces.filter((s) =>
       [
-        AttackSurfaceType.FORM_INPUT, 
-        AttackSurfaceType.URL_PARAMETER, 
-        AttackSurfaceType.COOKIE, 
-        AttackSurfaceType.API_PARAM, 
-        AttackSurfaceType.JSON_BODY, 
+        AttackSurfaceType.FORM_INPUT,
+        AttackSurfaceType.URL_PARAMETER,
+        AttackSurfaceType.COOKIE,
+        AttackSurfaceType.API_PARAM,
+        AttackSurfaceType.JSON_BODY,
         AttackSurfaceType.BUTTON,
-        AttackSurfaceType.API_ENDPOINT
+        AttackSurfaceType.API_ENDPOINT,
       ].includes(s.type)
     );
-    
+
     context.logger.info(`Found ${attackSurfaces.length} supported attack surfaces on ${url}`);
 
     // --- 1. HANDLE CLICKS (Interaction) ---
-    const clickables = attackSurfaces.filter(s => s.type === AttackSurfaceType.BUTTON);
+    const clickables = attackSurfaces.filter((s) => s.type === AttackSurfaceType.BUTTON);
     let clickCount = 0;
     const MAX_CLICKS_PER_PAGE = 5;
 
@@ -424,69 +436,85 @@ export class ActiveScanner extends BaseScanner {
       if (clickCount >= MAX_CLICKS_PER_PAGE) break;
       const clickId = `${url}-${clickable.name}-${clickable.metadata['text']}`;
       if (clickedElements.has(clickId)) continue;
-      
+
       if (clickable.element) {
         try {
           context.logger.debug(`Clicking element: ${clickable.name}`);
           clickedElements.add(clickId);
           clickCount++;
-          
+
           const clickRequests: Request[] = [];
-          const clickListener = (req: Request) => { if (['xhr', 'fetch'].includes(req.resourceType())) clickRequests.push(req); };
+          const clickListener = (req: Request) => {
+            if (['xhr', 'fetch'].includes(req.resourceType())) clickRequests.push(req);
+          };
           page.on('request', clickListener);
 
           await clickable.element.click({ timeout: 1000 }).catch(() => {});
           await this.spaWaitStrategy.waitForStability(page, 2000, 'api');
-          
+
           page.off('request', clickListener);
 
           // Check for new URL
           const newUrl = page.url();
-          if (newUrl !== url && !this.visitedUrls.has(newUrl) && this.isValidUrl(newUrl, targetUrl)) {
-             if (!this.crawlQueue.some(item => item.url === newUrl)) {
-                this.crawlQueue.push({ url: newUrl, depth: depth + 1 });
-             }
+          if (
+            newUrl !== url &&
+            !this.visitedUrls.has(newUrl) &&
+            this.isValidUrl(newUrl, targetUrl)
+          ) {
+            if (!this.crawlQueue.some((item) => item.url === newUrl)) {
+              this.crawlQueue.push({ url: newUrl, depth: depth + 1 });
+            }
           }
 
           // Add new API surfaces found via click
           if (clickRequests.length > 0) {
             context.logger.info(`Captured ${clickRequests.length} requests from interaction`);
             const newSurfaces = await this.domExplorer.explore(page, clickRequests);
-            const newApis = newSurfaces.filter(s => [AttackSurfaceType.API_PARAM, AttackSurfaceType.JSON_BODY].includes(s.type));
-            
+            const newApis = newSurfaces.filter((s) =>
+              [AttackSurfaceType.API_PARAM, AttackSurfaceType.JSON_BODY].includes(s.type)
+            );
+
             if (newApis.length > 0) {
-                context.logger.info(`Discovered ${newApis.length} new API attack surfaces`);
-                attackSurfaces.push(...newApis);
+              context.logger.info(`Discovered ${newApis.length} new API attack surfaces`);
+              attackSurfaces.push(...newApis);
             }
           }
-          
+
           // Restore if navigated away
           if (page.url() !== url) {
             await getGlobalRateLimiter().waitForToken();
             await page.goto(url, { waitUntil: 'domcontentloaded' });
           }
-
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
       }
     }
 
     // --- 2. RUN ACTIVE DETECTORS ---
-    const testableSurfaces = attackSurfaces.filter(s => s.type !== AttackSurfaceType.BUTTON);
+    const testableSurfaces = attackSurfaces.filter((s) => s.type !== AttackSurfaceType.BUTTON);
     const safeMode = this.config.safeMode ?? context.config.scanners.active?.safeMode ?? false;
-    
+
     for (const [name, detector] of this.detectors) {
       try {
         context.logger.debug(`Running detector: ${name}`);
-        const vulns = await detector.detect({ page, attackSurfaces: testableSurfaces, baseUrl: url, safeMode });
-        
+        const vulns = await detector.detect({
+          page,
+          attackSurfaces: testableSurfaces,
+          baseUrl: url,
+          safeMode,
+        });
+
         if (vulns.length > 0) {
-          context.logger.info(`Detector ${name} found ${vulns.length} potential vulnerabilities. Verifying...`);
-          
+          context.logger.info(
+            `Detector ${name} found ${vulns.length} potential vulnerabilities. Verifying...`
+          );
+
           const verifiedVulns: Vulnerability[] = [];
           for (const vuln of vulns) {
             // VERIFICATION ENGINE: Double-check results
             const result = await this.verificationEngine.verify(page, vuln, {
-                attemptTimeout: this.timeoutManager.getTimeout(OperationType.VERIFICATION)
+              attemptTimeout: this.timeoutManager.getTimeout(OperationType.VERIFICATION),
             });
 
             if (result.shouldReport) {
@@ -495,8 +523,10 @@ export class ActiveScanner extends BaseScanner {
               if (!vuln.evidence.metadata) vuln.evidence.metadata = {};
               (vuln.evidence.metadata as any).verificationStatus = result.status;
               (vuln.evidence.metadata as any).verificationReason = result.reason;
-              
-              context.logger.info(`[CONFIRMED] ${vuln.title} (Conf: ${result.confidence.toFixed(2)})`);
+
+              context.logger.info(
+                `[CONFIRMED] ${vuln.title} (Conf: ${result.confidence.toFixed(2)})`
+              );
               verifiedVulns.push(vuln);
             } else {
               context.logger.info(`[FALSE POSITIVE] Discarded ${vuln.title}: ${result.reason}`);
@@ -509,21 +539,30 @@ export class ActiveScanner extends BaseScanner {
         }
       } catch (error: any) {
         // ROBUSTNESS: Handle browser closed error gracefully
-        if (error.message && (error.message.includes('closed') || error.message.includes('destroyed'))) {
-            context.logger.error(`Browser context closed unexpectedly during ${name}. Attempting to recover next page...`);
-            break; 
+        if (
+          error.message &&
+          (error.message.includes('closed') || error.message.includes('destroyed'))
+        ) {
+          context.logger.error(
+            `Browser context closed unexpectedly during ${name}. Attempting to recover next page...`
+          );
+          break;
         }
         context.logger.error(`Detector ${name} failed: ${error}`);
       }
     }
 
     // 3. Discover new links for crawling
-    const links = attackSurfaces.filter(s => s.type === AttackSurfaceType.LINK);
+    const links = attackSurfaces.filter((s) => s.type === AttackSurfaceType.LINK);
     for (const link of links) {
-      if (link.value && !this.visitedUrls.has(link.value) && this.isValidUrl(link.value, targetUrl)) {
-         if (!this.crawlQueue.some(item => item.url === link.value)) {
-            this.crawlQueue.push({ url: link.value, depth: depth + 1 });
-         }
+      if (
+        link.value &&
+        !this.visitedUrls.has(link.value) &&
+        this.isValidUrl(link.value, targetUrl)
+      ) {
+        if (!this.crawlQueue.some((item) => item.url === link.value)) {
+          this.crawlQueue.push({ url: link.value, depth: depth + 1 });
+        }
       }
     }
 
@@ -548,7 +587,18 @@ export class ActiveScanner extends BaseScanner {
       }
 
       if (this.config.skipStaticResources) {
-        const staticExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.css', '.js', '.ico', '.svg', '.woff', '.ttf'];
+        const staticExtensions = [
+          '.jpg',
+          '.jpeg',
+          '.png',
+          '.gif',
+          '.css',
+          '.js',
+          '.ico',
+          '.svg',
+          '.woff',
+          '.ttf',
+        ];
         if (staticExtensions.some((ext) => urlObj.pathname.toLowerCase().endsWith(ext))) {
           return false;
         }

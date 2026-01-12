@@ -9,26 +9,26 @@ export const API_KEY_PATTERNS = [
   // Generic API keys
   /api[_-]?key['"]?\s*[:=]\s*['"]?([a-zA-Z0-9_\-]{20,})/gi,
   /apikey['"]?\s*[:=]\s*['"]?([a-zA-Z0-9_\-]{20,})/gi,
-  
+
   // AWS
   /AKIA[0-9A-Z]{16}/g,
   /aws[_-]?access[_-]?key[_-]?id['"]?\s*[:=]\s*['"]?([a-zA-Z0-9]{20})/gi,
   /aws[_-]?secret[_-]?access[_-]?key['"]?\s*[:=]\s*['"]?([a-zA-Z0-9/+=]{40})/gi,
-  
+
   // Google API
   /AIza[0-9A-Za-z\-_]{35}/g,
-  
+
   // GitHub
   /gh[pousr]_[0-9a-zA-Z]{36}/g,
   /github[_-]?token['"]?\s*[:=]\s*['"]?([a-zA-Z0-9_]{40})/gi,
-  
+
   // Stripe
   /sk_live_[0-9a-zA-Z]{24}/g,
   /pk_live_[0-9a-zA-Z]{24}/g,
-  
+
   // Slack
   /xox[baprs]-([0-9a-zA-Z]{10,48})/g,
-  
+
   // Twilio
   /SK[0-9a-fA-F]{32}/g,
 ];
@@ -46,9 +46,7 @@ export const PASSWORD_PATTERNS = [
 /**
  * Email patterns
  */
-export const EMAIL_PATTERNS = [
-  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
-];
+export const EMAIL_PATTERNS = [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g];
 
 /**
  * Phone number patterns - stricter to avoid false positives
@@ -99,9 +97,7 @@ export const PRIVATE_KEY_PATTERNS = [
 /**
  * JWT token patterns
  */
-export const JWT_PATTERNS = [
-  /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
-];
+export const JWT_PATTERNS = [/eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g];
 
 /**
  * Database connection strings

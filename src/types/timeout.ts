@@ -69,45 +69,45 @@ export interface TimeoutConfig {
  * Default timeout values
  */
 export const DEFAULT_TIMEOUTS: TimeoutConfig = {
-  global: 300000,        // 5 minutes
-  navigation: 30000,     // 30 seconds
-  networkIdle: 5000,     // 5 seconds
-  injection: 10000,      // 10 seconds
-  verification: 15000,   // 15 seconds
+  global: 300000, // 5 minutes
+  navigation: 30000, // 30 seconds
+  networkIdle: 5000, // 5 seconds
+  injection: 10000, // 10 seconds
+  verification: 15000, // 15 seconds
   spaStabilization: 3000, // 3 seconds
-  dialogWait: 1000,      // 1 second
-  formSubmit: 10000,     // 10 seconds
-  apiRequest: 10000,     // 10 seconds
+  dialogWait: 1000, // 1 second
+  formSubmit: 10000, // 10 seconds
+  apiRequest: 10000, // 10 seconds
 };
 
 /**
  * Aggressive (fast) timeout values for quick scans
  */
 export const FAST_TIMEOUTS: TimeoutConfig = {
-  global: 120000,        // 2 minutes
-  navigation: 15000,     // 15 seconds
-  networkIdle: 2000,     // 2 seconds
-  injection: 5000,       // 5 seconds
-  verification: 8000,    // 8 seconds
+  global: 120000, // 2 minutes
+  navigation: 15000, // 15 seconds
+  networkIdle: 2000, // 2 seconds
+  injection: 5000, // 5 seconds
+  verification: 8000, // 8 seconds
   spaStabilization: 1500, // 1.5 seconds
-  dialogWait: 500,       // 0.5 second
-  formSubmit: 5000,      // 5 seconds
-  apiRequest: 5000,      // 5 seconds
+  dialogWait: 500, // 0.5 second
+  formSubmit: 5000, // 5 seconds
+  apiRequest: 5000, // 5 seconds
 };
 
 /**
  * Conservative (thorough) timeout values
  */
 export const THOROUGH_TIMEOUTS: TimeoutConfig = {
-  global: 600000,        // 10 minutes
-  navigation: 60000,     // 60 seconds
-  networkIdle: 10000,    // 10 seconds
-  injection: 20000,      // 20 seconds
-  verification: 30000,   // 30 seconds
+  global: 600000, // 10 minutes
+  navigation: 60000, // 60 seconds
+  networkIdle: 10000, // 10 seconds
+  injection: 20000, // 20 seconds
+  verification: 30000, // 30 seconds
   spaStabilization: 5000, // 5 seconds
-  dialogWait: 2000,      // 2 seconds
-  formSubmit: 20000,     // 20 seconds
-  apiRequest: 20000,     // 20 seconds
+  dialogWait: 2000, // 2 seconds
+  formSubmit: 20000, // 20 seconds
+  apiRequest: 20000, // 20 seconds
 };
 
 /**

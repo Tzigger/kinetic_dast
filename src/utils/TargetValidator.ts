@@ -1,6 +1,6 @@
 /**
  * TargetValidator - Validates target URLs and enforces production guardrails
- * 
+ *
  * Prevents accidental scanning of production environments and enforces
  * safe mode on non-local targets.
  */
@@ -114,7 +114,7 @@ export class TargetValidator {
 
       this.logger.info(
         `Validated target: ${hostname} (${result.environment}) - ` +
-        `isLocal: ${result.isLocal}, isProduction: ${result.isProduction}`
+          `isLocal: ${result.isLocal}, isProduction: ${result.isProduction}`
       );
 
       return result;
@@ -169,13 +169,11 @@ export class TargetValidator {
     }
 
     // Block active scanning on production without explicit confirmation
-    if (
-      validation.isProduction &&
-      !options?.confirmProduction
-    ) {
+    if (validation.isProduction && !options?.confirmProduction) {
       return {
         shouldBlock: true,
-        reason: 'Active scanning blocked on production target. Set confirmProduction: true to override.',
+        reason:
+          'Active scanning blocked on production target. Set confirmProduction: true to override.',
       };
     }
 

@@ -38,13 +38,13 @@ export class SarifReporter extends BaseReporter {
           properties: { category: v.category, severity: v.severity },
         };
       }
-          const payload =
-            v.evidence?.payload ||
-            (v.evidence?.metadata ? (v.evidence.metadata as Record<string, unknown>)['payload'] : undefined) ||
-            v.evidence?.request?.body ||
-            v.evidence?.element?.payload;
+      const payload =
+        v.evidence?.payload ||
+        (v.evidence?.metadata ? v.evidence.metadata['payload'] : undefined) ||
+        v.evidence?.request?.body ||
+        v.evidence?.element?.payload;
 
-          return {
+      return {
         ruleId,
         level: this.severityToSarif(v.severity),
         message: { text: v.title },
@@ -52,7 +52,7 @@ export class SarifReporter extends BaseReporter {
         locations: [
           {
             physicalLocation: {
-                  artifactLocation: { uri: v.url || result.targetUrl },
+              artifactLocation: { uri: v.url || result.targetUrl },
             },
           },
         ],

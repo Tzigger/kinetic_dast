@@ -34,11 +34,14 @@ const BOOLEAN_PAYLOAD_PAIRS: Record<string, { truePayload: string; falsePayload:
   'sql-injection': [
     { truePayload: "' OR '1'='1", falsePayload: "' OR '1'='2" },
     { truePayload: "' OR 1=1--", falsePayload: "' OR 1=2--" },
-    { truePayload: "1 OR 1=1", falsePayload: "1 OR 1=2" },
+    { truePayload: '1 OR 1=1', falsePayload: '1 OR 1=2' },
     { truePayload: "1' AND '1'='1", falsePayload: "1' AND '1'='2" },
   ],
-  'xss': [
-    { truePayload: '<script>alert(1)</script>', falsePayload: '&lt;script&gt;alert(1)&lt;/script&gt;' },
+  xss: [
+    {
+      truePayload: '<script>alert(1)</script>',
+      falsePayload: '&lt;script&gt;alert(1)&lt;/script&gt;',
+    },
     { truePayload: '<img src=x onerror=alert(1)>', falsePayload: '<img src=valid.png>' },
   ],
   'path-traversal': [
@@ -95,7 +98,12 @@ export class ResponseDiffVerifier extends BaseVerifier {
     const variation = config.payloadVariation;
 
     // Strategy 1: Boolean-based comparison across multiple payloads
-    const booleanResult = await this.verifyWithMultiplePayloads(surface, baseUrl, payloadType, variation);
+    const booleanResult = await this.verifyWithMultiplePayloads(
+      surface,
+      baseUrl,
+      payloadType,
+      variation
+    );
     if (booleanResult.confirmed) {
       return this.createResult(
         vulnerability,
@@ -139,7 +147,9 @@ export class ResponseDiffVerifier extends BaseVerifier {
     }
 
     // No verification successful
-    const emptyResponses = /empty/.test(booleanResult.reason.toLowerCase()) || /empty/.test(errorResult.reason.toLowerCase());
+    const emptyResponses =
+      /empty/.test(booleanResult.reason.toLowerCase()) ||
+      /empty/.test(errorResult.reason.toLowerCase());
     if (emptyResponses) {
       return this.createResult(
         vulnerability,
@@ -151,8 +161,8 @@ export class ResponseDiffVerifier extends BaseVerifier {
 
     return this.createResult(
       vulnerability,
-      booleanResult.confidence > 0.3 || errorResult.confidence > 0.3 
-        ? VerificationStatus.INCONCLUSIVE 
+      booleanResult.confidence > 0.3 || errorResult.confidence > 0.3
+        ? VerificationStatus.INCONCLUSIVE
         : VerificationStatus.FALSE_POSITIVE,
       Math.max(booleanResult.confidence, errorResult.confidence),
       'Could not confirm vulnerability through response analysis'
@@ -167,7 +177,13 @@ export class ResponseDiffVerifier extends BaseVerifier {
     baseUrl: string,
     payloadType: string,
     singlePair?: { truePayload: string; falsePayload: string }
-  ): Promise<{ confirmed: boolean; confidence: number; reason: string; confirmedTypes: Set<string>; tested: number }> {
+  ): Promise<{
+    confirmed: boolean;
+    confidence: number;
+    reason: string;
+    confirmedTypes: Set<string>;
+    tested: number;
+  }> {
     const pairs = singlePair
       ? [singlePair]
       : (BOOLEAN_PAYLOAD_PAIRS[payloadType] ?? BOOLEAN_PAYLOAD_PAIRS['sql-injection']!);
@@ -226,15 +242,15 @@ export class ResponseDiffVerifier extends BaseVerifier {
           statusDiff = 1;
         }
 
-        const meetsThreshold = isJson
-          ? structuralDiff > 0.15
-          : contentDiff > 0.1;
+        const meetsThreshold = isJson ? structuralDiff > 0.15 : contentDiff > 0.1;
 
         if (meetsThreshold) {
           confirmedPairs++;
           confirmedTypes.add(this.classifyBooleanPair(truePayload));
           this.logger.info(`Boolean verification CONFIRMED: "${truePayload}" vs "${falsePayload}"`);
-          this.logger.info(`  Structural diff: ${(structuralDiff * 100).toFixed(1)}%, Content diff: ${(contentDiff * 100).toFixed(1)}%, Status diff: ${statusDiff > 0 ? 'yes' : 'no'}`);
+          this.logger.info(
+            `  Structural diff: ${(structuralDiff * 100).toFixed(1)}%, Content diff: ${(contentDiff * 100).toFixed(1)}%, Status diff: ${statusDiff > 0 ? 'yes' : 'no'}`
+          );
         }
 
         if (confirmedPairs >= 2 && confirmedTypes.size >= 2) break;
@@ -247,7 +263,9 @@ export class ResponseDiffVerifier extends BaseVerifier {
     const diversityBonus = confirmedTypes.size >= 2 ? 0.1 : 0;
     const confidence = Math.min(1, baseConfidence + diversityBonus);
 
-    const confirmed = singlePair ? confirmedPairs >= 1 : (confirmedPairs >= 2 && confirmedTypes.size >= 2);
+    const confirmed = singlePair
+      ? confirmedPairs >= 1
+      : confirmedPairs >= 2 && confirmedTypes.size >= 2;
 
     return {
       confirmed,
@@ -286,14 +304,18 @@ export class ResponseDiffVerifier extends BaseVerifier {
 
     const anyConfirmed = results.some((r) => r.confirmed);
     const confidences = results.map((r) => r.confidence);
-    const avgConfidence = confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0;
+    const avgConfidence = confidences.length
+      ? confidences.reduce((a, b) => a + b, 0) / confidences.length
+      : 0;
     const inconsistent = results.some((r) => r.confirmed) && results.some((r) => !r.confirmed);
     const penalty = inconsistent ? 0.1 : 0;
 
     return {
       confirmed: anyConfirmed,
       confidence: Math.max(0, Math.min(1, avgConfidence - penalty)),
-      reason: anyConfirmed ? 'At least one payload variation confirmed differences' : 'No payload variation confirmed differences',
+      reason: anyConfirmed
+        ? 'At least one payload variation confirmed differences'
+        : 'No payload variation confirmed differences',
     };
   }
 
@@ -310,7 +332,7 @@ export class ResponseDiffVerifier extends BaseVerifier {
       'sql-injection': SQL_ERROR_PATTERNS,
       'command-injection': COMMAND_INJECTION_ERROR_PATTERNS,
       'path-traversal': PATH_DISCLOSURE_PATTERNS,
-      'xss': APPLICATION_ERROR_PATTERNS,
+      xss: APPLICATION_ERROR_PATTERNS,
       default: APPLICATION_ERROR_PATTERNS,
     };
 
@@ -336,7 +358,10 @@ export class ResponseDiffVerifier extends BaseVerifier {
       const proximity = this.isErrorRelatedToPayload(body, payload);
 
       if (matched.matched && proximity) {
-        const confidence = Math.min(1, 0.5 + (new Set(matched.patterns).size * 0.05) + (matched.category ? 0.1 : 0));
+        const confidence = Math.min(
+          1,
+          0.5 + new Set(matched.patterns).size * 0.05 + (matched.category ? 0.1 : 0)
+        );
         return {
           confirmed: true,
           confidence,
@@ -347,7 +372,9 @@ export class ResponseDiffVerifier extends BaseVerifier {
       return {
         confirmed: false,
         confidence: matched.confidence * 0.5,
-        reason: matched.matched ? 'Errors present but not clearly tied to payload' : 'No error patterns detected in response',
+        reason: matched.matched
+          ? 'Errors present but not clearly tied to payload'
+          : 'No error patterns detected in response',
       };
     } catch (error) {
       return {
@@ -386,7 +413,9 @@ export class ResponseDiffVerifier extends BaseVerifier {
         const encoding = detectEncoding(body, payload);
 
         // Check for unencoded or executable reflection
-        const executableContext = /<script[^>]*>.*?XSS_TEST|onerror=|onload=|javascript:/i.test(body);
+        const executableContext = /<script[^>]*>.*?XSS_TEST|onerror=|onload=|javascript:/i.test(
+          body
+        );
         const unencoded = body.includes(payload) || body.includes(marker);
 
         if (unencoded && executableContext) {
@@ -407,7 +436,10 @@ export class ResponseDiffVerifier extends BaseVerifier {
 
         if (encoding.type !== 'none') {
           // Try bypass with alternate encoding payloads
-          const bypassPayloads = [decodeURIComponent(payload), payload.replace(/</g, '&lt;').replace(/>/g, '&gt;')];
+          const bypassPayloads = [
+            decodeURIComponent(payload),
+            payload.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+          ];
           for (const bypass of bypassPayloads) {
             if (!bypass || bypass === payload) continue;
             const bypassResult = await this.injector.inject(this.page!, surface, bypass, {
@@ -438,7 +470,6 @@ export class ResponseDiffVerifier extends BaseVerifier {
         } catch {
           // Dialog check failed, continue
         }
-
       } catch (error) {
         this.logger.debug(`Reflection verification failed: ${error}`);
       }
@@ -459,7 +490,7 @@ export class ResponseDiffVerifier extends BaseVerifier {
 
     return new Promise((resolve) => {
       let detected = false;
-      
+
       const handler = () => {
         detected = true;
         resolve(true);
@@ -494,15 +525,20 @@ export class ResponseDiffVerifier extends BaseVerifier {
   private getDefaultPayload(payloadType: string): string {
     const defaults: Record<string, string> = {
       'sql-injection': "' OR '1'='1",
-      'xss': '<script>alert(1)</script>',
+      xss: '<script>alert(1)</script>',
       'path-traversal': '../../../etc/passwd',
       'command-injection': '; id',
     };
     return defaults[payloadType] || "'";
   }
 
-  private selectBooleanPairs(payloadType: string, variation?: string): { truePayload: string; falsePayload: string }[] {
-    const base = (BOOLEAN_PAYLOAD_PAIRS[payloadType] ?? BOOLEAN_PAYLOAD_PAIRS['sql-injection']!).slice(0, 5);
+  private selectBooleanPairs(
+    payloadType: string,
+    variation?: string
+  ): { truePayload: string; falsePayload: string }[] {
+    const base = (
+      BOOLEAN_PAYLOAD_PAIRS[payloadType] ?? BOOLEAN_PAYLOAD_PAIRS['sql-injection']!
+    ).slice(0, 5);
     if (!variation) return base;
     const key = variation.toLowerCase();
     if (key === 'single-quote') return base.slice(0, 1);

@@ -49,7 +49,7 @@ export function performTTest(
 
   // Welch–Satterthwaite approximation for degrees of freedom
   const dfNumerator = Math.pow(varA / nA + varB / nB, 2);
-  const dfDenominator = (Math.pow(varA / nA, 2) / (nA - 1)) + (Math.pow(varB / nB, 2) / (nB - 1));
+  const dfDenominator = Math.pow(varA / nA, 2) / (nA - 1) + Math.pow(varB / nB, 2) / (nB - 1);
   const degreesFreedom = Math.max(1, dfNumerator / (dfDenominator || Number.EPSILON));
 
   // Approximate two-tailed p-value using normal CDF fallback for large df
@@ -90,7 +90,9 @@ export function determineOptimalSamples(initialSamples: number[], maxSamples: nu
 export function levenshteinDistance(str1: string, str2: string): number {
   const a = str1 ?? '';
   const b = str2 ?? '';
-  const matrix: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  const matrix: number[][] = Array.from({ length: a.length + 1 }, () =>
+    new Array(b.length + 1).fill(0)
+  );
 
   for (let i = 0; i <= a.length; i++) matrix[i]![0] = i;
   for (let j = 0; j <= b.length; j++) matrix[0]![j] = j;
@@ -116,9 +118,14 @@ export function calculateStructuralSimilarity(obj1: any, obj2: any): number {
 
   if (metrics1.totalKeys === 0 && metrics2.totalKeys === 0) return 1;
 
-  const keyScore = 1 - Math.abs(metrics1.totalKeys - metrics2.totalKeys) / Math.max(metrics1.totalKeys, metrics2.totalKeys, 1);
-  const depthScore = 1 - Math.abs(metrics1.depth - metrics2.depth) / Math.max(metrics1.depth, metrics2.depth, 1);
-  const arrayScore = 1 - Math.abs(metrics1.arrays - metrics2.arrays) / Math.max(metrics1.arrays, metrics2.arrays, 1);
+  const keyScore =
+    1 -
+    Math.abs(metrics1.totalKeys - metrics2.totalKeys) /
+      Math.max(metrics1.totalKeys, metrics2.totalKeys, 1);
+  const depthScore =
+    1 - Math.abs(metrics1.depth - metrics2.depth) / Math.max(metrics1.depth, metrics2.depth, 1);
+  const arrayScore =
+    1 - Math.abs(metrics1.arrays - metrics2.arrays) / Math.max(metrics1.arrays, metrics2.arrays, 1);
 
   return clamp((keyScore + depthScore + arrayScore) / 3, 0, 1);
 }
@@ -153,7 +160,7 @@ function clamp(value: number, min: number, max: number): number {
 function zScoreForConfidence(level: number): number {
   const clamped = clamp(level, 0.5, 0.999);
   // Common z-scores for typical confidence levels
-  if (Math.abs(clamped - 0.90) < 0.001) return 1.645;
+  if (Math.abs(clamped - 0.9) < 0.001) return 1.645;
   if (Math.abs(clamped - 0.95) < 0.001) return 1.96;
   if (Math.abs(clamped - 0.98) < 0.001) return 2.33;
   if (Math.abs(clamped - 0.99) < 0.001) return 2.576;
@@ -166,8 +173,11 @@ function inverseNormalCDF(p: number): number {
   // Beasley-Springer/Moro approximation
   const a = [2.50662823884, -18.61500062529, 41.39119773534, -25.44106049637];
   const b = [-8.4735109309, 23.08336743743, -21.06224101826, 3.13082909833];
-  const c = [0.3374754822726147, 0.9761690190917186, 0.1607979714918209, 0.0276438810333863,
-    0.0038405729373609, 0.0003951896511919, 0.0000321767881768, 0.0000002888167364, 0.0000003960315187];
+  const c = [
+    0.3374754822726147, 0.9761690190917186, 0.1607979714918209, 0.0276438810333863,
+    0.0038405729373609, 0.0003951896511919, 0.0000321767881768, 0.0000002888167364,
+    0.0000003960315187,
+  ];
 
   if (p < 0 || p > 1) return 0;
   if (p === 0) return -Infinity;
@@ -177,7 +187,7 @@ function inverseNormalCDF(p: number): number {
     const r = y * y;
     const num = a[0]! + a[1]! * r + a[2]! * r * r + a[3]! * r * r * r;
     const den = 1 + b[0]! * r + b[1]! * r * r + b[2]! * r * r * r + b[3]! * r * r * r * r;
-    return y * num / den;
+    return (y * num) / den;
   }
   const r = y > 0 ? 1 - p : p;
   const s = Math.log(-Math.log(r));
@@ -203,7 +213,7 @@ function erf(x: number): number {
   const p = 0.3275911;
   const absX = Math.abs(x);
   const t = 1 / (1 + p * absX);
-  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX);
+  const y = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX);
   return sign * y;
 }
 

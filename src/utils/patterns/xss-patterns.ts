@@ -15,7 +15,10 @@ export const EXECUTION_INDICATOR_PATTERNS: RegExp[] = [
   /eval\s*\(/i,
 ];
 
-export function findReflectionPatterns(text: string, payload: string): { pattern: RegExp; matches: string[] }[] {
+export function findReflectionPatterns(
+  text: string,
+  payload: string
+): { pattern: RegExp; matches: string[] }[] {
   const encodedHtml = payload.replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const urlEncoded = encodeURIComponent(payload);
   const doubleUrlEncoded = encodeURIComponent(urlEncoded);
@@ -39,7 +42,11 @@ export function findReflectionPatterns(text: string, payload: string): { pattern
 }
 
 export function detectHtmlEncoding(text: string, payload: string): EncodingType {
-  const encoded = payload.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+  const encoded = payload
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
   return text.includes(encoded) ? 'html' : 'none';
 }
 
@@ -80,7 +87,10 @@ export function detectReflectionContext(html: string, payload: string): Reflecti
   return 'none';
 }
 
-export function analyzeReflectionQuality(html: string, payload: string): {
+export function analyzeReflectionQuality(
+  html: string,
+  payload: string
+): {
   exact: boolean;
   encoded: boolean;
   context: ReflectionContext;
@@ -102,10 +112,13 @@ export function calculateReflectionConfidence(
 ): number {
   let confidence = reflectionQuality.confidence;
   if (executionIndicators.length > 0) confidence += 0.2;
-  if (reflectionQuality.exact && executionIndicators.length > 0) confidence = Math.min(1, confidence + 0.1);
+  if (reflectionQuality.exact && executionIndicators.length > 0)
+    confidence = Math.min(1, confidence + 0.1);
   return Math.min(1, confidence);
 }
 
 export function findExecutionIndicators(text: string): string[] {
-  return EXECUTION_INDICATOR_PATTERNS.filter((pattern) => pattern.test(text)).map((pattern) => pattern.toString());
+  return EXECUTION_INDICATOR_PATTERNS.filter((pattern) => pattern.test(text)).map((pattern) =>
+    pattern.toString()
+  );
 }

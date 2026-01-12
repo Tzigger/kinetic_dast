@@ -12,7 +12,11 @@ export function parseUrl(url: string): URL | null {
 /**
  * Check if URL is in scope
  */
-export function isUrlInScope(url: string, includePatterns: string[], excludePatterns: string[]): boolean {
+export function isUrlInScope(
+  url: string,
+  includePatterns: string[],
+  excludePatterns: string[]
+): boolean {
   // Check exclude patterns first
   for (const pattern of excludePatterns) {
     if (matchesPattern(url, pattern)) {
@@ -175,11 +179,23 @@ export function isHtmlResponse(headers: Record<string, string>): boolean {
  */
 export function isStaticResource(url: string): boolean {
   const staticExtensions = [
-    '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
-    '.css', '.woff', '.woff2', '.ttf', '.eot',
-    '.mp4', '.mp3', '.pdf', '.zip',
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.svg',
+    '.ico',
+    '.css',
+    '.woff',
+    '.woff2',
+    '.ttf',
+    '.eot',
+    '.mp4',
+    '.mp3',
+    '.pdf',
+    '.zip',
   ];
 
   const lowerUrl = url.toLowerCase();
-  return staticExtensions.some(ext => lowerUrl.endsWith(ext));
+  return staticExtensions.some((ext) => lowerUrl.endsWith(ext));
 }

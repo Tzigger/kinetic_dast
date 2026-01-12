@@ -32,7 +32,8 @@ export class PassiveScanner implements IScanner {
   public readonly id = 'passive-scanner';
   public readonly name = 'Passive Scanner';
   public readonly version = '1.0.0';
-  public readonly description = 'Passive security scanner that analyzes network traffic without modifying requests';
+  public readonly description =
+    'Passive security scanner that analyzes network traffic without modifying requests';
   public readonly enabledByDefault = true;
   public readonly category = VulnerabilityCategory.DATA_EXPOSURE;
 
@@ -74,9 +75,9 @@ export class PassiveScanner implements IScanner {
         for (const detector of this.detectors) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           if (typeof (detector as any).updateConfig === 'function') {
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-             (detector as any).updateConfig(context.config.detectors);
-             this.logger.debug(`Applied configuration to ${detector.constructor.name}`);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (detector as any).updateConfig(context.config.detectors);
+            this.logger.debug(`Applied configuration to ${detector.constructor.name}`);
           }
         }
       }
@@ -201,14 +202,11 @@ export class PassiveScanner implements IScanner {
       this.logger.debug(`Network request: ${request.method} ${request.url}`);
     });
 
-    this.networkInterceptor.on(
-      'response',
-      (response: InterceptedResponse) => {
-        this.logger.debug(
-          `Network response: ${response.status} ${response.url} (${response.timing}ms)`
-        );
-      }
-    );
+    this.networkInterceptor.on('response', (response: InterceptedResponse) => {
+      this.logger.debug(
+        `Network response: ${response.status} ${response.url} (${response.timing}ms)`
+      );
+    });
 
     this.networkInterceptor.on('requestFailed', (failure: any) => {
       this.logger.warn(`Request failed: ${failure.url} - ${failure.errorText}`);

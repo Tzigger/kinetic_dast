@@ -11,10 +11,10 @@ import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
  * Strategie de injecție
  */
 export enum InjectionStrategy {
-  APPEND = 'append',           // Adaugă payload la sfârșitul valorii
-  REPLACE = 'replace',         // Înlocuiește valoarea cu payload
-  PREFIX = 'prefix',           // Adaugă payload la început
-  WRAP = 'wrap',              // Înconjoară valoarea cu payload
+  APPEND = 'append', // Adaugă payload la sfârșitul valorii
+  REPLACE = 'replace', // Înlocuiește valoarea cu payload
+  PREFIX = 'prefix', // Adaugă payload la început
+  WRAP = 'wrap', // Înconjoară valoarea cu payload
 }
 
 /**
@@ -54,7 +54,7 @@ export interface InjectionResult {
  * - Encoding și obfuscation
  * - Strategii de fuzzing
  * - WAF bypass techniques
- * 
+ *
  * ENHANCED: Added SPA-aware waiting and longer timeouts
  * ENHANCED: Added safe mode to filter destructive payloads
  */
@@ -74,7 +74,7 @@ export class PayloadInjector {
     this.spaWaitStrategy = new SPAWaitStrategy(logLevel);
     this.payloadFilter = new PayloadFilter(logLevel);
     this.safeMode = safeMode;
-    
+
     if (this.safeMode) {
       this.logger.info('SafeMode ENABLED: Destructive payloads will be filtered');
     }
@@ -124,7 +124,7 @@ export class PayloadInjector {
     if (this.safeMode && !this.payloadFilter.isSafe(payload)) {
       this.logger.warn(
         `[Inject] BLOCKED (Safe Mode): Destructive payload attempt - ` +
-        `${payload.substring(0, 50)}...`
+          `${payload.substring(0, 50)}...`
       );
       return {
         payload,
@@ -135,8 +135,12 @@ export class PayloadInjector {
       };
     }
 
-    this.logger.info(`[Inject] ${surface.type}:${surface.name} <- payload (${payload.length} chars, encoding:${encoding}, strategy:${strategy})`);
-    this.logger.debug(`[Inject] Raw payload: ${payload.substring(0, 100)}${payload.length > 100 ? '...' : ''}`);
+    this.logger.info(
+      `[Inject] ${surface.type}:${surface.name} <- payload (${payload.length} chars, encoding:${encoding}, strategy:${strategy})`
+    );
+    this.logger.debug(
+      `[Inject] Raw payload: ${payload.substring(0, 100)}${payload.length > 100 ? '...' : ''}`
+    );
 
     // Create result object early for potential early returns
     const result: InjectionResult = {
@@ -155,47 +159,50 @@ export class PayloadInjector {
           result.error = 'Page closed';
           return result; // Return early with error result
         }
-        
+
         const currentUrl = page.url();
         // Only reload if we are not on the base URL or if we suspect state is dirty
         // For robustness, we always reload for form inputs as they likely caused navigation
         if (surface.type === AttackSurfaceType.FORM_INPUT || currentUrl !== options.baseUrl) {
-           try {
-             await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-           } catch (e) {
-             const msg = String(e);
-             if (msg.includes('interrupted') || msg.includes('navigating')) {
-               this.logger.debug('Navigation interrupted by another navigation, waiting for it to finish...');
-               try {
-                 await page.waitForLoadState('domcontentloaded', { timeout: 5000 });
-               } catch (e2) {
-                 this.logger.debug('Wait for interrupted navigation failed: ' + e2);
-               }
-               
-               // Check if we need to navigate again
-               if (page.url() !== options.baseUrl) {
-                 this.logger.debug('Retrying navigation to base URL...');
-                 await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-               }
-             } else {
-               throw e;
-             }
-           }
-           
-           // Wait for SPA to load and elements to be available
-           if (surface.selector) {
-             // Wait for the specific element to be visible (with shorter timeout)
-             await page.waitForSelector(surface.selector, { 
-               state: 'visible', 
-               timeout: 5000 
-             }).catch(() => {
-               this.logger.debug(`Selector ${surface.selector} not found after reload`);
+          try {
+            await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+          } catch (e) {
+            const msg = String(e);
+            if (msg.includes('interrupted') || msg.includes('navigating')) {
+              this.logger.debug(
+                'Navigation interrupted by another navigation, waiting for it to finish...'
+              );
+              try {
+                await page.waitForLoadState('domcontentloaded', { timeout: 5000 });
+              } catch (e2) {
+                this.logger.debug('Wait for interrupted navigation failed: ' + e2);
+              }
 
-             });
-           } else {
-             // Generic wait for SPA initialization
-             await page.waitForTimeout(1000);
-           }
+              // Check if we need to navigate again
+              if (page.url() !== options.baseUrl) {
+                this.logger.debug('Retrying navigation to base URL...');
+                await page.goto(options.baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+              }
+            } else {
+              throw e;
+            }
+          }
+
+          // Wait for SPA to load and elements to be available
+          if (surface.selector) {
+            // Wait for the specific element to be visible (with shorter timeout)
+            await page
+              .waitForSelector(surface.selector, {
+                state: 'visible',
+                timeout: 5000,
+              })
+              .catch(() => {
+                this.logger.debug(`Selector ${surface.selector} not found after reload`);
+              });
+          } else {
+            // Generic wait for SPA initialization
+            await page.waitForTimeout(1000);
+          }
         }
       } catch (error) {
         // Check if error is due to closed page/context
@@ -218,41 +225,46 @@ export class PayloadInjector {
 
       // 1. Encode payload
       const encodedPayload = this.encodePayload(payload, encoding);
-      this.logger.debug(`[Inject] Encoded payload: ${encodedPayload.substring(0, 100)}${encodedPayload.length > 100 ? '...' : ''}`);
+      this.logger.debug(
+        `[Inject] Encoded payload: ${encodedPayload.substring(0, 100)}${encodedPayload.length > 100 ? '...' : ''}`
+      );
 
       // 2. Apply injection strategy
       const finalPayload = this.applyStrategy(surface.value || '', encodedPayload, strategy);
-      this.logger.debug(`[Inject] Final payload after strategy: ${finalPayload.substring(0, 100)}${finalPayload.length > 100 ? '...' : ''}`);
+      this.logger.debug(
+        `[Inject] Final payload after strategy: ${finalPayload.substring(0, 100)}${finalPayload.length > 100 ? '...' : ''}`
+      );
 
       // 3. Inject based on surface type
-      
+
       // Rate Limiting
       await getGlobalRateLimiter().waitForToken();
 
       const startTime = Date.now();
-      let apiResponse: { body: string; status: number; headers: Record<string, string> } | null = null;
-      
+      let apiResponse: { body: string; status: number; headers: Record<string, string> } | null =
+        null;
+
       switch (surface.type) {
         case AttackSurfaceType.FORM_INPUT:
           await this.injectIntoFormInput(page, surface, finalPayload, submit);
           break;
-        
+
         case AttackSurfaceType.URL_PARAMETER:
           const status = await this.injectIntoUrlParameter(page, surface, finalPayload);
           if (status) {
             getGlobalRateLimiter().handleResponse(status);
           }
           break;
-        
+
         case AttackSurfaceType.COOKIE:
           await this.injectIntoCookie(page, surface, finalPayload);
           break;
-          
+
         case AttackSurfaceType.API_PARAM:
         case AttackSurfaceType.JSON_BODY:
           apiResponse = await this.injectIntoApiRequest(page, surface, finalPayload);
           break;
-        
+
         default:
           throw new Error(`Unsupported attack surface type: ${surface.type}`);
       }
@@ -268,16 +280,19 @@ export class PayloadInjector {
           headers: apiResponse.headers,
           timing: endTime - startTime,
         };
-        this.logger.debug(`[Inject] API Response: status=${apiResponse.status}, bodyLen=${apiResponse.body.length}, time=${endTime - startTime}ms`);
+        this.logger.debug(
+          `[Inject] API Response: status=${apiResponse.status}, bodyLen=${apiResponse.body.length}, time=${endTime - startTime}ms`
+        );
       } else {
         // Use SPA Wait Strategy for intelligent waiting
-        const isBackgroundRequest = surface.type === AttackSurfaceType.API_PARAM || 
-                                    surface.type === AttackSurfaceType.JSON_BODY;
+        const isBackgroundRequest =
+          surface.type === AttackSurfaceType.API_PARAM ||
+          surface.type === AttackSurfaceType.JSON_BODY;
         const context = isBackgroundRequest ? 'api' : 'navigation';
         const timeout = isBackgroundRequest ? 2000 : PayloadInjector.DEFAULT_NETWORK_TIMEOUT;
-        
+
         await this.spaWaitStrategy.waitForStability(page, timeout, context);
-        
+
         const body = await page.content();
         result.response = {
           url: page.url(),
@@ -286,9 +301,10 @@ export class PayloadInjector {
           headers: {},
           timing: endTime - startTime,
         };
-        this.logger.info(`[Inject] Page Response: url=${page.url()}, bodyLen=${body.length}, time=${endTime - startTime}ms`);
+        this.logger.info(
+          `[Inject] Page Response: url=${page.url()}, bodyLen=${body.length}, time=${endTime - startTime}ms`
+        );
       }
-
     } catch (error) {
       const errorMsg = String(error);
       // Silently skip closed page errors (test was aborted)
@@ -315,12 +331,12 @@ export class PayloadInjector {
     if (!url) {
       throw new Error('URL missing in attack surface metadata');
     }
-    
+
     const method = (surface.metadata['method'] as string) || 'GET';
     const originalHeaders = (surface.metadata['headers'] as Record<string, string>) || undefined;
-    
+
     let response;
-    
+
     if (surface.type === AttackSurfaceType.API_PARAM) {
       const apiUrl = new URL(url);
       apiUrl.searchParams.set(surface.name, payload);
@@ -337,16 +353,16 @@ export class PayloadInjector {
 
       const body = JSON.parse(JSON.stringify(originalBody)); // Deep clone
       const key = surface.metadata['originalKey'] as string;
-      
+
       if (key) {
         this.setNestedValue(body, key, payload);
       }
-      
+
       // ENHANCEMENT: Log JSON injection details
       this.logger.debug(`[JSON Injection] URL: ${url}`);
       this.logger.debug(`[JSON Injection] Key: ${key} = ${payload.substring(0, 50)}...`);
       this.logger.debug(`[JSON Injection] Body: ${JSON.stringify(body).substring(0, 200)}...`);
-      
+
       const replayHeaders = {
         ...this.sanitizeReplayHeaders(originalHeaders),
         'Content-Type': 'application/json',
@@ -374,7 +390,9 @@ export class PayloadInjector {
    * Playwright's request client may reject or mis-handle hop-by-hop / computed headers.
    * We keep auth/session-relevant headers (Authorization, Cookie, etc.) and drop the rest.
    */
-  private sanitizeReplayHeaders(headers?: Record<string, string>): Record<string, string> | undefined {
+  private sanitizeReplayHeaders(
+    headers?: Record<string, string>
+  ): Record<string, string> | undefined {
     if (!headers || Object.keys(headers).length === 0) return undefined;
 
     const blocked = new Set([
@@ -448,14 +466,16 @@ export class PayloadInjector {
       maxConcurrent?: number;
     } = {}
   ): Promise<InjectionResult[]> {
-    this.logger.info(`[InjectMultiple] ${surface.type}:${surface.name} <- ${payloads.length} payloads`);
+    this.logger.info(
+      `[InjectMultiple] ${surface.type}:${surface.name} <- ${payloads.length} payloads`
+    );
     const results: InjectionResult[] = [];
-    
+
     // PERFORMANCE FIX: Reduce default delay and increase concurrency
     // Old default: 100ms delay, 1 concurrent
     // New default: 50ms delay (or 0 for API requests), higher concurrency for API
-    const isApiRequest = surface.type === AttackSurfaceType.API_PARAM || 
-                        surface.type === AttackSurfaceType.JSON_BODY;
+    const isApiRequest =
+      surface.type === AttackSurfaceType.API_PARAM || surface.type === AttackSurfaceType.JSON_BODY;
     const delayMs = options.delayMs ?? (isApiRequest ? 0 : 50);
     const maxConcurrent = Math.max(1, options.maxConcurrent ?? (isApiRequest ? 3 : 1));
 
@@ -466,7 +486,8 @@ export class PayloadInjector {
       const batchPromises = batch.map((payload, batchIndex) => {
         const globalIndex = i + batchIndex;
         if (!payload) return Promise.resolve(null);
-        const encoding = options.encodings?.[globalIndex] || options.encoding || PayloadEncoding.NONE;
+        const encoding =
+          options.encodings?.[globalIndex] || options.encoding || PayloadEncoding.NONE;
         return this.inject(page, surface, payload, {
           ...options,
           encoding,
@@ -491,10 +512,10 @@ export class PayloadInjector {
     switch (encoding) {
       case PayloadEncoding.URL:
         return encodeURIComponent(payload);
-      
+
       case PayloadEncoding.DOUBLE_URL:
         return encodeURIComponent(encodeURIComponent(payload));
-      
+
       case PayloadEncoding.HTML:
         return payload
           .replace(/&/g, '&amp;')
@@ -502,13 +523,13 @@ export class PayloadInjector {
           .replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#x27;');
-      
+
       case PayloadEncoding.UNICODE:
         return this.unicodeEncode(payload);
-      
+
       case PayloadEncoding.BASE64:
         return Buffer.from(payload).toString('base64');
-      
+
       case PayloadEncoding.NONE:
       default:
         return payload;
@@ -542,13 +563,13 @@ export class PayloadInjector {
     switch (strategy) {
       case InjectionStrategy.APPEND:
         return original + payload;
-      
+
       case InjectionStrategy.PREFIX:
         return payload + original;
-      
+
       case InjectionStrategy.WRAP:
         return payload + original + payload;
-      
+
       case InjectionStrategy.REPLACE:
       default:
         return payload;
@@ -566,31 +587,35 @@ export class PayloadInjector {
   ): Promise<void> {
     // Bypass client-side validation by modifying DOM
     if (surface.element) {
-      await surface.element.evaluate((el: any) => {
-        el.removeAttribute('required');
-        el.removeAttribute('pattern');
-        el.removeAttribute('minlength');
-        el.removeAttribute('maxlength');
-        if (el.type === 'email' || el.type === 'url' || el.type === 'number') {
-          el.type = 'text'; // Force to text to accept any payload
-        }
-      }).catch(() => {});
-    }
-
-    // Also try to modify via selector if element is not available
-    if (surface.selector) {
-      await page.evaluate((selector) => {
-        const el = document.querySelector(selector) as HTMLInputElement;
-        if (el) {
+      await surface.element
+        .evaluate((el: any) => {
           el.removeAttribute('required');
           el.removeAttribute('pattern');
           el.removeAttribute('minlength');
           el.removeAttribute('maxlength');
           if (el.type === 'email' || el.type === 'url' || el.type === 'number') {
-            el.type = 'text';
+            el.type = 'text'; // Force to text to accept any payload
           }
-        }
-      }, surface.selector).catch(() => {});
+        })
+        .catch(() => {});
+    }
+
+    // Also try to modify via selector if element is not available
+    if (surface.selector) {
+      await page
+        .evaluate((selector) => {
+          const el = document.querySelector(selector) as HTMLInputElement;
+          if (el) {
+            el.removeAttribute('required');
+            el.removeAttribute('pattern');
+            el.removeAttribute('minlength');
+            el.removeAttribute('maxlength');
+            if (el.type === 'email' || el.type === 'url' || el.type === 'number') {
+              el.type = 'text';
+            }
+          }
+        }, surface.selector)
+        .catch(() => {});
     }
 
     // Prioritize selector to avoid detached elements after reload
@@ -640,13 +665,15 @@ export class PayloadInjector {
       for (const selector of submitSelectors) {
         try {
           const submitBtn = await page.$(selector);
-          if (submitBtn && await submitBtn.isVisible()) {
+          if (submitBtn && (await submitBtn.isVisible())) {
             // Force enable button
-            await submitBtn.evaluate((el: any) => {
-              el.removeAttribute('disabled');
-              el.classList.remove('disabled');
-            }).catch(() => {});
-            
+            await submitBtn
+              .evaluate((el: any) => {
+                el.removeAttribute('disabled');
+                el.classList.remove('disabled');
+              })
+              .catch(() => {});
+
             await submitBtn.click({ timeout: 2000 });
             submitted = true;
             this.logger.debug(`Submitted form using selector: ${selector}`);
@@ -711,7 +738,7 @@ export class PayloadInjector {
         sameSite: (surface.metadata['sameSite'] as 'Strict' | 'Lax' | 'None') || 'Lax',
       },
     ]);
-    
+
     // Reload page to apply cookie
     await page.reload({ waitUntil: 'domcontentloaded' });
   }
@@ -726,16 +753,16 @@ export class PayloadInjector {
       case InjectionContext.SQL:
         payloads.push(...this.getSqlFuzzPayloads().slice(0, count));
         break;
-      
+
       case InjectionContext.HTML:
       case InjectionContext.JAVASCRIPT:
         payloads.push(...this.getXssFuzzPayloads().slice(0, count));
         break;
-      
+
       case InjectionContext.URL:
         payloads.push(...this.getUrlFuzzPayloads().slice(0, count));
         break;
-      
+
       default:
         payloads.push(...this.getGenericFuzzPayloads().slice(0, count));
     }
@@ -753,9 +780,15 @@ export class PayloadInjector {
    */
   private getSqlFuzzPayloads(): string[] {
     return [
-      "'", '"', '`',
-      "' OR '1'='1", "' OR 1=1--", "' OR 'a'='a",
-      "admin'--", "admin' #", "admin'/*",
+      "'",
+      '"',
+      '`',
+      "' OR '1'='1",
+      "' OR 1=1--",
+      "' OR 'a'='a",
+      "admin'--",
+      "admin' #",
+      "admin'/*",
       "' UNION SELECT NULL--",
       "' AND SLEEP(5)--",
       "1' AND '1'='2",
@@ -796,13 +829,13 @@ export class PayloadInjector {
    */
   private getGenericFuzzPayloads(): string[] {
     return [
-      'A'.repeat(1000),           // Buffer overflow
-      '%00',                       // Null byte
-      '${7*7}',                   // Template injection
-      '{{7*7}}',                  // Template injection
-      '\x00\x01\x02',            // Binary data
-      '../../../',                // Path traversal
-      '<>"\';',                   // Special characters
+      'A'.repeat(1000), // Buffer overflow
+      '%00', // Null byte
+      '${7*7}', // Template injection
+      '{{7*7}}', // Template injection
+      '\x00\x01\x02', // Binary data
+      '../../../', // Path traversal
+      '<>"\';', // Special characters
     ];
   }
 

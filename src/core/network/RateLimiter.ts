@@ -30,11 +30,15 @@ export class RateLimiter {
   public static getInstance(config?: RateLimiterConfig, logLevel?: LogLevel): RateLimiter {
     if (!RateLimiter.instance) {
       // Default config if not provided
-      const envRps = process.env['RATE_LIMIT_RPS'] ? parseInt(process.env['RATE_LIMIT_RPS'], 10) : 10;
+      const envRps = process.env['RATE_LIMIT_RPS']
+        ? parseInt(process.env['RATE_LIMIT_RPS'], 10)
+        : 10;
       const defaultConfig: RateLimiterConfig = {
         requestsPerSecond: envRps > 0 ? envRps : 10, // Default 10 RPS or from env
-        burstSize: process.env['RATE_LIMIT_BURST'] ? parseInt(process.env['RATE_LIMIT_BURST'], 10) : (envRps * 2),
-        initialBackoffMs: 1000
+        burstSize: process.env['RATE_LIMIT_BURST']
+          ? parseInt(process.env['RATE_LIMIT_BURST'], 10)
+          : envRps * 2,
+        initialBackoffMs: 1000,
       };
       RateLimiter.instance = new RateLimiter(config || defaultConfig, logLevel);
     } else if (config) {
@@ -49,18 +53,18 @@ export class RateLimiter {
     this.capacity = config.burstSize || config.requestsPerSecond;
     this.initialBackoffMs = config.initialBackoffMs || 1000;
     // Reset tokens to capacity to avoid issues when changing config
-    this.tokens = this.capacity; 
+    this.tokens = this.capacity;
   }
-  
+
   public setEnabled(enabled: boolean) {
-      this.enabled = enabled;
+    this.enabled = enabled;
   }
 
   private refill() {
     const now = Date.now();
     const timePassed = (now - this.lastFill) / 1000;
     const newTokens = timePassed * this.fillRate;
-    
+
     if (newTokens > 0) {
       this.tokens = Math.min(this.capacity, this.tokens + newTokens);
       this.lastFill = now;
@@ -71,28 +75,28 @@ export class RateLimiter {
     if (!this.enabled) return;
 
     while (true) {
-        const now = Date.now();
-        if (this.backoffUntil > now) {
-            const waitTime = this.backoffUntil - now;
-            this.logger.warn(`Rate limited (429). Backing off for ${waitTime}ms`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            continue;
-        }
+      const now = Date.now();
+      if (this.backoffUntil > now) {
+        const waitTime = this.backoffUntil - now;
+        this.logger.warn(`Rate limited (429). Backing off for ${waitTime}ms`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+        continue;
+      }
 
-        this.refill();
+      this.refill();
 
-        if (this.tokens >= 1) {
-            this.tokens -= 1;
-            return;
-        }
+      if (this.tokens >= 1) {
+        this.tokens -= 1;
+        return;
+      }
 
-        const needed = 1 - this.tokens;
-        const waitSeconds = needed / this.fillRate;
-        const waitMs = Math.ceil(waitSeconds * 1000);
-        
-        if (waitMs > 0) {
-             await new Promise(resolve => setTimeout(resolve, waitMs));
-        }
+      const needed = 1 - this.tokens;
+      const waitSeconds = needed / this.fillRate;
+      const waitMs = Math.ceil(waitSeconds * 1000);
+
+      if (waitMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
     }
   }
 
@@ -106,7 +110,9 @@ export class RateLimiter {
       } else {
         this.backoffUntil = now + this.initialBackoffMs;
       }
-      this.logger.warn(`Received 429 Too Many Requests. Backoff until ${new Date(this.backoffUntil).toISOString()}`);
+      this.logger.warn(
+        `Received 429 Too Many Requests. Backoff until ${new Date(this.backoffUntil).toISOString()}`
+      );
     }
   }
 }

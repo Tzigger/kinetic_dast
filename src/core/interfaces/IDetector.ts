@@ -61,7 +61,7 @@ export abstract class BaseDetector implements IDetector {
   abstract readonly version: string;
   abstract readonly category: VulnerabilityCategory;
   abstract readonly description: string;
-  
+
   readonly enabledByDefault: boolean = true;
 
   abstract detect(data: unknown): Promise<Vulnerability[]>;

@@ -77,11 +77,7 @@ export function sleep(ms: number): Promise<void> {
 /**
  * Retry function with exponential backoff
  */
-export async function retry<T>(
-  fn: () => Promise<T>,
-  maxRetries = 3,
-  delayMs = 1000
-): Promise<T> {
+export async function retry<T>(fn: () => Promise<T>, maxRetries = 3, delayMs = 1000): Promise<T> {
   let lastError: Error | undefined;
 
   for (let i = 0; i < maxRetries; i++) {

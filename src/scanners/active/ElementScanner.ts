@@ -6,7 +6,12 @@ import { ScanResult, VulnerabilitySummary } from '../../types/scan-result';
 import { LogLevel, ScanStatus, VulnerabilitySeverity } from '../../types/enums';
 import { Logger } from '../../utils/logger/Logger';
 import { AttackSurface, AttackSurfaceType } from './DomExplorer';
-import { ElementScanConfig, ElementTarget, ElementScanResult, ElementVulnerabilityScanResult } from '../../types/element-scan';
+import {
+  ElementScanConfig,
+  ElementTarget,
+  ElementScanResult,
+  ElementVulnerabilityScanResult,
+} from '../../types/element-scan';
 import { ActionHelper } from './ActionHelper';
 import { VulnerabilityCategory } from '../../types/enums';
 import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
@@ -20,7 +25,7 @@ export class ElementScanner extends BaseScanner {
   public readonly version = '1.0.0';
   public readonly type = 'active' as const;
   public readonly description = 'Targeted scanner for specific elements by locator';
-  
+
   private elementScanConfig: ElementScanConfig;
   private detectors: Map<string, IActiveDetector> = new Map();
   private elementResults: ElementScanResult[] = [];
@@ -94,7 +99,11 @@ export class ElementScanner extends BaseScanner {
 
     for (const elementTarget of enabledElements) {
       try {
-        const result = await this.scanElement(page, elementTarget, targetPageUrl || this.elementScanConfig.baseUrl);
+        const result = await this.scanElement(
+          page,
+          elementTarget,
+          targetPageUrl || this.elementScanConfig.baseUrl
+        );
         this.elementResults.push(result);
 
         if (this.elementScanConfig.delayBetweenElements) {
@@ -122,14 +131,18 @@ export class ElementScanner extends BaseScanner {
 
     const summary: VulnerabilitySummary = {
       total: this.allVulnerabilities.length,
-      critical: this.allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.CRITICAL).length,
+      critical: this.allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.CRITICAL)
+        .length,
       high: this.allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.HIGH).length,
-      medium: this.allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.MEDIUM).length,
+      medium: this.allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.MEDIUM)
+        .length,
       low: this.allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.LOW).length,
       info: this.allVulnerabilities.filter((v) => v.severity === VulnerabilitySeverity.INFO).length,
     };
 
-    this.logger.info(`Element scan completed. Found ${this.allVulnerabilities.length} vulnerabilities across ${this.elementResults.length} elements`);
+    this.logger.info(
+      `Element scan completed. Found ${this.allVulnerabilities.length} vulnerabilities across ${this.elementResults.length} elements`
+    );
 
     return {
       scanId: `element-scan-${Date.now()}`,
@@ -145,14 +158,20 @@ export class ElementScanner extends BaseScanner {
   }
 
   /** Scan a single element */
-  private async scanElement(page: Page, elementTarget: ElementTarget, baseUrl: string): Promise<ElementScanResult> {
+  private async scanElement(
+    page: Page,
+    elementTarget: ElementTarget,
+    baseUrl: string
+  ): Promise<ElementScanResult> {
     const elementStart = Date.now();
     this.logger.info(`Scanning element: ${elementTarget.name} (${elementTarget.locator})`);
 
     const locator = page.locator(elementTarget.locator).first();
 
     try {
-      const elementHandle = await locator.elementHandle({ timeout: this.elementScanConfig.pageTimeout || 5000 });
+      const elementHandle = await locator.elementHandle({
+        timeout: this.elementScanConfig.pageTimeout || 5000,
+      });
       if (!elementHandle) {
         return {
           element: elementTarget,
@@ -164,7 +183,11 @@ export class ElementScanner extends BaseScanner {
         };
       }
 
-      const attackSurface = await this.createAttackSurfaceFromElement(page, elementTarget, elementHandle);
+      const attackSurface = await this.createAttackSurfaceFromElement(
+        page,
+        elementTarget,
+        elementHandle
+      );
 
       const vulns: Vulnerability[] = [];
       const detectorsToRun = this.getDetectorsForElement(elementTarget);
@@ -224,7 +247,11 @@ export class ElementScanner extends BaseScanner {
   }
 
   /** Create attack surface from an explicit locator */
-  private async createAttackSurfaceFromElement(page: Page, elementTarget: ElementTarget, elementHandle: any): Promise<AttackSurface> {
+  private async createAttackSurfaceFromElement(
+    page: Page,
+    elementTarget: ElementTarget,
+    elementHandle: any
+  ): Promise<AttackSurface> {
     const locator = page.locator(elementTarget.locator).first();
     let value = elementTarget.value;
 
@@ -246,15 +273,15 @@ export class ElementScanner extends BaseScanner {
         .evaluate((el: any) => {
           const form = el.closest('form');
           const otherFields: Record<string, string> = {};
-          
+
           if (form) {
             const inputs = form.querySelectorAll('input, textarea, select');
             inputs.forEach((input: any) => {
               if (input !== el && input.name) {
                 // Use value if present, otherwise empty string
-                // For radio/checkbox, only include if checked? 
+                // For radio/checkbox, only include if checked?
                 // For now, simple approach: include everything with current value
-                otherFields[`[name="${input.name}"]`] = input.value || 'test'; 
+                otherFields[`[name="${input.name}"]`] = input.value || 'test';
               }
             });
           }
@@ -263,7 +290,7 @@ export class ElementScanner extends BaseScanner {
             formAction: form?.getAttribute('action') || undefined,
             formMethod: (form?.getAttribute('method') || 'get').toLowerCase(),
             inputType: el.getAttribute('type') || el.tagName.toLowerCase(),
-            otherFields
+            otherFields,
           };
         })
         .catch(() => ({}));
@@ -342,7 +369,15 @@ export class ElementScanner extends BaseScanner {
     }
 
     if (lower.includes('generic injection') || lower.includes('injection')) {
-      aliases.push('injection', 'cmd', 'os-command', 'ssti', 'template', 'xxe', VulnerabilityCategory.INJECTION.toLowerCase());
+      aliases.push(
+        'injection',
+        'cmd',
+        'os-command',
+        'ssti',
+        'template',
+        'xxe',
+        VulnerabilityCategory.INJECTION.toLowerCase()
+      );
     }
 
     return new Set(aliases);

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
 import * as readline from 'readline';
+
+import { Command } from 'commander';
 
 import { ConfigurationManager } from '../core/config/ConfigurationManager';
 import { ScanEngine } from '../core/engine/ScanEngine';
+import { getGlobalRateLimiter } from '../core/network/RateLimiter';
 import { ActiveScanner } from '../scanners/active/ActiveScanner';
 import { PassiveScanner } from '../scanners/passive/PassiveScanner';
 import { ScanConfiguration } from '../types/config';
@@ -17,7 +19,6 @@ import {
 } from '../types/enums';
 import { DetectorRegistry } from '../utils/DetectorRegistry';
 import { registerBuiltInDetectors } from '../utils/builtInDetectors';
-import { getGlobalRateLimiter } from '../core/network/RateLimiter';
 
 type CliScanType = 'active' | 'passive' | 'both';
 
@@ -42,7 +43,11 @@ program
   .argument('[url]', 'Target URL to scan')
   .option('-c, --config <file>', 'Load configuration from file')
   .option('-o, --output <dir>', 'Output directory for reports', 'reports')
-  .option('-f, --formats <list>', 'Comma-separated report formats (console,json,html,sarif)', 'console,json,html')
+  .option(
+    '-f, --formats <list>',
+    'Comma-separated report formats (console,json,html,sarif)',
+    'console,json,html'
+  )
   .option('--headless', 'Run headless browser', true)
   .option('--no-headless', 'Run visible browser') // Allow --no-headless flag
   .option('--parallel <n>', 'Parallel scanners count', '2')
@@ -60,29 +65,29 @@ program
       if (options.config) {
         await configManager.loadFromFile(options.config);
         config = configManager.getConfig();
-        
+
         // Override URL from CLI if provided
         if (url) {
-            config.target.url = url;
+          config.target.url = url;
         }
 
         // Override Auth from CLI
         if (options.auth) {
-             const [username, password] = options.auth.split(':');
-             config.target.authentication = {
-                type: AuthType.FORM,
-                credentials: { username, password: password || '' }
-             };
+          const [username, password] = options.auth.split(':');
+          config.target.authentication = {
+            type: AuthType.FORM,
+            credentials: { username, password: password || '' },
+          };
         }
 
         // Override Detectors from CLI
         if (options.detectors) {
-            config.detectors.enabled = options.detectors.split(',').map(d => d.trim());
+          config.detectors.enabled = options.detectors.split(',').map((d) => d.trim());
         }
 
         // Override Rate Limit from CLI
         if (options.rateLimit) {
-            config.advanced.rateLimit = parseInt(options.rateLimit, 10);
+          config.advanced.rateLimit = parseInt(options.rateLimit, 10);
         }
       } else {
         if (!url) {
@@ -95,15 +100,17 @@ program
         const isActive = options.scanType === 'active' || options.scanType === 'both';
 
         config = {
-          target: { 
+          target: {
             url,
-            authentication: options.auth ? {
-                type: AuthType.FORM,
-                credentials: {
+            authentication: options.auth
+              ? {
+                  type: AuthType.FORM,
+                  credentials: {
                     username: options.auth.split(':')[0],
-                    password: options.auth.split(':')[1] || ''
+                    password: options.auth.split(':')[1] || '',
+                  },
                 }
-            } : undefined
+              : undefined,
           },
           browser: {
             type: BrowserType.CHROMIUM,
@@ -136,9 +143,9 @@ program
           detectors: {
             // Keep defaults stable: only enable detectors that are enabled-by-default.
             // Optional detectors (e.g., ssrf/path-traversal/command-injection) must be enabled explicitly.
-            enabled: options.detectors 
-                ? options.detectors.split(',').map(d => d.trim())
-                : [
+            enabled: options.detectors
+              ? options.detectors.split(',').map((d) => d.trim())
+              : [
                   'sql-injection',
                   'sqlmap',
                   'xss',
@@ -149,23 +156,23 @@ program
                   'insecure-transmission',
                 ],
             disabled: [],
-            tuning: {}
-          }
+            tuning: {},
+          },
         };
         configManager.loadFromObject(config);
       }
 
       // Initialize Rate Limiter
       if (config.advanced.rateLimit) {
-          getGlobalRateLimiter().updateConfig({
-              requestsPerSecond: config.advanced.rateLimit
-          });
+        getGlobalRateLimiter().updateConfig({
+          requestsPerSecond: config.advanced.rateLimit,
+        });
       }
 
       console.log(`🚀 Starting Kinetic Scan against: ${config.target.url}`);
       console.log(`Enabled Detectors: ${config.detectors.enabled.join(', ')}`);
       if (!config.scanners.active.safeMode) {
-          console.warn(`⚠️  WARNING: Safe Mode is DISABLED. Destructive payloads may be used.`);
+        console.warn(`⚠️  WARNING: Safe Mode is DISABLED. Destructive payloads may be used.`);
       }
 
       // 2. Inițializare Engine și Registri
@@ -175,33 +182,33 @@ program
 
       engine.setInteractionHandler({
         askQuestion: (query: string): Promise<boolean> => {
-            const rl = readline.createInterface({
-                input: process.stdin,
-                output: process.stdout,
-            });
+          const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
 
-            return new Promise((resolve) => {
-                rl.question(`${query} (y/n) `, (answer) => {
-                    rl.close();
-                    resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
-                });
+          return new Promise((resolve) => {
+            rl.question(`${query} (y/n) `, (answer) => {
+              rl.close();
+              resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
             });
-        }
+          });
+        },
       });
 
       // 3. Configurare Active Scanner (The Big One)
       if (config.scanners.active?.enabled) {
         const activeScanner = new ActiveScanner();
-        
+
         // Luăm detectoarele din registry bazat pe config (enabled/disabled)
         const activeDetectors = registry.getActiveDetectors(config.detectors);
-        
+
         if (activeDetectors.length === 0) {
-            console.warn('⚠️  Active Scanner enabled but no detectors matched configuration!');
+          console.warn('⚠️  Active Scanner enabled but no detectors matched configuration!');
         } else {
-            activeScanner.registerDetectors(activeDetectors);
-            engine.registerScanner(activeScanner);
-            console.log(`✅ Loaded Active Scanner with ${activeDetectors.length} detectors`);
+          activeScanner.registerDetectors(activeDetectors);
+          engine.registerScanner(activeScanner);
+          console.log(`✅ Loaded Active Scanner with ${activeDetectors.length} detectors`);
         }
       }
 
@@ -209,7 +216,7 @@ program
       if (config.scanners.passive?.enabled) {
         const passiveScanner = new PassiveScanner();
         const passiveDetectors = registry.getPassiveDetectors(config.detectors);
-        
+
         passiveScanner.registerDetectors(passiveDetectors);
         engine.registerScanner(passiveScanner);
         console.log(`✅ Loaded Passive Scanner with ${passiveDetectors.length} detectors`);
@@ -218,7 +225,7 @@ program
       // 5. Execuție
       await engine.loadConfiguration(config);
       const results = await engine.scan();
-      
+
       // Afișare sumară finală
       console.log(`\n🏁 Scan Completed in ${(results.duration / 1000).toFixed(2)}s`);
       console.log(`📊 Total Vulnerabilities: ${results.summary.total}`);
@@ -228,11 +235,10 @@ program
 
       // Exit code bazat pe vulnerabilități critice (pentru CI/CD)
       if (results.summary.critical > 0) {
-          process.exit(1);
+        process.exit(1);
       } else {
-          process.exit(0);
+        process.exit(0);
       }
-
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('\n💥 Critical Error:', message);

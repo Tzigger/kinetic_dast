@@ -4,10 +4,7 @@
  * and error pattern matching for verification techniques.
  */
 
-import {
-  calculateStructuralSimilarity,
-  levenshteinDistance,
-} from './statistical-helpers';
+import { calculateStructuralSimilarity, levenshteinDistance } from './statistical-helpers';
 import {
   categorizeError,
   findErrorPatterns,
@@ -101,7 +98,10 @@ export function calculateContentSimilarity(text1: string, text2: string): number
   const sample = (text: string): string => {
     if (text.length <= 10000) return text;
     const start = text.slice(0, 4000);
-    const middle = text.slice(Math.floor(text.length / 2) - 2000, Math.floor(text.length / 2) + 2000);
+    const middle = text.slice(
+      Math.floor(text.length / 2) - 2000,
+      Math.floor(text.length / 2) + 2000
+    );
     const end = text.slice(-4000);
     return `${start}${middle}${end}`;
   };
@@ -156,7 +156,7 @@ export function detectEncoding(text: string, payload: string): EncodingInfo {
 
   const top = markers[0]!;
   const confidence = Math.min(1, 0.5 + markers.length * 0.1);
-  return { type: top.type, confidence, examples: markers.map(m => m.match) };
+  return { type: top.type, confidence, examples: markers.map((m) => m.match) };
 }
 
 /** Match error patterns with categorization and contextual snippets. */
@@ -169,17 +169,20 @@ export function matchErrorPatterns(text: string): ErrorMatchResult {
 
   for (const { pattern } of matches) {
     seenPatterns.add(pattern.source);
-    const regex = new RegExp(pattern, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
+    const regex = new RegExp(
+      pattern,
+      pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`
+    );
     let exec: RegExpExecArray | null;
     while ((exec = regex.exec(text))) {
       const start = Math.max(0, exec.index - 50);
-      const end = Math.min(text.length, (exec.index + (exec[0]?.length || 0)) + 50);
+      const end = Math.min(text.length, exec.index + (exec[0]?.length || 0) + 50);
       snippets.push(text.slice(start, end));
       if (!regex.global) break;
     }
   }
 
-  const category = categorizeError(text) || inferCategory(matches.map(m => m.pattern));
+  const category = categorizeError(text) || inferCategory(matches.map((m) => m.pattern));
   const confidence = Math.min(1, 0.4 + seenPatterns.size * 0.1);
 
   return {
@@ -199,11 +202,12 @@ function getType(value: any): string {
 }
 
 function inferCategory(patterns: RegExp[]): string {
-  const sources = patterns.map(p => p.source);
-  if (patterns.some(p => SQL_ERROR_PATTERNS.includes(p))) return 'SQL Error';
-  if (patterns.some(p => STACK_TRACE_PATTERNS.includes(p))) return 'Stack Trace';
-  if (patterns.some(p => PATH_DISCLOSURE_PATTERNS.includes(p))) return 'Path Disclosure';
-  if (patterns.some(p => COMMAND_INJECTION_ERROR_PATTERNS.includes(p))) return 'Command Injection';
-  if (patterns.some(p => APPLICATION_ERROR_PATTERNS.includes(p))) return 'Application Error';
+  const sources = patterns.map((p) => p.source);
+  if (patterns.some((p) => SQL_ERROR_PATTERNS.includes(p))) return 'SQL Error';
+  if (patterns.some((p) => STACK_TRACE_PATTERNS.includes(p))) return 'Stack Trace';
+  if (patterns.some((p) => PATH_DISCLOSURE_PATTERNS.includes(p))) return 'Path Disclosure';
+  if (patterns.some((p) => COMMAND_INJECTION_ERROR_PATTERNS.includes(p)))
+    return 'Command Injection';
+  if (patterns.some((p) => APPLICATION_ERROR_PATTERNS.includes(p))) return 'Application Error';
   return sources.length ? 'Error' : '';
 }

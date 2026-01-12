@@ -43,12 +43,12 @@ export class SqlMapWrapper {
       if (options.cookie) args.push(`--cookie=${options.cookie}`);
       if (options.risk) args.push(`--risk=${options.risk}`);
       if (options.level) args.push(`--level=${options.level}`);
-      
+
       // Optimization: Disable banner, beep, etc.
       args.push('--banner', '--disable-coloring');
 
       this.logger.info(`Starting sqlmap scan for ${options.url}`);
-      
+
       const process = spawn(this.executable, args);
       let output = '';
 
@@ -67,7 +67,7 @@ export class SqlMapWrapper {
         resolve({
           success: code === 0,
           vulnerabilities,
-          rawOutput: output
+          rawOutput: output,
         });
       });
 
@@ -76,7 +76,7 @@ export class SqlMapWrapper {
         resolve({
           success: false,
           vulnerabilities: [],
-          rawOutput: err.message
+          rawOutput: err.message,
         });
       });
     });
@@ -85,14 +85,14 @@ export class SqlMapWrapper {
   private parseOutput(output: string): SqlMapVulnerability[] {
     const vulns: SqlMapVulnerability[] = [];
     const lines = output.split('\n');
-    
+
     let currentParam = '';
     let currentType = '';
     let currentTitle = '';
-    
+
     for (const rawLine of lines) {
       const line = rawLine.trim();
-      
+
       if (line.startsWith('Parameter:')) {
         currentParam = line.substring('Parameter:'.length).trim();
         currentType = '';
@@ -103,18 +103,18 @@ export class SqlMapWrapper {
         currentTitle = line.substring('Title:'.length).trim();
       } else if (line.startsWith('Payload:')) {
         const payload = line.substring('Payload:'.length).trim();
-        
+
         if (currentParam && currentType) {
           vulns.push({
             parameter: currentParam,
             type: currentType,
             title: currentTitle || currentType,
-            payload: payload
+            payload: payload,
           });
         }
       }
     }
-    
+
     return vulns;
   }
 }

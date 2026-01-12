@@ -5,7 +5,10 @@ import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
 
 /** Shared helper utilities for scanner actions and URL resolution. */
 export class ActionHelper {
-  constructor(private readonly baseUrl: string, private readonly logger: Logger) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly logger: Logger
+  ) {}
 
   /** Resolve a possibly relative path against baseUrl. */
   resolveUrl(path: string): string {
@@ -18,22 +21,32 @@ export class ActionHelper {
   }
 
   /** Execute a sequence of page actions. */
-  async executeActions(page: Page, actions: PageAction[], delayFn: (ms: number) => Promise<void>): Promise<void> {
+  async executeActions(
+    page: Page,
+    actions: PageAction[],
+    delayFn: (ms: number) => Promise<void>
+  ): Promise<void> {
     for (const action of actions) {
       try {
         this.logger.debug(`Executing action: ${action.type} - ${action.description || ''}`);
         switch (action.type) {
           case 'click':
-            if (action.selector) await page.click(action.selector, { timeout: action.timeout || 5000 });
+            if (action.selector)
+              await page.click(action.selector, { timeout: action.timeout || 5000 });
             break;
           case 'fill':
-            if (action.selector && action.value !== undefined) await page.fill(action.selector, action.value, { timeout: action.timeout || 5000 });
+            if (action.selector && action.value !== undefined)
+              await page.fill(action.selector, action.value, { timeout: action.timeout || 5000 });
             break;
           case 'select':
-            if (action.selector && action.value !== undefined) await page.selectOption(action.selector, action.value, { timeout: action.timeout || 5000 });
+            if (action.selector && action.value !== undefined)
+              await page.selectOption(action.selector, action.value, {
+                timeout: action.timeout || 5000,
+              });
             break;
           case 'hover':
-            if (action.selector) await page.hover(action.selector, { timeout: action.timeout || 5000 });
+            if (action.selector)
+              await page.hover(action.selector, { timeout: action.timeout || 5000 });
             break;
           case 'wait':
             await delayFn(action.timeout || 1000);

@@ -6,11 +6,7 @@
 import { Page } from 'playwright';
 import { Logger } from '../../utils/logger/Logger';
 import { LogLevel } from '../../types/enums';
-import {
-  SPAFramework,
-  SPAStabilityResult,
-  SPAWaitCondition,
-} from '../../types/timeout';
+import { SPAFramework, SPAStabilityResult, SPAWaitCondition } from '../../types/timeout';
 
 /**
  * SPAWaitStrategy - Handles SPA-specific wait conditions
@@ -33,40 +29,44 @@ export class SPAWaitStrategy {
         if ((window as any).ng || (window as any).getAllAngularRootElements?.()) {
           return 'angular';
         }
-        
+
         // React detection
-        if ((window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__ || 
-            document.querySelector('[data-reactroot]') ||
-            document.querySelector('[data-react-root]')) {
+        if (
+          (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__ ||
+          document.querySelector('[data-reactroot]') ||
+          document.querySelector('[data-react-root]')
+        ) {
           return 'react';
         }
-        
+
         // Vue detection
-        if ((window as any).__VUE__ || 
-            (window as any).Vue ||
-            document.querySelector('[data-v-]') ||
-            document.querySelector('.__vue-root__')) {
+        if (
+          (window as any).__VUE__ ||
+          (window as any).Vue ||
+          document.querySelector('[data-v-]') ||
+          document.querySelector('.__vue-root__')
+        ) {
           return 'vue';
         }
-        
+
         // Svelte detection
         if (document.querySelector('[class*="svelte-"]')) {
           return 'svelte';
         }
-        
+
         // Check for any SPA indicators
-        const hasSPAIndicators = 
+        const hasSPAIndicators =
           document.querySelector('[ng-app]') ||
           document.querySelector('[ng-view]') ||
           document.querySelector('#app') ||
           document.querySelector('#root');
-        
+
         return hasSPAIndicators ? 'unknown' : 'none';
       });
-      
+
       this.detectedFramework = framework as SPAFramework;
       this.logger.info(`Detected SPA framework: ${this.detectedFramework}`);
-      
+
       return this.detectedFramework;
     } catch (error) {
       this.logger.warn(`Framework detection failed: ${error}`);
@@ -86,22 +86,22 @@ export class SPAWaitStrategy {
     const startTime = Date.now();
     const passedConditions: string[] = [];
     const failedConditions: string[] = [];
-    
+
     // PERFORMANCE FIX: For API requests, use minimal waiting strategy
     const effectiveMaxWait = context === 'api' ? Math.min(maxWait, 2000) : maxWait;
-    
+
     try {
       // Detect framework if not already done
       if (this.detectedFramework === SPAFramework.UNKNOWN) {
         await this.detectFramework(page);
       }
-      
+
       // PERFORMANCE FIX: Skip framework-specific checks for API requests
       if (context === 'api') {
         // For API requests, only wait for network idle - no need for full SPA stability
         await this.waitForNetworkIdle(page, Math.min(1000, effectiveMaxWait));
         passedConditions.push('network-idle-api');
-        
+
         const stabilizationTime = Date.now() - startTime;
         return {
           isStable: true,
@@ -111,10 +111,10 @@ export class SPAWaitStrategy {
           failedConditions,
         };
       }
-      
+
       // Get conditions for detected framework (only for navigation)
       const conditions = this.getConditionsForFramework(page);
-      
+
       // Wait for each condition with effective timeout
       for (const condition of conditions) {
         try {
@@ -129,13 +129,13 @@ export class SPAWaitStrategy {
           this.logger.debug(`Condition ${condition.name} failed: ${error}`);
         }
       }
-      
+
       // Also wait for common stability indicators (reduced timeout)
       await this.waitForDOMStability(page, Math.min(1000, effectiveMaxWait / 2));
       passedConditions.push('dom-stability');
-      
+
       const stabilizationTime = Date.now() - startTime;
-      
+
       return {
         isStable: failedConditions.length === 0 || passedConditions.length >= conditions.length / 2,
         framework: this.detectedFramework,
@@ -173,15 +173,17 @@ export class SPAWaitStrategy {
         check: async () => {
           // Check for no active XHR/fetch requests
           return await page.evaluate(() => {
-            return (window as any).__pendingRequests === undefined || 
-                   (window as any).__pendingRequests === 0;
+            return (
+              (window as any).__pendingRequests === undefined ||
+              (window as any).__pendingRequests === 0
+            );
           });
         },
         maxWait: 5000,
         pollInterval: 200,
       },
     ];
-    
+
     switch (this.detectedFramework) {
       case SPAFramework.ANGULAR:
         return [
@@ -193,7 +195,7 @@ export class SPAWaitStrategy {
             pollInterval: 100,
           },
         ];
-        
+
       case SPAFramework.REACT:
         return [
           ...baseConditions,
@@ -204,7 +206,7 @@ export class SPAWaitStrategy {
             pollInterval: 100,
           },
         ];
-        
+
       case SPAFramework.VUE:
         return [
           ...baseConditions,
@@ -215,7 +217,7 @@ export class SPAWaitStrategy {
             pollInterval: 100,
           },
         ];
-        
+
       default:
         return baseConditions;
     }
@@ -224,13 +226,10 @@ export class SPAWaitStrategy {
   /**
    * Wait for a single condition
    */
-  private async waitForCondition(
-    condition: SPAWaitCondition,
-    maxWait: number
-  ): Promise<boolean> {
+  private async waitForCondition(condition: SPAWaitCondition, maxWait: number): Promise<boolean> {
     const startTime = Date.now();
     const effectiveMaxWait = Math.min(condition.maxWait, maxWait);
-    
+
     while (Date.now() - startTime < effectiveMaxWait) {
       try {
         const result = await condition.check();
@@ -240,7 +239,7 @@ export class SPAWaitStrategy {
       }
       await this.sleep(condition.pollInterval);
     }
-    
+
     return false;
   }
 
@@ -252,8 +251,9 @@ export class SPAWaitStrategy {
       return await page.evaluate(() => {
         return new Promise<boolean>((resolve) => {
           // Check for Angular 2+
-          const ngZone = (window as any).ng?.getComponent?.(document.querySelector('[ng-version]'))?.constructor?.ɵcmp?.ngModule?.instance?.ngZone;
-          
+          const ngZone = (window as any).ng?.getComponent?.(document.querySelector('[ng-version]'))
+            ?.constructor?.ɵcmp?.ngModule?.instance?.ngZone;
+
           if (ngZone) {
             if (ngZone.isStable) {
               resolve(true);
@@ -263,7 +263,7 @@ export class SPAWaitStrategy {
             }
             return;
           }
-          
+
           // Check for AngularJS
           const angularElement = (window as any).angular?.element?.(document.body);
           if (angularElement) {
@@ -276,7 +276,7 @@ export class SPAWaitStrategy {
               }
             }
           }
-          
+
           // Fallback - no Angular detected or stable
           resolve(true);
         });
@@ -296,14 +296,13 @@ export class SPAWaitStrategy {
           // Use React's Scheduler if available
           const scheduler = (window as any).__REACT_SCHEDULER__;
           if (scheduler?.unstable_scheduleCallback) {
-            scheduler.unstable_scheduleCallback(
-              scheduler.unstable_IdlePriority || 5,
-              () => resolve(true)
+            scheduler.unstable_scheduleCallback(scheduler.unstable_IdlePriority || 5, () =>
+              resolve(true)
             );
             setTimeout(() => resolve(true), 2000);
             return;
           }
-          
+
           // Fallback: use requestIdleCallback
           if ((window as any).requestIdleCallback) {
             (window as any).requestIdleCallback(() => resolve(true), { timeout: 2000 });
@@ -326,7 +325,7 @@ export class SPAWaitStrategy {
       return await page.evaluate(() => {
         return new Promise<boolean>((resolve) => {
           const vue = (window as any).Vue || (window as any).__VUE__;
-          
+
           if (vue?.nextTick) {
             vue.nextTick(() => resolve(true));
             setTimeout(() => resolve(true), 2000);
@@ -350,20 +349,20 @@ export class SPAWaitStrategy {
         return new Promise<boolean>((resolve) => {
           let lastMutationTime = Date.now();
           let resolved = false;
-          
+
           const observer = new MutationObserver(() => {
             lastMutationTime = Date.now();
           });
-          
+
           observer.observe(document.body, {
             childList: true,
             subtree: true,
             attributes: true,
           });
-          
+
           const checkStability = () => {
             if (resolved) return;
-            
+
             const timeSinceLastMutation = Date.now() - lastMutationTime;
             if (timeSinceLastMutation >= 200) {
               resolved = true;
@@ -377,7 +376,7 @@ export class SPAWaitStrategy {
               resolve(false);
             }
           };
-          
+
           setTimeout(checkStability, 200);
           setTimeout(() => {
             if (!resolved) {
@@ -411,7 +410,7 @@ export class SPAWaitStrategy {
   public async waitForSPAReady(page: Page, timeout: number = 5000): Promise<SPAStabilityResult> {
     // First wait for network to settle
     await this.waitForNetworkIdle(page, Math.min(timeout / 2, 3000));
-    
+
     // Then wait for framework stability
     return await this.waitForStability(page, timeout);
   }
@@ -434,7 +433,7 @@ export class SPAWaitStrategy {
    * Sleep utility
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

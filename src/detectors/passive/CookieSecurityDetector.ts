@@ -62,7 +62,9 @@ export class CookieSecurityDetector implements IPassiveDetector {
         }
       }
 
-      this.logger.info(`Cookie security detection completed. Found ${vulnerabilities.length} issues`);
+      this.logger.info(
+        `Cookie security detection completed. Found ${vulnerabilities.length} issues`
+      );
     } catch (error) {
       this.logger.error(`Error during detection: ${error}`);
     }
@@ -197,7 +199,8 @@ export class CookieSecurityDetector implements IPassiveDetector {
     cwe: string,
     cookieHeader: string
   ): Vulnerability {
-    const owasp = getOWASP2025Category(cwe) || 'A07:2021 - Identification and Authentication Failures';
+    const owasp =
+      getOWASP2025Category(cwe) || 'A07:2021 - Identification and Authentication Failures';
 
     const vulnerability: Vulnerability = {
       id: uuidv4(),
@@ -305,7 +308,8 @@ export class CookieSecurityDetector implements IPassiveDetector {
       // Verifică dacă cookie domain este mai generic decât response domain
       // Ex: .example.com vs api.example.com
       return (
-        cookieDomain.startsWith('.') && responseDomain.split('.').length > cookieDomain.split('.').length
+        cookieDomain.startsWith('.') &&
+        responseDomain.split('.').length > cookieDomain.split('.').length
       );
     } catch {
       return false;

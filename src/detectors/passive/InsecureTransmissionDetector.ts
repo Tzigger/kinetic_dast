@@ -1,6 +1,11 @@
 import { IPassiveDetector } from '../../core/interfaces/IPassiveDetector';
 import { Vulnerability } from '../../types/vulnerability';
-import { VulnerabilityCategory, VulnerabilitySeverity, HttpMethod, LogLevel } from '../../types/enums';
+import {
+  VulnerabilityCategory,
+  VulnerabilitySeverity,
+  HttpMethod,
+  LogLevel,
+} from '../../types/enums';
 import { Logger } from '../../utils/logger/Logger';
 import { InterceptedRequest, InterceptedResponse } from '../../scanners/passive/NetworkInterceptor';
 import { mapVulnerabilityToCWE } from '../../utils/cwe/cwe-mapping';
@@ -149,19 +154,17 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
     const vulnerabilities: Vulnerability[] = [];
 
     // Verifică dacă request-ul conține date sensibile
-    const hasSensitiveData =
-      request.postData && this.containsSensitiveKeywords(request.postData);
+    const hasSensitiveData = request.postData && this.containsSensitiveKeywords(request.postData);
 
     // Flag HTTP pentru: POST requests, document pages, sau date sensibile
-    const shouldFlag = hasSensitiveData || 
-                       request.method === HttpMethod.POST || 
-                       request.resourceType === 'document';
+    const shouldFlag =
+      hasSensitiveData || request.method === HttpMethod.POST || request.resourceType === 'document';
 
     if (shouldFlag) {
       // FIX: Context-aware severity - downgrade for localhost/127.0.0.1
       const isLocalhost = this.isLocalhostUrl(request.url);
       const severity = isLocalhost ? VulnerabilitySeverity.INFO : VulnerabilitySeverity.CRITICAL;
-      
+
       const owasp = getOWASP2025Category('CWE-319') || 'A04:2025';
 
       const vulnerability: Vulnerability = {
@@ -169,7 +172,7 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
         category: VulnerabilityCategory.INSECURE_COMMUNICATION,
         severity,
         title: isLocalhost ? 'HTTP Transmission on Localhost' : 'Insecure HTTP Transmission',
-        description: isLocalhost 
+        description: isLocalhost
           ? `Development/localhost traffic over HTTP to ${request.url} (informational only)`
           : `Data transmitted over unencrypted HTTP connection to ${request.url}`,
         url: request.url,
@@ -209,9 +212,7 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
     const vulnerabilities: Vulnerability[] = [];
 
     // Găsește prima pagină HTTPS
-    const httpsPage = requests.find(
-      (r) => r.resourceType === 'document' && this.isHttps(r.url)
-    );
+    const httpsPage = requests.find((r) => r.resourceType === 'document' && this.isHttps(r.url));
 
     if (!httpsPage) {
       return vulnerabilities; // Nu avem pagină HTTPS
@@ -239,7 +240,10 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
             url: httpsPage.url,
           },
           source: 'PassiveScanner',
-          description: `HTTP resources: ${httpResources.slice(0, 5).map((r) => r.url).join(', ')}${httpResources.length > 5 ? '...' : ''}`,
+          description: `HTTP resources: ${httpResources
+            .slice(0, 5)
+            .map((r) => r.url)
+            .join(', ')}${httpResources.length > 5 ? '...' : ''}`,
         },
         remediation:
           'Load all resources over HTTPS. Update resource URLs to use HTTPS or protocol-relative URLs. Configure Content-Security-Policy to block mixed content.',
@@ -272,11 +276,13 @@ export class InsecureTransmissionDetector implements IPassiveDetector {
     try {
       const urlObj = new URL(url);
       const hostname = urlObj.hostname.toLowerCase();
-      return hostname === 'localhost' || 
-             hostname === '127.0.0.1' || 
-             hostname === '::1' ||
-             hostname.startsWith('127.') ||
-             hostname.endsWith('.localhost');
+      return (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '::1' ||
+        hostname.startsWith('127.') ||
+        hostname.endsWith('.localhost')
+      );
     } catch {
       return false;
     }

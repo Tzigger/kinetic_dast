@@ -16,8 +16,16 @@ import {
   ResponseDiff,
   ErrorMatchResult,
 } from '../../types/verification';
-import { PayloadInjector, InjectionResult, PayloadEncoding } from '../../scanners/active/PayloadInjector';
-import { AttackSurface, AttackSurfaceType, InjectionContext } from '../../scanners/active/DomExplorer';
+import {
+  PayloadInjector,
+  InjectionResult,
+  PayloadEncoding,
+} from '../../scanners/active/PayloadInjector';
+import {
+  AttackSurface,
+  AttackSurfaceType,
+  InjectionContext,
+} from '../../scanners/active/DomExplorer';
 import {
   deepJsonDiff,
   calculateContentSimilarity,
@@ -41,7 +49,7 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
   abstract readonly id: string;
   abstract readonly name: string;
   abstract readonly supportedTypes: string[];
-  
+
   protected logger: Logger;
   protected injector: PayloadInjector;
 
@@ -73,7 +81,8 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
       confidence,
       attempts: [],
       totalDuration: 0,
-      shouldReport: status === VerificationStatus.CONFIRMED || status === VerificationStatus.VERIFIED,
+      shouldReport:
+        status === VerificationStatus.CONFIRMED || status === VerificationStatus.VERIFIED,
       reason,
     };
   }
@@ -104,7 +113,8 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
 
     // Calculate baseline statistics
     const baseline = baselineTimes.reduce((a, b) => a + b, 0) / baselineTimes.length;
-    const variance = baselineTimes.reduce((sum, t) => sum + Math.pow(t - baseline, 2), 0) / baselineTimes.length;
+    const variance =
+      baselineTimes.reduce((sum, t) => sum + Math.pow(t - baseline, 2), 0) / baselineTimes.length;
     const baselineStdDev = Math.sqrt(variance);
 
     // Measure with payload
@@ -126,7 +136,7 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
     // Check if delay is statistically significant
     // Delay should be within 1 standard deviation of expected
     const minExpectedDelay = expectedDelay - baselineStdDev;
-    const maxExpectedDelay = expectedDelay + (2 * baselineStdDev);
+    const maxExpectedDelay = expectedDelay + 2 * baselineStdDev;
     const isSignificant = actualDelay >= minExpectedDelay && actualDelay <= maxExpectedDelay;
 
     return {
@@ -170,7 +180,9 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
     }
 
     // Timing comparison
-    const timingDiff = Math.abs((baseline.response.timing || 0) - (withPayload.response.timing || 0));
+    const timingDiff = Math.abs(
+      (baseline.response.timing || 0) - (withPayload.response.timing || 0)
+    );
     if (timingDiff > 1000) {
       differences.push(`Timing: ${baseline.response.timing}ms -> ${withPayload.response.timing}ms`);
     }
@@ -218,7 +230,7 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
    */
   protected extractAttackSurface(vulnerability: Vulnerability): AttackSurface | null {
     const evidence = vulnerability.evidence;
-    
+
     if (!evidence) return null;
 
     // Try to determine surface type from evidence
@@ -227,11 +239,12 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
     let value = '';
 
     if (evidence.request?.body) {
-      const body = typeof evidence.request.body === 'string' 
-        ? evidence.request.body 
-        : JSON.stringify(evidence.request.body);
+      const body =
+        typeof evidence.request.body === 'string'
+          ? evidence.request.body
+          : JSON.stringify(evidence.request.body);
       value = body;
-      
+
       // Check if it's JSON
       try {
         JSON.parse(body);
@@ -270,7 +283,7 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
    * Sleep utility
    */
   protected sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -294,7 +307,9 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
     const snippets = [...directMatch.snippets];
 
     for (const pattern of compiled) {
-      const regex = pattern.flags.includes('g') ? pattern : new RegExp(pattern, `${pattern.flags}g`);
+      const regex = pattern.flags.includes('g')
+        ? pattern
+        : new RegExp(pattern, `${pattern.flags}g`);
       let exec: RegExpExecArray | null;
       while ((exec = regex.exec(response))) {
         matchedPatterns.add(pattern.source);
@@ -306,8 +321,15 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
     }
 
     const matched = matchedPatterns.size > 0;
-    const category = matched ? (directMatch.category || this.inferCategoryFromPatterns(compiled)) : '';
-    const confidence = Math.min(1, 0.4 + matchedPatterns.size * 0.1 + (payload && this.isErrorRelatedToPayload(response, payload) ? 0.1 : 0));
+    const category = matched
+      ? directMatch.category || this.inferCategoryFromPatterns(compiled)
+      : '';
+    const confidence = Math.min(
+      1,
+      0.4 +
+        matchedPatterns.size * 0.1 +
+        (payload && this.isErrorRelatedToPayload(response, payload) ? 0.1 : 0)
+    );
 
     return {
       matched,
@@ -325,7 +347,9 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
     if (!payload) return false;
     const idx = response.indexOf(payload);
     if (idx === -1) return false;
-    const context = response.slice(Math.max(0, idx - 200), Math.min(response.length, idx + payload.length + 200)).toLowerCase();
+    const context = response
+      .slice(Math.max(0, idx - 200), Math.min(response.length, idx + payload.length + 200))
+      .toLowerCase();
     return !/internal server error|stack trace/i.test(context);
   }
 
@@ -337,7 +361,8 @@ export abstract class BaseVerifier implements IVulnerabilityVerifier {
 
   private inferCategoryFromPatterns(patterns: RegExp[]): string {
     if (patterns.some((p) => SQL_ERROR_PATTERNS.includes(p))) return 'SQL Error';
-    if (patterns.some((p) => COMMAND_INJECTION_ERROR_PATTERNS.includes(p))) return 'Command Injection';
+    if (patterns.some((p) => COMMAND_INJECTION_ERROR_PATTERNS.includes(p)))
+      return 'Command Injection';
     if (patterns.some((p) => STACK_TRACE_PATTERNS.includes(p))) return 'Stack Trace';
     if (patterns.some((p) => PATH_DISCLOSURE_PATTERNS.includes(p))) return 'Path Disclosure';
     if (patterns.some((p) => APPLICATION_ERROR_PATTERNS.includes(p))) return 'Application Error';
@@ -358,7 +383,7 @@ export class ReplayVerifier extends BaseVerifier {
     _config: VerificationConfig
   ): Promise<VerificationResult> {
     this.logger.debug(`Replay verification for: ${vulnerability.title}`);
-    
+
     // For replay verification, we assume the original detection was correct
     // and add a small confidence boost for having evidence
     const hasEvidence = !!(vulnerability.evidence?.request && vulnerability.evidence?.response);

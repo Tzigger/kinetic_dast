@@ -2,7 +2,11 @@ import { IActiveDetector, ActiveDetectorContext } from '../../core/interfaces/IA
 import { Vulnerability } from '../../types/vulnerability';
 import { VulnerabilitySeverity, VulnerabilityCategory, LogLevel } from '../../types/enums';
 import { AttackSurface, AttackSurfaceType } from '../../scanners/active/DomExplorer';
-import { PayloadInjector, InjectionResult, PayloadEncoding } from '../../scanners/active/PayloadInjector';
+import {
+  PayloadInjector,
+  InjectionResult,
+  PayloadEncoding,
+} from '../../scanners/active/PayloadInjector';
 import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 import { Logger } from '../../utils/logger/Logger';
 
@@ -33,9 +37,14 @@ export class InjectionDetector implements IActiveDetector {
     this.injector.setSafeMode(context.safeMode ?? false);
 
     // Filter targets: Inputs, URL params, API params, Cookies, Headers
-    const targets = attackSurfaces.filter(
-      (s) => 
-        [AttackSurfaceType.FORM_INPUT, AttackSurfaceType.URL_PARAMETER, AttackSurfaceType.COOKIE, AttackSurfaceType.API_PARAM, AttackSurfaceType.JSON_BODY].includes(s.type)
+    const targets = attackSurfaces.filter((s) =>
+      [
+        AttackSurfaceType.FORM_INPUT,
+        AttackSurfaceType.URL_PARAMETER,
+        AttackSurfaceType.COOKIE,
+        AttackSurfaceType.API_PARAM,
+        AttackSurfaceType.JSON_BODY,
+      ].includes(s.type)
     );
 
     this.logger.info(`[Injection] Starting detection on ${targets.length} surfaces`);
@@ -59,14 +68,20 @@ export class InjectionDetector implements IActiveDetector {
       }
     }
 
-    this.logger.info(`[Injection] Detection complete: ${vulnerabilities.length} vulnerabilities found`);
+    this.logger.info(
+      `[Injection] Detection complete: ${vulnerabilities.length} vulnerabilities found`
+    );
     return vulnerabilities;
   }
 
   /**
    * Test for OS Command Injection
    */
-  private async testCommandInjection(page: any, surface: AttackSurface, baseUrl: string): Promise<Vulnerability | null> {
+  private async testCommandInjection(
+    page: any,
+    surface: AttackSurface,
+    baseUrl: string
+  ): Promise<Vulnerability | null> {
     const payloads = [
       // Prioritize simple payloads
       '; id',
@@ -93,46 +108,52 @@ export class InjectionDetector implements IActiveDetector {
         const result = await this.injector.inject(page, surface, payload, {
           encoding: PayloadEncoding.NONE,
           submit: true,
-          baseUrl
+          baseUrl,
         });
 
         const body = result.response?.body || '';
-        
+
         // Check for signatures
         const matchedSignatures: string[] = [];
         // Enhanced signatures
         if (body.includes('root:x:0:0')) matchedSignatures.push('root:x:0:0 (passwd)');
         if (body.includes('[extensions]')) matchedSignatures.push('[extensions] (win.ini)');
-        if (/uid=\d+/.test(body) || (this.config.permissiveMode && /uid=/i.test(body))) matchedSignatures.push('uid= (id output)');
-        if (/gid=\d+/.test(body) || (this.config.permissiveMode && /gid=/i.test(body))) matchedSignatures.push('gid= (id output)');
+        if (/uid=\d+/.test(body) || (this.config.permissiveMode && /uid=/i.test(body)))
+          matchedSignatures.push('uid= (id output)');
+        if (/gid=\d+/.test(body) || (this.config.permissiveMode && /gid=/i.test(body)))
+          matchedSignatures.push('gid= (id output)');
         if (body.includes('www-data')) matchedSignatures.push('www-data user');
-        if (body.includes('nt authority') && body.includes('system')) matchedSignatures.push('nt authority\\system (whoami)');
+        if (body.includes('nt authority') && body.includes('system'))
+          matchedSignatures.push('nt authority\\system (whoami)');
 
         // Define strictness:
         // Strict mode: Requires >= 2 signatures OR 1 very specific strong signature (root:x, [extensions], uid=\d+)
         // Permissive mode: Accepts 1 signature (even if weak/partial uid=)
-        
-        const isStrongSig = matchedSignatures.some(s => 
-            s.includes('passwd') || 
-            s.includes('win.ini') || 
-            s.includes('uid=') && /\d/.test(body) || // uid with digits is strong
+
+        const isStrongSig = matchedSignatures.some(
+          (s) =>
+            s.includes('passwd') ||
+            s.includes('win.ini') ||
+            (s.includes('uid=') && /\d/.test(body)) || // uid with digits is strong
             s.includes('whoami')
         );
 
-        const isVulnerable = this.config.permissiveMode 
-            ? matchedSignatures.length >= 1 
-            : (matchedSignatures.length >= 2 || (matchedSignatures.length >= 1 && isStrongSig));
-        
+        const isVulnerable = this.config.permissiveMode
+          ? matchedSignatures.length >= 1
+          : matchedSignatures.length >= 2 || (matchedSignatures.length >= 1 && isStrongSig);
+
         if (isVulnerable) {
           // Log context
           const matchIndex = body.search(/uid=|gid=|root:|\[extensions\]|www-data/i);
           if (matchIndex !== -1) {
-              const start = Math.max(0, matchIndex - 20);
-              const end = Math.min(body.length, matchIndex + 40);
-              this.logger.debug(`[CmdInject] Context: "...${body.substring(start, end)}..."`);
+            const start = Math.max(0, matchIndex - 20);
+            const end = Math.min(body.length, matchIndex + 40);
+            this.logger.debug(`[CmdInject] Context: "...${body.substring(start, end)}..."`);
           }
-          
-          this.logger.info(`[CmdInject] MATCH on ${surface.name}: payload="${payload}", signatures=[${matchedSignatures.join(', ')}]`);
+
+          this.logger.info(
+            `[CmdInject] MATCH on ${surface.name}: payload="${payload}", signatures=[${matchedSignatures.join(', ')}]`
+          );
           const cwe = 'CWE-78';
           const owasp = getOWASP2025Category(cwe) || 'A03:2021';
           const calculatedConfidence = this.config.permissiveMode ? 0.7 : 1.0;
@@ -152,19 +173,24 @@ export class InjectionDetector implements IActiveDetector {
               request: { body: payload },
               response: { body: body.substring(0, 1000) },
               metadata: {
-                  confidence: calculatedConfidence,
-                  signatures: matchedSignatures
-              }
+                confidence: calculatedConfidence,
+                signatures: matchedSignatures,
+              },
             },
-            remediation: 'Avoid calling OS commands directly. Use language-specific APIs or libraries. If unavoidable, use strong input validation and parameterized execution.',
+            remediation:
+              'Avoid calling OS commands directly. Use language-specific APIs or libraries. If unavoidable, use strong input validation and parameterized execution.',
             references: ['https://owasp.org/www-community/attacks/Command_Injection'],
-            timestamp: new Date()
+            timestamp: new Date(),
           };
         } else {
-          this.logger.debug(`[CmdInject] No signatures found for payload "${payload}" on ${surface.name}`);
+          this.logger.debug(
+            `[CmdInject] No signatures found for payload "${payload}" on ${surface.name}`
+          );
         }
       } catch (e) {
-        this.logger.debug(`[CmdInject] Error testing payload "${payload}" on ${surface.name}: ${e}`);
+        this.logger.debug(
+          `[CmdInject] Error testing payload "${payload}" on ${surface.name}: ${e}`
+        );
       }
     }
     return null;
@@ -173,22 +199,28 @@ export class InjectionDetector implements IActiveDetector {
   /**
    * Test for Server-Side Template Injection (SSTI)
    */
-  private async testSSTI(page: any, surface: AttackSurface, baseUrl: string): Promise<Vulnerability | null> {
+  private async testSSTI(
+    page: any,
+    surface: AttackSurface,
+    baseUrl: string
+  ): Promise<Vulnerability | null> {
     // Use a large, unique marker to avoid natural 49-style coincidences in page content
     const sstiPayloads = [
       { payload: '{{13337*9999}}', expected: '133356663' }, // Jinja2/Twig
-      { payload: '${13337*9999}', expected: '133356663' },  // Velocity/EL
+      { payload: '${13337*9999}', expected: '133356663' }, // Velocity/EL
       { payload: '<%= 13337*9999 %>', expected: '133356663' }, // ERB/JSP
       { payload: '#{13337*9999}', expected: '133356663' }, // Freemarker
     ];
 
     for (const { payload, expected } of sstiPayloads) {
-      this.logger.debug(`[SSTI] Trying payload: "${payload}" (expects "${expected}") on ${surface.name}`);
+      this.logger.debug(
+        `[SSTI] Trying payload: "${payload}" (expects "${expected}") on ${surface.name}`
+      );
       try {
         const result = await this.injector.inject(page, surface, payload, {
           encoding: PayloadEncoding.NONE,
           submit: true,
-          baseUrl
+          baseUrl,
         });
 
         const body = result.response?.body || '';
@@ -197,11 +229,13 @@ export class InjectionDetector implements IActiveDetector {
 
         // Check if the expression evaluated server-side (expected value present, payload not echoed)
         if (evaluated && !reflected) {
-           this.logger.info(`[SSTI] MATCH on ${surface.name}: payload="${payload}" evaluated to "${expected}" (not reflected)`);
-           const cwe = 'CWE-94';
-           const owasp = getOWASP2025Category(cwe) || 'A03:2021';
+          this.logger.info(
+            `[SSTI] MATCH on ${surface.name}: payload="${payload}" evaluated to "${expected}" (not reflected)`
+          );
+          const cwe = 'CWE-94';
+          const owasp = getOWASP2025Category(cwe) || 'A03:2021';
 
-           return {
+          return {
             id: `ssti-${Date.now()}`,
             title: 'Server-Side Template Injection (SSTI)',
             description: `Template injection detected in ${surface.type} '${surface.name}'. Payload '${payload}' evaluated to '${expected}'.`,
@@ -214,14 +248,19 @@ export class InjectionDetector implements IActiveDetector {
             evidence: {
               payload,
               request: { body: payload },
-              response: { body: body.substring(0, 500) }
+              response: { body: body.substring(0, 500) },
             },
-            remediation: 'Use "logic-less" template engines or sandboxed execution environments. Properly sanitize input before passing to template engine.',
-            references: ['https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server_Side_Template_Injection'],
-            timestamp: new Date()
+            remediation:
+              'Use "logic-less" template engines or sandboxed execution environments. Properly sanitize input before passing to template engine.',
+            references: [
+              'https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server_Side_Template_Injection',
+            ],
+            timestamp: new Date(),
           };
         } else {
-          this.logger.debug(`[SSTI] No match for payload "${payload}" on ${surface.name}: evaluated=${evaluated}, reflected=${reflected}`);
+          this.logger.debug(
+            `[SSTI] No match for payload "${payload}" on ${surface.name}: evaluated=${evaluated}, reflected=${reflected}`
+          );
         }
       } catch (e) {
         this.logger.debug(`[SSTI] Error testing payload "${payload}" on ${surface.name}: ${e}`);
@@ -246,8 +285,7 @@ export class InjectionDetector implements IActiveDetector {
     return [
       '; cat /etc/passwd',
       '{{13337*9999}}',
-      '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>' 
+      '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>',
     ];
   }
 }
-

@@ -57,7 +57,7 @@ export interface NetworkInterceptorConfig {
 /**
  * NetworkInterceptor - Interceptează și filtrează traficul HTTP
  * Emit evenimente pentru request/response detectate
- * 
+ *
  * ENHANCED: Now includes real-time response analysis for vulnerability detection
  */
 export class NetworkInterceptor extends EventEmitter {
@@ -91,14 +91,21 @@ export class NetworkInterceptor extends EventEmitter {
         this.config.responseAnalysisConfig,
         LogLevel.DEBUG
       );
-      
+
       // Forward vulnerability events
-      this.responseAnalyzer.on('vulnerability', (vuln: ResponseVulnerability, response: InterceptedResponse, request?: InterceptedRequest) => {
-        const fullVuln = this.responseAnalyzer!.toVulnerability(vuln, response, request);
-        this.detectedVulnerabilities.push(fullVuln);
-        this.emit('vulnerability', fullVuln);
-        this.logger.info(`Vulnerability detected: ${fullVuln.title} at ${fullVuln.url}`);
-      });
+      this.responseAnalyzer.on(
+        'vulnerability',
+        (
+          vuln: ResponseVulnerability,
+          response: InterceptedResponse,
+          request?: InterceptedRequest
+        ) => {
+          const fullVuln = this.responseAnalyzer!.toVulnerability(vuln, response, request);
+          this.detectedVulnerabilities.push(fullVuln);
+          this.emit('vulnerability', fullVuln);
+          this.logger.info(`Vulnerability detected: ${fullVuln.title} at ${fullVuln.url}`);
+        }
+      );
     }
   }
 
@@ -227,9 +234,7 @@ export class NetworkInterceptor extends EventEmitter {
     };
 
     this.responseMap.set(interceptedResponse.id, interceptedResponse);
-    this.logger.debug(
-      `Response intercepted: ${response.status()} ${request.url()} (${timing}ms)`
-    );
+    this.logger.debug(`Response intercepted: ${response.status()} ${request.url()} (${timing}ms)`);
 
     // Emit event pentru detectori
     this.emit('response', interceptedResponse, matchingRequest);
@@ -408,7 +413,11 @@ export class NetworkInterceptor extends EventEmitter {
   /**
    * Get analysis statistics
    */
-  public getAnalysisStats(): { analyzed: number; vulnerabilities: number; byType: Record<string, number> } | null {
+  public getAnalysisStats(): {
+    analyzed: number;
+    vulnerabilities: number;
+    byType: Record<string, number>;
+  } | null {
     return this.responseAnalyzer?.getStats() || null;
   }
 

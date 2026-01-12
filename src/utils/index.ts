@@ -23,4 +23,3 @@ export * from './patterns/error-patterns';
 
 // Validators
 export * from './validators/config-validator';
-

@@ -21,7 +21,7 @@ export class HtmlReporter extends BaseReporter {
     const candidateTemplates = [
       path.join(__dirname, 'templates', 'report.hbs'),
       // useful when running from source without copied assets
-      path.join(process.cwd(), 'src', 'reporters', 'templates', 'report.hbs')
+      path.join(process.cwd(), 'src', 'reporters', 'templates', 'report.hbs'),
     ];
     let source: string | undefined;
     for (const candidate of candidateTemplates) {

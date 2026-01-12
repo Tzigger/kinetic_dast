@@ -22,60 +22,66 @@ export class SessionManager {
     if (!this.loginUrl || !this.credentials) return false;
 
     this.logger.info(`Attempting auto-login to ${this.loginUrl}`);
-    
+
     try {
       await getGlobalRateLimiter().waitForToken();
       await page.goto(this.loginUrl, { waitUntil: 'domcontentloaded' });
-      
+
       // Heuristic: Find username/password fields
       const userSelectors = [
-        'input[type="email"]', 
-        'input[name="email"]', 
-        'input[name="user"]', 
-        'input[name="username"]', 
+        'input[type="email"]',
+        'input[name="email"]',
+        'input[name="user"]',
+        'input[name="username"]',
         'input[name="login"]', // bWAPP support
-        '#email', 
-        '#user', 
+        '#email',
+        '#user',
         '#username',
-        '#login' // bWAPP support
+        '#login', // bWAPP support
       ];
-      const passSelectors = [
-        'input[type="password"]', 
-        'input[name="password"]', 
-        '#password'
-      ];
+      const passSelectors = ['input[type="password"]', 'input[name="password"]', '#password'];
       const submitSelectors = [
-        'button[type="submit"]', 
+        'button[type="submit"]',
         'input[type="submit"]', // Support input submit buttons
-        '#loginButton', 
-        'button:has-text("Log in")', 
+        '#loginButton',
+        'button:has-text("Log in")',
         'button:has-text("Login")',
-        'button[name="form"]' // bWAPP support
+        'button[name="form"]', // bWAPP support
       ];
 
       let userField, passField, submitBtn;
 
-      for (const sel of userSelectors) { if (await page.$(sel)) { userField = sel; break; } }
-      for (const sel of passSelectors) { if (await page.$(sel)) { passField = sel; break; } }
-      
+      for (const sel of userSelectors) {
+        if (await page.$(sel)) {
+          userField = sel;
+          break;
+        }
+      }
+      for (const sel of passSelectors) {
+        if (await page.$(sel)) {
+          passField = sel;
+          break;
+        }
+      }
+
       if (userField && passField) {
         await page.fill(userField, this.credentials.user);
         await page.fill(passField, this.credentials.pass);
-        
+
         // Try to click submit, or press enter
-        for (const sel of submitSelectors) { 
-            if (await page.$(sel)) { 
-                submitBtn = sel; 
-                await page.click(sel);
-                break; 
-            } 
+        for (const sel of submitSelectors) {
+          if (await page.$(sel)) {
+            submitBtn = sel;
+            await page.click(sel);
+            break;
+          }
         }
-        
+
         if (!submitBtn) await page.press(passField, 'Enter');
 
         // Wait for navigation or state change
         await page.waitForLoadState('networkidle');
-        
+
         // Capture state
         this.storageState = await page.context().storageState();
         this.logger.info('Auto-login successful. Session state captured.');
@@ -94,11 +100,11 @@ export class SessionManager {
    */
   public async applySession(context: BrowserContext): Promise<void> {
     if (this.storageState) {
-        // Playwright doesn't allow setting storageState on existing context easily,
-        // so we manually add cookies. LocalStorage requires script injection.
-        if (this.storageState.cookies) {
-            await context.addCookies(this.storageState.cookies);
-        }
+      // Playwright doesn't allow setting storageState on existing context easily,
+      // so we manually add cookies. LocalStorage requires script injection.
+      if (this.storageState.cookies) {
+        await context.addCookies(this.storageState.cookies);
+      }
     }
   }
 }

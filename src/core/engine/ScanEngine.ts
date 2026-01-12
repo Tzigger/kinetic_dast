@@ -35,7 +35,7 @@ export class ScanEngine extends EventEmitter {
   private startTime: number = 0;
   private endTime: number = 0;
   private reporters: IReporter[] = [];
-  private existingPage: Page | null = null;  // For SPA support
+  private existingPage: Page | null = null; // For SPA support
   private interactionHandler?: InteractionHandler;
 
   constructor() {
@@ -119,7 +119,7 @@ export class ScanEngine extends EventEmitter {
     // Validate target URL and enforce production guardrails
     this.logger.info('Validating target...');
     const targetValidation = this.targetValidator.validateUrl(config.target.url);
-    
+
     // Log validation summary
     if (targetValidation.warnings.length > 0 || targetValidation.recommendations.length > 0) {
       this.logger.warn(this.targetValidator.getSummary(config.target.url));
@@ -135,11 +135,11 @@ export class ScanEngine extends EventEmitter {
         );
         activeScannerConfig.safeMode = true;
       }
-      
+
       if (!targetValidation.isLocal && activeScannerConfig.enabled) {
         this.logger.warn(
           `SECURITY WARNING: Active scanning is enabled on ${targetValidation.environment} target. ` +
-          `Ensure you have explicit permission to perform active security testing on ${config.target.url}`
+            `Ensure you have explicit permission to perform active security testing on ${config.target.url}`
         );
       }
     }
@@ -291,7 +291,9 @@ export class ScanEngine extends EventEmitter {
 
       this.vulnerabilitiesByFingerprint.set(fp, vulnerability);
       this.vulnerabilities.push(vulnerability);
-      this.logger.info(`Vulnerability detected: [${vulnerability.severity}] ${vulnerability.title}`);
+      this.logger.info(
+        `Vulnerability detected: [${vulnerability.severity}] ${vulnerability.title}`
+      );
       this.emit('vulnerabilityDetected', vulnerability);
       // Fan-out to reporters
       void Promise.all(this.reporters.map((r) => r.onVulnerability(vulnerability)));
@@ -319,7 +321,9 @@ export class ScanEngine extends EventEmitter {
       existing.evidence.payload = vulnerability.evidence.payload;
     }
 
-    this.logger.debug(`Deduped vulnerability: ${vulnerability.title} (occurrences=${existing.metadata.occurrences})`);
+    this.logger.debug(
+      `Deduped vulnerability: ${vulnerability.title} (occurrences=${existing.metadata.occurrences})`
+    );
   }
 
   /**

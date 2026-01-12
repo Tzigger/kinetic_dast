@@ -34,19 +34,22 @@ export interface PassiveDetectorContext {
  */
 export class SensitiveDataDetector implements IPassiveDetector {
   private logger: Logger;
-  private allPatterns: Map<string, { patterns: RegExp[]; category: string; severity: VulnerabilitySeverity }> = new Map();
+  private allPatterns: Map<
+    string,
+    { patterns: RegExp[]; category: string; severity: VulnerabilitySeverity }
+  > = new Map();
 
   // Patterns that indicate false positives - version numbers, timestamps, IDs, IP addresses
   private readonly FALSE_POSITIVE_PATTERNS = [
-    /^\d+\.\d+\.\d+$/,                    // Version numbers: 19.1.0, 2.2.4
-    /^\d+\.\d+\.\d+\.\d+$/,               // IP addresses: 192.168.1.1
+    /^\d+\.\d+\.\d+$/, // Version numbers: 19.1.0, 2.2.4
+    /^\d+\.\d+\.\d+\.\d+$/, // IP addresses: 192.168.1.1
     /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/, // IP addresses (stricter)
-    /^\d{4}-\d{2}-\d{2}/,                 // ISO dates: 2025-12-15
-    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/,      // ISO timestamps
-    /^\d+Z$/,                             // Unix timestamps with Z suffix
-    /^chunk-[a-f0-9]+$/i,                 // Webpack chunk names
-    /^[a-f0-9]{32,}$/i,                   // Hash values (MD5, SHA)
-    /^\d{1,5}$/,                          // Small numbers (IDs, ports, quantities)
+    /^\d{4}-\d{2}-\d{2}/, // ISO dates: 2025-12-15
+    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, // ISO timestamps
+    /^\d+Z$/, // Unix timestamps with Z suffix
+    /^chunk-[a-f0-9]+$/i, // Webpack chunk names
+    /^[a-f0-9]{32,}$/i, // Hash values (MD5, SHA)
+    /^\d{1,5}$/, // Small numbers (IDs, ports, quantities)
   ];
 
   // Content types that are prone to false positives
@@ -71,8 +74,15 @@ export class SensitiveDataDetector implements IPassiveDetector {
   // Email patterns that are considered safe/public
   private SAFE_EMAIL_PATTERNS = [
     /@(example|test|localhost|owasp|noreply|donotreply)\./i,
-    /\.png$/, /\.jpg$/, /\.jpeg$/, /\.gif$/, /\.svg$/, // Image extensions matched as emails
-    /^support@/, /^info@/, /^contact@/, /^help@/, // Generic contact emails
+    /\.png$/,
+    /\.jpg$/,
+    /\.jpeg$/,
+    /\.gif$/,
+    /\.svg$/, // Image extensions matched as emails
+    /^support@/,
+    /^info@/,
+    /^contact@/,
+    /^help@/, // Generic contact emails
   ];
 
   private config: DetectorConfig | undefined;
@@ -101,11 +111,18 @@ export class SensitiveDataDetector implements IPassiveDetector {
       /main\.js/i,
       /vendor\.js/i,
     ];
-    
+
     this.SAFE_EMAIL_PATTERNS = [
       /@(example|test|localhost|owasp|noreply|donotreply)\./i,
-      /\.png$/, /\.jpg$/, /\.jpeg$/, /\.gif$/, /\.svg$/, // Image extensions matched as emails
-      /^support@/, /^info@/, /^contact@/, /^help@/, // Generic contact emails
+      /\.png$/,
+      /\.jpg$/,
+      /\.jpeg$/,
+      /\.gif$/,
+      /\.svg$/, // Image extensions matched as emails
+      /^support@/,
+      /^info@/,
+      /^contact@/,
+      /^help@/, // Generic contact emails
     ];
   }
 
@@ -118,7 +135,7 @@ export class SensitiveDataDetector implements IPassiveDetector {
 
     if (sensitiveDataTuning) {
       const { emailAllowlist, skipPaths } = sensitiveDataTuning;
-      
+
       if (emailAllowlist) {
         for (const email of emailAllowlist) {
           // Escape special regex characters
@@ -140,17 +157,76 @@ export class SensitiveDataDetector implements IPassiveDetector {
    * Inițializează toate pattern-urile de date sensibile
    */
   private initializePatterns(): void {
-      this.allPatterns = new Map([
-        ['API Keys', { patterns: API_KEY_PATTERNS, category: 'API Keys', severity: VulnerabilitySeverity.CRITICAL }],
-        ['Passwords', { patterns: PASSWORD_PATTERNS, category: 'Passwords', severity: VulnerabilitySeverity.CRITICAL }],
-        ['Private Keys', { patterns: PRIVATE_KEY_PATTERNS, category: 'Private Keys', severity: VulnerabilitySeverity.CRITICAL }],
-        ['JWT Tokens', { patterns: JWT_PATTERNS, category: 'JWT Tokens', severity: VulnerabilitySeverity.HIGH }],
-        ['Database Credentials', { patterns: DB_CONNECTION_PATTERNS, category: 'Database Credentials', severity: VulnerabilitySeverity.CRITICAL }],
-        ['Credit Cards', { patterns: CREDIT_CARD_PATTERNS, category: 'Credit Cards', severity: VulnerabilitySeverity.HIGH }],
-        ['SSN/CNP', { patterns: SSN_PATTERNS, category: 'Personal Identifiers', severity: VulnerabilitySeverity.HIGH }],
-        ['Emails', { patterns: EMAIL_PATTERNS, category: 'Email Addresses', severity: VulnerabilitySeverity.MEDIUM }],
-        ['Phone Numbers', { patterns: PHONE_PATTERNS, category: 'Phone Numbers', severity: VulnerabilitySeverity.MEDIUM }],
-      ]);
+    this.allPatterns = new Map([
+      [
+        'API Keys',
+        {
+          patterns: API_KEY_PATTERNS,
+          category: 'API Keys',
+          severity: VulnerabilitySeverity.CRITICAL,
+        },
+      ],
+      [
+        'Passwords',
+        {
+          patterns: PASSWORD_PATTERNS,
+          category: 'Passwords',
+          severity: VulnerabilitySeverity.CRITICAL,
+        },
+      ],
+      [
+        'Private Keys',
+        {
+          patterns: PRIVATE_KEY_PATTERNS,
+          category: 'Private Keys',
+          severity: VulnerabilitySeverity.CRITICAL,
+        },
+      ],
+      [
+        'JWT Tokens',
+        { patterns: JWT_PATTERNS, category: 'JWT Tokens', severity: VulnerabilitySeverity.HIGH },
+      ],
+      [
+        'Database Credentials',
+        {
+          patterns: DB_CONNECTION_PATTERNS,
+          category: 'Database Credentials',
+          severity: VulnerabilitySeverity.CRITICAL,
+        },
+      ],
+      [
+        'Credit Cards',
+        {
+          patterns: CREDIT_CARD_PATTERNS,
+          category: 'Credit Cards',
+          severity: VulnerabilitySeverity.HIGH,
+        },
+      ],
+      [
+        'SSN/CNP',
+        {
+          patterns: SSN_PATTERNS,
+          category: 'Personal Identifiers',
+          severity: VulnerabilitySeverity.HIGH,
+        },
+      ],
+      [
+        'Emails',
+        {
+          patterns: EMAIL_PATTERNS,
+          category: 'Email Addresses',
+          severity: VulnerabilitySeverity.MEDIUM,
+        },
+      ],
+      [
+        'Phone Numbers',
+        {
+          patterns: PHONE_PATTERNS,
+          category: 'Phone Numbers',
+          severity: VulnerabilitySeverity.MEDIUM,
+        },
+      ],
+    ]);
   }
 
   /**
@@ -161,7 +237,7 @@ export class SensitiveDataDetector implements IPassiveDetector {
     // Emails should also skip static resources and config files
     const lowConfidencePatterns = ['Phone Numbers', 'SSN/CNP', 'Emails'];
     if (lowConfidencePatterns.includes(patternType)) {
-      return this.SAFE_URL_PATTERNS.some(pattern => pattern.test(url));
+      return this.SAFE_URL_PATTERNS.some((pattern) => pattern.test(url));
     }
     return false;
   }
@@ -173,7 +249,7 @@ export class SensitiveDataDetector implements IPassiveDetector {
     if (!contentType) return false;
     const lowConfidencePatterns = ['Phone Numbers', 'SSN/CNP', 'Emails'];
     if (lowConfidencePatterns.includes(patternType)) {
-      return this.SKIP_CONTENT_TYPES.some(ct => contentType.includes(ct));
+      return this.SKIP_CONTENT_TYPES.some((ct) => contentType.includes(ct));
     }
     return false;
   }
@@ -187,14 +263,16 @@ export class SensitiveDataDetector implements IPassiveDetector {
       // Check against false positive patterns
       for (const fpPattern of this.FALSE_POSITIVE_PATTERNS) {
         if (fpPattern.test(match)) {
-          this.logger.debug(`Filtered false positive ${patternType}: ${match} (matched ${fpPattern})`);
+          this.logger.debug(
+            `Filtered false positive ${patternType}: ${match} (matched ${fpPattern})`
+          );
           return false;
         }
       }
 
       // Check context for version/timestamp patterns
       const surroundingContext = this.extractSurroundingContext(context, match, 30);
-      
+
       // Version context indicators
       if (/version|ver\.|v\d|\.js|\.css|webpack|chunk|module/i.test(surroundingContext)) {
         this.logger.debug(`Filtered ${patternType} in version/code context: ${match}`);
@@ -202,7 +280,11 @@ export class SensitiveDataDetector implements IPassiveDetector {
       }
 
       // JSON structure indicators that suggest non-PII data
-      if (/"(id|quantity|limit|count|size|width|height|version|timestamp|updated|created)":\s*\d/i.test(surroundingContext)) {
+      if (
+        /"(id|quantity|limit|count|size|width|height|version|timestamp|updated|created)":\s*\d/i.test(
+          surroundingContext
+        )
+      ) {
         this.logger.debug(`Filtered ${patternType} in JSON data context: ${match}`);
         return false;
       }
@@ -261,15 +343,23 @@ export class SensitiveDataDetector implements IPassiveDetector {
         for (const [patternType, config] of this.allPatterns.entries()) {
           // Skip low-confidence patterns for certain content types and URLs
           if (this.shouldSkipContentType(contentType, patternType)) {
-            this.logger.debug(`Skipping ${patternType} scan for ${response.url} (content-type: ${contentType})`);
+            this.logger.debug(
+              `Skipping ${patternType} scan for ${response.url} (content-type: ${contentType})`
+            );
             continue;
           }
           if (this.shouldSkipUrlForPatternType(response.url, patternType)) {
-            this.logger.debug(`Skipping ${patternType} scan for ${response.url} (safe URL pattern)`);
+            this.logger.debug(
+              `Skipping ${patternType} scan for ${response.url} (safe URL pattern)`
+            );
             continue;
           }
 
-          const findings = this.scanForPatternsWithValidation(response.body, config.patterns, patternType);
+          const findings = this.scanForPatternsWithValidation(
+            response.body,
+            config.patterns,
+            patternType
+          );
 
           if (findings.length > 0) {
             const vulnerability = this.createVulnerability(
@@ -290,7 +380,9 @@ export class SensitiveDataDetector implements IPassiveDetector {
         vulnerabilities.push(...requestVulns);
       }
 
-      this.logger.info(`Sensitive data detection completed. Found ${vulnerabilities.length} issues`);
+      this.logger.info(
+        `Sensitive data detection completed. Found ${vulnerabilities.length} issues`
+      );
     } catch (error) {
       this.logger.error(`Error during detection: ${error}`);
     }
@@ -309,21 +401,30 @@ export class SensitiveDataDetector implements IPassiveDetector {
     try {
       const url = new URL(request.url);
       const queryString = url.search;
-      
+
       // Skip if no query parameters
       if (!queryString || queryString === '?') {
         // Still check high-confidence patterns on the full URL
-        const highConfidencePatterns = ['API Keys', 'Passwords', 'JWT Tokens', 'Database Credentials'];
+        const highConfidencePatterns = [
+          'API Keys',
+          'Passwords',
+          'JWT Tokens',
+          'Database Credentials',
+        ];
         const urlFindings: string[] = [];
-        
+
         for (const [patternType, config] of this.allPatterns.entries()) {
           if (!highConfidencePatterns.includes(patternType)) continue;
-          const matches = this.scanForPatternsWithValidation(request.url, config.patterns, patternType);
+          const matches = this.scanForPatternsWithValidation(
+            request.url,
+            config.patterns,
+            patternType
+          );
           if (matches.length > 0) {
             urlFindings.push(`${patternType}: ${matches.join(', ')}`);
           }
         }
-        
+
         if (urlFindings.length > 0) {
           const owasp = getOWASP2025Category('CWE-598') || 'A04:2025';
           const vulnerability: Vulnerability = {
@@ -342,7 +443,8 @@ export class SensitiveDataDetector implements IPassiveDetector {
               source: 'PassiveScanner',
               description: `Found: ${urlFindings.join('; ')}`,
             },
-            remediation: 'Never include sensitive data in URLs. Use POST requests with encrypted body or secure headers.',
+            remediation:
+              'Never include sensitive data in URLs. Use POST requests with encrypted body or secure headers.',
             references: [
               'https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url',
             ],
@@ -352,13 +454,13 @@ export class SensitiveDataDetector implements IPassiveDetector {
           };
           vulnerabilities.push(mapVulnerabilityToCWE(vulnerability));
         }
-        
+
         // Check POST data if present
         if (request.postData) {
           const postVulns = this.scanPostData(request);
           vulnerabilities.push(...postVulns);
         }
-        
+
         return vulnerabilities;
       }
 
@@ -369,7 +471,11 @@ export class SensitiveDataDetector implements IPassiveDetector {
         if (this.shouldSkipUrlForPatternType(request.url, patternType)) {
           continue;
         }
-        const matches = this.scanForPatternsWithValidation(queryString, config.patterns, patternType);
+        const matches = this.scanForPatternsWithValidation(
+          queryString,
+          config.patterns,
+          patternType
+        );
         if (matches.length > 0) {
           urlFindings.push(`${patternType}: ${matches.join(', ')}`);
         }
@@ -394,7 +500,8 @@ export class SensitiveDataDetector implements IPassiveDetector {
             source: 'PassiveScanner',
             description: `Found: ${urlFindings.join('; ')}`,
           },
-          remediation: 'Never include sensitive data in URLs. Use POST requests with encrypted body or secure headers.',
+          remediation:
+            'Never include sensitive data in URLs. Use POST requests with encrypted body or secure headers.',
           references: [
             'https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url',
           ],
@@ -427,8 +534,15 @@ export class SensitiveDataDetector implements IPassiveDetector {
 
     const postDataFindings: string[] = [];
     for (const [patternType, config] of this.allPatterns.entries()) {
-      const matches = this.scanForPatternsWithValidation(request.postData, config.patterns, patternType);
-      if (matches.length > 0 && (patternType === 'Passwords' || patternType === 'Database Credentials')) {
+      const matches = this.scanForPatternsWithValidation(
+        request.postData,
+        config.patterns,
+        patternType
+      );
+      if (
+        matches.length > 0 &&
+        (patternType === 'Passwords' || patternType === 'Database Credentials')
+      ) {
         postDataFindings.push(`${patternType}: ${matches.join(', ')}`);
       }
     }
@@ -468,7 +582,11 @@ export class SensitiveDataDetector implements IPassiveDetector {
   /**
    * Scanează text pentru pattern-uri specifice cu validare
    */
-  private scanForPatternsWithValidation(text: string, patterns: RegExp[], patternType: string): string[] {
+  private scanForPatternsWithValidation(
+    text: string,
+    patterns: RegExp[],
+    patternType: string
+  ): string[] {
     const findings: string[] = [];
 
     for (const pattern of patterns) {
@@ -511,7 +629,10 @@ export class SensitiveDataDetector implements IPassiveDetector {
         response: {
           status: response.status,
           headers: response.headers,
-          snippet: response.body && findings[0] ? this.createSnippet(response.body, findings[0]) : undefined,
+          snippet:
+            response.body && findings[0]
+              ? this.createSnippet(response.body, findings[0])
+              : undefined,
         },
         source: 'PassiveScanner',
         description: `Found ${findings.length} instance(s) of ${category}: ${findings.slice(0, 3).join(', ')}${findings.length > 3 ? '...' : ''}`,
@@ -559,11 +680,15 @@ export class SensitiveDataDetector implements IPassiveDetector {
    */
   private getRemediation(patternType: string): string {
     const remediations: Record<string, string> = {
-      'API Keys': 'Remove API keys from client-side code. Use environment variables and server-side authentication.',
-      'Credentials': 'Never expose credentials in responses. Implement proper authentication and authorization.',
-      'PII': 'Implement data minimization. Encrypt sensitive PII and ensure compliance with privacy regulations (GDPR, CCPA).',
-      'Tokens': 'Use secure token storage (HttpOnly cookies). Implement token rotation and expiration.',
-      'Secrets': 'Store secrets in secure vaults (HashiCorp Vault, AWS Secrets Manager). Never expose in client code.',
+      'API Keys':
+        'Remove API keys from client-side code. Use environment variables and server-side authentication.',
+      Credentials:
+        'Never expose credentials in responses. Implement proper authentication and authorization.',
+      PII: 'Implement data minimization. Encrypt sensitive PII and ensure compliance with privacy regulations (GDPR, CCPA).',
+      Tokens:
+        'Use secure token storage (HttpOnly cookies). Implement token rotation and expiration.',
+      Secrets:
+        'Store secrets in secure vaults (HashiCorp Vault, AWS Secrets Manager). Never expose in client code.',
     };
 
     return remediations[patternType] || 'Review and remove sensitive data exposure.';

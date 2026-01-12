@@ -1,12 +1,12 @@
 /**
  * SPAContentWaiter - Framework-Specific Content Waiting
- * 
+ *
  * Handles the timing complexities of Single Page Applications (SPAs).
  * Provides intelligent waiting strategies for Angular, React, Vue, and other frameworks.
- * 
+ *
  * Problem: SPAs render content asynchronously after initial page load.
  * Solution: Detect framework and wait for framework-specific stability indicators.
- * 
+ *
  * @module utils/spa/SPAContentWaiter
  */
 
@@ -43,11 +43,11 @@ export interface FrameworkDetection {
  * Wait configuration
  */
 export interface SPAWaitConfig {
-  maxTimeout: number;          // Maximum time to wait (ms)
-  pollInterval: number;        // How often to check stability (ms)
-  minStableTime: number;       // Minimum time content must be stable (ms)
+  maxTimeout: number; // Maximum time to wait (ms)
+  pollInterval: number; // How often to check stability (ms)
+  minStableTime: number; // Minimum time content must be stable (ms)
   waitForNetworkIdle: boolean; // Also wait for network to settle
-  waitForAnimations: boolean;  // Wait for CSS animations to complete
+  waitForAnimations: boolean; // Wait for CSS animations to complete
 }
 
 const DEFAULT_CONFIG: SPAWaitConfig = {
@@ -60,7 +60,7 @@ const DEFAULT_CONFIG: SPAWaitConfig = {
 
 /**
  * SPAContentWaiter Class
- * 
+ *
  * Provides intelligent waiting strategies for SPAs to ensure content
  * is fully rendered before vulnerability scanning.
  */
@@ -95,7 +95,11 @@ export class SPAContentWaiter {
 
         // Angular (2+)
         // @ts-ignore
-        if (window.ng || document.querySelector('[ng-version]') || document.querySelector('app-root')) {
+        if (
+          window.ng ||
+          document.querySelector('[ng-version]') ||
+          document.querySelector('app-root')
+        ) {
           framework = 'angular';
           const ngVersion = document.querySelector('[ng-version]');
           if (ngVersion) {
@@ -124,7 +128,11 @@ export class SPAContentWaiter {
         }
         // React
         // @ts-ignore
-        else if (window.React || window.__REACT_DEVTOOLS_GLOBAL_HOOK__ || document.querySelector('[data-reactroot]')) {
+        else if (
+          window.React ||
+          window.__REACT_DEVTOOLS_GLOBAL_HOOK__ ||
+          document.querySelector('[data-reactroot]')
+        ) {
           framework = 'react';
           // @ts-ignore
           if (window.React?.version) {
@@ -209,14 +217,15 @@ export class SPAContentWaiter {
       detection.version = result.version;
       detection.confidence = result.confidence;
       detection.indicators = result.indicators;
-
     } catch (error) {
       this.logger.warn(`Framework detection failed: ${error}`);
     }
 
     this.detectedFramework = detection;
-    this.logger.info(`Detected framework: ${detection.framework} (confidence: ${detection.confidence}%)`);
-    
+    this.logger.info(
+      `Detected framework: ${detection.framework} (confidence: ${detection.confidence}%)`
+    );
+
     return detection;
   }
 
@@ -226,12 +235,13 @@ export class SPAContentWaiter {
   public async waitForContent(
     page: Page,
     options: {
-      selector?: string;           // Optional selector to wait for
-      framework?: SPAFramework;    // Override detected framework
+      selector?: string; // Optional selector to wait for
+      framework?: SPAFramework; // Override detected framework
       customCheck?: () => Promise<boolean>; // Custom stability check
     } = {}
   ): Promise<boolean> {
-    const framework = options.framework || this.detectedFramework?.framework || SPAFramework.UNKNOWN;
+    const framework =
+      options.framework || this.detectedFramework?.framework || SPAFramework.UNKNOWN;
     const startTime = Date.now();
 
     this.logger.debug(`Waiting for content (framework: ${framework})`);
@@ -239,9 +249,9 @@ export class SPAContentWaiter {
     try {
       // 1. Wait for specific selector if provided
       if (options.selector) {
-        await page.waitForSelector(options.selector, { 
-          state: 'visible', 
-          timeout: this.config.maxTimeout 
+        await page.waitForSelector(options.selector, {
+          state: 'visible',
+          timeout: this.config.maxTimeout,
         });
       }
 
@@ -271,9 +281,11 @@ export class SPAContentWaiter {
 
       // 3. Wait for network idle if configured
       if (this.config.waitForNetworkIdle) {
-        await page.waitForLoadState('networkidle', { 
-          timeout: Math.max(5000, this.config.maxTimeout - (Date.now() - startTime)) 
-        }).catch(() => {});
+        await page
+          .waitForLoadState('networkidle', {
+            timeout: Math.max(5000, this.config.maxTimeout - (Date.now() - startTime)),
+          })
+          .catch(() => {});
       }
 
       // 4. Wait for animations if configured
@@ -291,9 +303,8 @@ export class SPAContentWaiter {
 
       const elapsed = Date.now() - startTime;
       this.logger.debug(`Content ready after ${elapsed}ms`);
-      
-      return true;
 
+      return true;
     } catch (error) {
       const elapsed = Date.now() - startTime;
       this.logger.warn(`Wait for content failed after ${elapsed}ms: ${error}`);
@@ -307,62 +318,70 @@ export class SPAContentWaiter {
   private async waitForAngular(page: Page): Promise<void> {
     const timeout = this.config.maxTimeout;
 
-    await page.waitForFunction(
-      () => {
-        // @ts-ignore
-        const testabilities = window.getAllAngularTestabilities?.();
-        if (!testabilities || testabilities.length === 0) {
-          return true; // No Angular testability = assume ready
-        }
-        return testabilities.every((t: any) => t.isStable());
-      },
-      { timeout }
-    ).catch(() => {
-      this.logger.debug('Angular testability check timed out, continuing...');
-    });
+    await page
+      .waitForFunction(
+        () => {
+          // @ts-ignore
+          const testabilities = window.getAllAngularTestabilities?.();
+          if (!testabilities || testabilities.length === 0) {
+            return true; // No Angular testability = assume ready
+          }
+          return testabilities.every((t: any) => t.isStable());
+        },
+        { timeout }
+      )
+      .catch(() => {
+        this.logger.debug('Angular testability check timed out, continuing...');
+      });
 
     // Also check for pending HTTP requests
-    await page.waitForFunction(
-      () => {
-        // Check for any loading indicators
-        const loadingElements = document.querySelectorAll(
-          '.loading, .spinner, [class*="loading"], [class*="spinner"], mat-progress-spinner, mat-progress-bar'
-        );
-        return Array.from(loadingElements).every(el => {
-          const style = window.getComputedStyle(el);
-          return style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
-        });
-      },
-      { timeout: 5000 }
-    ).catch(() => {});
+    await page
+      .waitForFunction(
+        () => {
+          // Check for any loading indicators
+          const loadingElements = document.querySelectorAll(
+            '.loading, .spinner, [class*="loading"], [class*="spinner"], mat-progress-spinner, mat-progress-bar'
+          );
+          return Array.from(loadingElements).every((el) => {
+            const style = window.getComputedStyle(el);
+            return (
+              style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0'
+            );
+          });
+        },
+        { timeout: 5000 }
+      )
+      .catch(() => {});
   }
 
   /**
    * Wait for AngularJS (1.x) to be stable
    */
   private async waitForAngularJS(page: Page): Promise<void> {
-    await page.waitForFunction(
-      () => {
-        // @ts-ignore
-        if (!window.angular) return true;
-        
-        try {
+    await page
+      .waitForFunction(
+        () => {
           // @ts-ignore
-          const injector = window.angular.element(document.body).injector();
-          if (!injector) return true;
-          
-          const $http = injector.get('$http');
-          
-          // Check for pending HTTP requests
-          return $http.pendingRequests.length === 0;
-        } catch {
-          return true;
-        }
-      },
-      { timeout: this.config.maxTimeout }
-    ).catch(() => {
-      this.logger.debug('AngularJS stability check failed, continuing...');
-    });
+          if (!window.angular) return true;
+
+          try {
+            // @ts-ignore
+            const injector = window.angular.element(document.body).injector();
+            if (!injector) return true;
+
+            const $http = injector.get('$http');
+
+            // Check for pending HTTP requests
+            return $http.pendingRequests.length === 0;
+          } catch {
+            return true;
+          }
+        },
+        { timeout: this.config.maxTimeout }
+      )
+      .catch(() => {
+        this.logger.debug('AngularJS stability check failed, continuing...');
+      });
   }
 
   /**
@@ -371,27 +390,29 @@ export class SPAContentWaiter {
   private async waitForReact(page: Page): Promise<void> {
     // React doesn't have a built-in "isStable" API
     // We rely on DOM stability and hydration completion
-    
-    await page.waitForFunction(
-      () => {
-        // Check if React hydration is complete
-        const root = document.getElementById('root') || document.getElementById('__next');
-        if (!root) return true;
-        
-        // React 18+ marks hydrated roots
-        // @ts-ignore
-        if (root._reactRootContainer?._internalRoot?.current) {
+
+    await page
+      .waitForFunction(
+        () => {
+          // Check if React hydration is complete
+          const root = document.getElementById('root') || document.getElementById('__next');
+          if (!root) return true;
+
+          // React 18+ marks hydrated roots
+          // @ts-ignore
+          if (root._reactRootContainer?._internalRoot?.current) {
+            return true;
+          }
+
+          // Check for Suspense boundaries
+          const suspense = document.querySelector('[data-suspense-loading="true"]');
+          if (suspense) return false;
+
           return true;
-        }
-
-        // Check for Suspense boundaries
-        const suspense = document.querySelector('[data-suspense-loading="true"]');
-        if (suspense) return false;
-
-        return true;
-      },
-      { timeout: this.config.maxTimeout }
-    ).catch(() => {});
+        },
+        { timeout: this.config.maxTimeout }
+      )
+      .catch(() => {});
 
     // Additional wait for React concurrent features
     await page.waitForTimeout(300);
@@ -401,30 +422,32 @@ export class SPAContentWaiter {
    * Wait for Vue.js to finish rendering
    */
   private async waitForVue(page: Page): Promise<void> {
-    await page.waitForFunction(
-      () => {
-        // @ts-ignore
-        const vue = window.__VUE__;
-        if (!vue) return true;
+    await page
+      .waitForFunction(
+        () => {
+          // @ts-ignore
+          const vue = window.__VUE__;
+          if (!vue) return true;
 
-        // Vue 3 - check if app is mounted
-        // @ts-ignore
-        const apps = window.__VUE_DEVTOOLS_GLOBAL_HOOK__?.apps;
-        if (apps && apps.size > 0) {
-          // All apps should be mounted
-          for (const app of apps.values()) {
-            if (!app._instance?.isMounted) return false;
+          // Vue 3 - check if app is mounted
+          // @ts-ignore
+          const apps = window.__VUE_DEVTOOLS_GLOBAL_HOOK__?.apps;
+          if (apps && apps.size > 0) {
+            // All apps should be mounted
+            for (const app of apps.values()) {
+              if (!app._instance?.isMounted) return false;
+            }
           }
-        }
 
-        return true;
-      },
-      { timeout: this.config.maxTimeout }
-    ).catch(() => {});
+          return true;
+        },
+        { timeout: this.config.maxTimeout }
+      )
+      .catch(() => {});
 
     // Wait for Vue's nextTick
     await page.evaluate(() => {
-      return new Promise<void>(resolve => {
+      return new Promise<void>((resolve) => {
         // @ts-ignore
         if (window.Vue?.nextTick) {
           // @ts-ignore
@@ -440,49 +463,55 @@ export class SPAContentWaiter {
    * Wait for Next.js to hydrate
    */
   private async waitForNext(page: Page): Promise<void> {
-    await page.waitForFunction(
-      () => {
-        // @ts-ignore
-        const data = window.__NEXT_DATA__;
-        if (!data) return true;
+    await page
+      .waitForFunction(
+        () => {
+          // @ts-ignore
+          const data = window.__NEXT_DATA__;
+          if (!data) return true;
 
-        // Check if page is hydrated
-        // @ts-ignore
-        return window.__NEXT_HYDRATED === true || document.readyState === 'complete';
-      },
-      { timeout: this.config.maxTimeout }
-    ).catch(() => {});
+          // Check if page is hydrated
+          // @ts-ignore
+          return window.__NEXT_HYDRATED === true || document.readyState === 'complete';
+        },
+        { timeout: this.config.maxTimeout }
+      )
+      .catch(() => {});
 
     // Wait for router to be ready
-    await page.waitForFunction(
-      () => {
-        // @ts-ignore
-        const router = window.__NEXT_ROUTER__;
-        return !router || router.isReady;
-      },
-      { timeout: 5000 }
-    ).catch(() => {});
+    await page
+      .waitForFunction(
+        () => {
+          // @ts-ignore
+          const router = window.__NEXT_ROUTER__;
+          return !router || router.isReady;
+        },
+        { timeout: 5000 }
+      )
+      .catch(() => {});
   }
 
   /**
    * Wait for Nuxt.js to hydrate
    */
   private async waitForNuxt(page: Page): Promise<void> {
-    await page.waitForFunction(
-      () => {
-        // @ts-ignore
-        const nuxt = window.__NUXT__;
-        if (!nuxt) return true;
+    await page
+      .waitForFunction(
+        () => {
+          // @ts-ignore
+          const nuxt = window.__NUXT__;
+          if (!nuxt) return true;
 
-        // Check if all async data is loaded
-        return nuxt.err === null;
-      },
-      { timeout: this.config.maxTimeout }
-    ).catch(() => {});
+          // Check if all async data is loaded
+          return nuxt.err === null;
+        },
+        { timeout: this.config.maxTimeout }
+      )
+      .catch(() => {});
 
     // Wait for Nuxt ready hook
     await page.evaluate(() => {
-      return new Promise<void>(resolve => {
+      return new Promise<void>((resolve) => {
         // @ts-ignore
         if (window.$nuxt?.$nextTick) {
           // @ts-ignore
@@ -512,7 +541,7 @@ export class SPAContentWaiter {
         return new Promise<void>((resolve) => {
           let lastMutationTime = Date.now();
           let stableStartTime = Date.now();
-          
+
           const observer = new MutationObserver(() => {
             lastMutationTime = Date.now();
           });
@@ -559,8 +588,10 @@ export class SPAContentWaiter {
           return;
         }
 
-        Promise.all(animations.map(a => a.finished)).then(() => resolve()).catch(() => resolve());
-        
+        Promise.all(animations.map((a) => a.finished))
+          .then(() => resolve())
+          .catch(() => resolve());
+
         // Fallback timeout
         setTimeout(resolve, 2000);
       });
@@ -570,12 +601,9 @@ export class SPAContentWaiter {
   /**
    * Wait for custom condition
    */
-  private async waitForCondition(
-    page: Page,
-    check: () => Promise<boolean>
-  ): Promise<void> {
+  private async waitForCondition(page: Page, check: () => Promise<boolean>): Promise<void> {
     const startTime = Date.now();
-    
+
     while (Date.now() - startTime < this.config.maxTimeout) {
       if (await check()) {
         return;
@@ -593,12 +621,12 @@ export class SPAContentWaiter {
       maxTimeout: 5000,
       minStableTime: 200,
     };
-    
+
     const originalConfig = this.config;
     this.config = quickConfig;
-    
+
     const result = await this.waitForContent(page, { selector });
-    
+
     this.config = originalConfig;
     return result;
   }

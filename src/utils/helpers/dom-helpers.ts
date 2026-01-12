@@ -62,17 +62,17 @@ export async function isElementEditable(element: Locator): Promise<boolean> {
 export async function getElementAttributes(element: Locator): Promise<Record<string, string>> {
   try {
     const attributes: Record<string, string> = {};
-    
+
     // Get common attributes
     const attrNames = ['id', 'name', 'class', 'type', 'value', 'placeholder', 'required'];
-    
+
     for (const attr of attrNames) {
       const value = await element.getAttribute(attr);
       if (value !== null) {
         attributes[attr] = value;
       }
     }
-    
+
     return attributes;
   } catch {
     return {};
@@ -164,7 +164,7 @@ export async function getPageHTML(page: Page): Promise<string> {
  * Get page text content
  */
 export async function getPageText(page: Page): Promise<string> {
-  return await page.textContent('body') || '';
+  return (await page.textContent('body')) || '';
 }
 
 /**

@@ -6,9 +6,9 @@
 import { ErrorBasedDetector } from '../detectors/active/ErrorBasedDetector';
 import { InjectionDetector } from '../detectors/active/InjectionDetector';
 import { PathTraversalDetector } from '../detectors/active/PathTraversalDetector';
-import { SsrfDetector } from '../detectors/active/SsrfDetector';
 import { SqlInjectionDetector } from '../detectors/active/SqlInjectionDetector';
 import { SqlMapDetector } from '../detectors/active/SqlMapDetector';
+import { SsrfDetector } from '../detectors/active/SsrfDetector';
 import { XssDetector } from '../detectors/active/XssDetector';
 import { CookieSecurityDetector } from '../detectors/passive/CookieSecurityDetector';
 import { HeaderSecurityDetector } from '../detectors/passive/HeaderSecurityDetector';
@@ -84,7 +84,8 @@ export function registerBuiltInDetectors(): void {
     name: 'Command Injection / SSTI / XXE Detector',
     type: 'active',
     category: 'cmdi',
-    description: 'Detects OS command injection and other injection classes (SSTI/XXE) where supported',
+    description:
+      'Detects OS command injection and other injection classes (SSTI/XXE) where supported',
     enabledByDefault: true,
   });
 

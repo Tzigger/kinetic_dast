@@ -1,6 +1,6 @@
 /**
  * PayloadFilter - Filters out destructive payloads for safe mode operation
- * 
+ *
  * Prevents injection of payloads that could:
  * - Modify, delete, or corrupt data (DROP, DELETE, TRUNCATE, etc)
  * - Execute system commands (xp_cmdshell, system(), etc)
@@ -17,22 +17,53 @@ import { Logger } from './logger/Logger';
  */
 const DESTRUCTIVE_KEYWORDS = [
   // SQL Commands
-  'DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE', 'INSERT', 'UPDATE',
-  'EXEC', 'EXECUTE', 'GRANT', 'REVOKE',
-  
+  'DROP',
+  'DELETE',
+  'TRUNCATE',
+  'ALTER',
+  'CREATE',
+  'INSERT',
+  'UPDATE',
+  'EXEC',
+  'EXECUTE',
+  'GRANT',
+  'REVOKE',
+
   // System Command Execution
-  'xp_', 'xp_cmdshell', 'xp_dirtree', 'system()', 'exec(', 'shell_exec',
-  'proc_open', 'passthru', 'popen', 'eval',
-  
+  'xp_',
+  'xp_cmdshell',
+  'xp_dirtree',
+  'system()',
+  'exec(',
+  'shell_exec',
+  'proc_open',
+  'passthru',
+  'popen',
+  'eval',
+
   // File Operations
-  'INTO OUTFILE', 'INTO DUMPFILE', 'LOAD_FILE', 'chmod', 'mkdir', 'rmdir',
-  'unlink', 'fopen', 'fwrite', 'file_put_contents',
-  
+  'INTO OUTFILE',
+  'INTO DUMPFILE',
+  'LOAD_FILE',
+  'chmod',
+  'mkdir',
+  'rmdir',
+  'unlink',
+  'fopen',
+  'fwrite',
+  'file_put_contents',
+
   // Process Control
-  'waitfor', 'sleep', 'benchmark', 'randomblob',
-  
+  'waitfor',
+  'sleep',
+  'benchmark',
+  'randomblob',
+
   // Dangerous Functions
-  'load_file', 'into outfile', 'copy', 'COPY TO',
+  'load_file',
+  'into outfile',
+  'copy',
+  'COPY TO',
 ];
 
 /**
@@ -41,29 +72,29 @@ const DESTRUCTIVE_KEYWORDS = [
 const DANGEROUS_PATTERNS = [
   // DROP statements
   /DROP\s+(TABLE|DATABASE|SCHEMA|INDEX|TRIGGER|PROCEDURE|FUNCTION)/i,
-  
+
   // DELETE operations
   /DELETE\s+FROM\s+\w+/i,
-  
+
   // TRUNCATE operations
   /TRUNCATE\s+(TABLE\s+)?\w+/i,
-  
+
   // ALTER TABLE operations that modify schema
   /ALTER\s+TABLE\s+\w+\s+(DROP|MODIFY|CHANGE|RENAME)/i,
-  
+
   // INSERT/UPDATE that might be destructive
   /INSERT\s+INTO\s+\w+\s*\(/i,
   /UPDATE\s+\w+\s+SET/i,
-  
+
   // System execution
   /xp_cmdshell|xp_dirtree|xp_regread|xp_regwrite/i,
-  
+
   // Shell commands
   /shell_exec|system\(|passthru\(|exec\(|proc_open|popen/i,
-  
+
   // Dangerous SQL functions
   /INTO\s+OUTFILE|INTO\s+DUMPFILE|LOAD_FILE|COPY\s+TO/i,
-  
+
   // Privilege escalation
   /GRANT\s+ALL|REVOKE\s+ALL|WITH\s+GRANT\s+OPTION/i,
 ];
@@ -112,7 +143,7 @@ export class PayloadFilter {
       const blocked = payloads.length - safe.length;
       this.logger.info(
         `Filtered out ${blocked} destructive payload(s) in safe mode. ` +
-        `(${safe.length}/${payloads.length} payloads remain safe)`
+          `(${safe.length}/${payloads.length} payloads remain safe)`
       );
     }
 

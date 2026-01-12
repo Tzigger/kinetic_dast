@@ -30,10 +30,15 @@ export class ConsoleReporter extends BaseReporter {
     this.vulnCount += 1;
     const sev = v.severity.toUpperCase();
     const sevColor =
-      String(v.severity) === 'critical' ? chalk.bgRed.white :
-      String(v.severity) === 'high' ? chalk.red :
-      String(v.severity) === 'medium' ? chalk.yellow :
-      String(v.severity) === 'low' ? chalk.blue : chalk.gray;
+      String(v.severity) === 'critical'
+        ? chalk.bgRed.white
+        : String(v.severity) === 'high'
+          ? chalk.red
+          : String(v.severity) === 'medium'
+            ? chalk.yellow
+            : String(v.severity) === 'low'
+              ? chalk.blue
+              : chalk.gray;
     this.spinner.stop();
     // eslint-disable-next-line no-console
     console.log(`${sevColor(` ${sev} `)} ${chalk.bold(v.title)} ${chalk.gray(`(${v.category})`)}`);

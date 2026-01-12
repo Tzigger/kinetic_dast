@@ -190,9 +190,7 @@ export class ConfigurationManager {
     }
 
     const files = fs.readdirSync(profilesDir);
-    return files
-      .filter((file) => file.endsWith('.json'))
-      .map((file) => file.replace('.json', ''));
+    return files.filter((file) => file.endsWith('.json')).map((file) => file.replace('.json', ''));
   }
 
   /**

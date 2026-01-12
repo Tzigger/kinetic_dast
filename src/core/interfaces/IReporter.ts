@@ -51,7 +51,7 @@ export abstract class BaseReporter implements IReporter {
     try {
       const fs = await import('fs/promises');
       const path = await import('path');
-      
+
       const dir = path.dirname(outputPath);
       await fs.mkdir(dir, { recursive: true });
       return true;

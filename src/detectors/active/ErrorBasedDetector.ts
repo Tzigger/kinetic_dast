@@ -2,7 +2,11 @@ import { Page } from 'playwright';
 import { IActiveDetector, ActiveDetectorContext } from '../../core/interfaces/IActiveDetector';
 import { Vulnerability } from '../../types/vulnerability';
 import { VulnerabilitySeverity, VulnerabilityCategory } from '../../types/enums';
-import { PayloadInjector, InjectionResult, PayloadEncoding } from '../../scanners/active/PayloadInjector';
+import {
+  PayloadInjector,
+  InjectionResult,
+  PayloadEncoding,
+} from '../../scanners/active/PayloadInjector';
 import { getOWASP2025Category } from '../../utils/cwe/owasp-2025-mapping';
 
 /**
@@ -22,7 +26,8 @@ export enum ErrorType {
  */
 export class ErrorBasedDetector implements IActiveDetector {
   readonly name = 'Error-Based Information Disclosure Detector';
-  readonly description = 'Detects information disclosure through error messages, stack traces, and exceptions';
+  readonly description =
+    'Detects information disclosure through error messages, stack traces, and exceptions';
   readonly version = '1.0.0';
 
   private injector: PayloadInjector;
@@ -133,7 +138,10 @@ export class ErrorBasedDetector implements IActiveDetector {
 
     try {
       const content = await page.content();
-      const visibleText = await page.locator('body').innerText().catch(() => '');
+      const visibleText = await page
+        .locator('body')
+        .innerText()
+        .catch(() => '');
 
       // Check for stack traces
       if (this.hasStackTrace(content)) {
@@ -310,7 +318,8 @@ export class ErrorBasedDetector implements IActiveDetector {
           request: { body: result.payload },
           response: { body: content.substring(0, 1000) },
         },
-        remediation: 'Implement generic error pages and disable detailed error messages in production. Configure production environment to show generic error pages, log detailed errors server-side.',
+        remediation:
+          'Implement generic error pages and disable detailed error messages in production. Configure production environment to show generic error pages, log detailed errors server-side.',
         references: [
           'https://cwe.mitre.org/data/definitions/209.html',
           'https://owasp.org/www-community/Improper_Error_Handling',
@@ -333,7 +342,8 @@ export class ErrorBasedDetector implements IActiveDetector {
           request: { body: result.payload },
           response: { body: content.substring(0, 1000) },
         },
-        remediation: 'Implement generic error pages and disable detailed error messages in production. Remove or disable debug mode, implement custom error handlers.',
+        remediation:
+          'Implement generic error pages and disable detailed error messages in production. Remove or disable debug mode, implement custom error handlers.',
         references: [
           'https://cwe.mitre.org/data/definitions/209.html',
           'https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html',
@@ -401,7 +411,8 @@ export class ErrorBasedDetector implements IActiveDetector {
           snippet: evidence.substring(0, 500),
         },
       },
-      remediation: 'Implement generic error pages and disable detailed error messages in production. Configure production environment to show generic error pages, log detailed errors server-side instead of displaying to users, remove or disable debug mode in production.',
+      remediation:
+        'Implement generic error pages and disable detailed error messages in production. Configure production environment to show generic error pages, log detailed errors server-side instead of displaying to users, remove or disable debug mode in production.',
       timestamp: new Date(),
     };
   }
