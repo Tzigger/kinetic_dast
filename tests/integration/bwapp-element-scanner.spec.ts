@@ -9,12 +9,24 @@ import { LogLevel, VulnerabilitySeverity } from '../../src/types/enums';
 import { ElementScanConfig } from '../../src/types/element-scan';
 import { AttackSurfaceType, InjectionContext } from '../../src/scanners/active/DomExplorer';
 import { Vulnerability } from '../../src/types/vulnerability';
-import { ensureBwappAuthState } from '../../global-setup';
 
 const BASE_URL = process.env.BWAPP_URL || 'http://localhost:8080';
-const STORAGE_STATE = 'storage-states/bwapp-auth.json';
+const BWAPP_USER = process.env.BWAPP_USER || 'bee';
+const BWAPP_PASS = process.env.BWAPP_PASS || 'bug';
 
 const makeLogger = () => new Logger(LogLevel.DEBUG, 'bwapp-element-validation');
+
+/**
+ * Login to bWAPP - required for each test since PHP sessions expire quickly
+ */
+async function loginToBwapp(page: Page): Promise<void> {
+  await page.goto(`${BASE_URL}/login.php`);
+  await page.fill('input[name="login"]', BWAPP_USER);
+  await page.fill('input[name="password"]', BWAPP_PASS);
+  await page.selectOption('select[name="security_level"]', '0'); // Low security
+  await page.click('button[name="form"]');
+  await page.waitForURL('**/portal.php');
+}
 
 async function runElementScan(
   page: Page,
@@ -43,16 +55,15 @@ async function runElementScan(
   return { result: { ...result, vulnerabilities: combined }, emitted, elementResults };
 }
 
-test.use({ storageState: STORAGE_STATE });
-
-test.beforeAll(async () => {
-  await ensureBwappAuthState(BASE_URL, STORAGE_STATE);
-});
-
 // Run tests serially to avoid auth state conflicts
 test.describe.configure({ mode: 'serial' });
 
 test.describe('bWAPP ElementScanner Validation', () => {
+  // Login before each test since PHP sessions expire quickly
+  test.beforeEach(async ({ page }) => {
+    await loginToBwapp(page);
+  });
+
   test('finds SQLi on movie search input with locator metadata', async ({ page, context }) => {
     test.setTimeout(120000); // 2 minutes for SQLi detection
     const elementConfig: ElementScanConfig = {

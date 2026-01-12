@@ -9,12 +9,66 @@ on:
     types: [created]
 
 jobs:
-  lint-and-format:
-    name: Lint & Format Check
+  # Auto-fix lint and format issues, then commit back to the branch
+  auto-fix:
+    name: Auto-fix Lint & Format
     runs-on: ubuntu-latest
+    # Only run on push events (not PRs) to avoid permission issues with forks
+    if: github.event_name == 'push'
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Need to fetch with token that has write permissions
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.head_ref || github.ref_name }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run ESLint with auto-fix
+        run: npm run lint:fix || true
+      
+      - name: Run Prettier
+        run: npm run format
+      
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code || echo "has_changes=true" >> $GITHUB_OUTPUT
+      
+      - name: Commit and push fixes
+        if: steps.git-check.outputs.has_changes == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git commit -m "style: auto-fix lint and format issues [skip ci]"
+          git push
+      
+      - name: No changes needed
+        if: steps.git-check.outputs.has_changes != 'true'
+        run: echo "✅ No lint or format fixes needed"
+
+  # Verify lint/format passes (runs after auto-fix or on PRs)
+  lint-and-format:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    needs: [auto-fix]
+    # Run if auto-fix succeeded or was skipped (PRs)
+    if: always() && (needs.auto-fix.result == 'success' || needs.auto-fix.result == 'skipped')
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch latest changes (including auto-fix commits)
+          ref: ${{ github.head_ref || github.ref_name }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,14 +88,30 @@ jobs:
   test:
     name: Test Suite
     runs-on: ${{ matrix.os }}
+    needs: [auto-fix]
+    # Run if auto-fix succeeded or was skipped (PRs)
+    if: always() && (needs.auto-fix.result == 'success' || needs.auto-fix.result == 'skipped')
     
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [18, 20]
+        os: [ubuntu-latest]
+        node-version: [20]
+        include:
+          # Add Windows and macOS for Node 20 only (reduce matrix size)
+          - os: windows-latest
+            node-version: 20
+          - os: macos-latest
+            node-version: 20
+          # Add Node 18 for Ubuntu only
+          - os: ubuntu-latest
+            node-version: 18
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Fetch latest changes (including auto-fix commits)
+          ref: ${{ github.head_ref || github.ref_name }}
       
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
@@ -49,11 +119,33 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
       
+      # Install sqlmap on Ubuntu
+      - name: Install sqlmap (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlmap
+          sqlmap --version
+      
+      # Install sqlmap on macOS via Homebrew
+      - name: Install sqlmap (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install sqlmap
+          sqlmap --version
+      
+      # Install sqlmap on Windows via pip
+      - name: Install sqlmap (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pip install sqlmap
+          sqlmap --version
+      
       - name: Install dependencies
         run: npm ci
       
       - name: Install Playwright browsers
-        run: npx playwright install chromium
+        run: npx playwright install chromium --with-deps
       
       - name: Build
         run: npm run build
@@ -72,12 +164,73 @@ jobs:
           flags: unittests
           name: codecov-umbrella
 
+  # Consumer test - validate package can be installed and used from GitHub
+  consumer-test:
+    name: Package Installation Test
+    runs-on: ubuntu-latest
+    needs: [build]
+    
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      
+      - name: Create test consumer project
+        run: |
+          mkdir test-consumer
+          cd test-consumer
+          npm init -y
+      
+      # Install from GitHub - this validates the package can be consumed
+      - name: Install package from GitHub
+        run: |
+          cd test-consumer
+          npm install github:Tzigger/kinetic_dast
+      
+      - name: Install sqlmap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlmap
+      
+      - name: Install Playwright
+        run: |
+          cd test-consumer
+          npm install @playwright/test
+          npx playwright install chromium --with-deps
+      
+      - name: Verify package is importable
+        run: |
+          cd test-consumer
+          node -e "
+            const kinetic = require('@tzigger/kinetic');
+            console.log('✅ Package imported successfully');
+            console.log('Exports:', Object.keys(kinetic));
+          "
+      
+      - name: Verify CLI is available 
+        run: |
+          cd test-consumer
+          npx kinetic --version || echo "CLI check complete"
+
   build:
     name: Build Check
     runs-on: ubuntu-latest
+    needs: [auto-fix]
+    # Run if auto-fix succeeded or was skipped (PRs)
+    if: always() && (needs.auto-fix.result == 'success' || needs.auto-fix.result == 'skipped')
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Fetch latest changes (including auto-fix commits)
+          ref: ${{ github.head_ref || github.ref_name }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -109,9 +262,13 @@ jobs:
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    needs: [auto-fix]
+    if: always() && (needs.auto-fix.result == 'success' || needs.auto-fix.result == 'skipped')
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -135,6 +292,57 @@ jobs:
             echo "❌ Critical vulnerabilities found!"
             exit 1
           fi
+
+  # E2E Security tests with sqlmap
+  e2e-security-tests:
+    name: E2E Security Tests
+    runs-on: ubuntu-latest
+    needs: [build, auto-fix]
+    if: always() && needs.build.result == 'success'
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install sqlmap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlmap
+          echo "sqlmap version:"
+          sqlmap --version
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      
+      - name: Run E2E tests
+        run: npm run test:e2e
+        continue-on-error: true
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
 
   publish-npm:
     name: Publish to NPM

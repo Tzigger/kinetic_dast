@@ -1,0 +1,60 @@
+# Dockerfile to simulate GitHub Actions Ubuntu runner
+# This mimics the ubuntu-latest runner environment
+
+FROM ubuntu:22.04
+
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set up locale
+RUN apt-get update && apt-get install -y locales && \
+    locale-gen en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
+
+# Install system dependencies (similar to GitHub Actions runner)
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    jq \
+    python3 \
+    python3-pip \
+    sudo \
+    wget \
+    ca-certificates \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20 (matching GitHub Actions setup-node@v4)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g npm@latest
+
+# Install sqlmap (our key dependency for API testing)
+RUN apt-get update && apt-get install -y sqlmap && \
+    echo "SQLMap version:" && sqlmap --version
+
+# Install Playwright system dependencies
+RUN npx playwright install-deps chromium
+
+# Create working directory
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Install npm dependencies (skip prepare script to avoid build during install)
+RUN npm ci --ignore-scripts
+
+# Copy the rest of the source code
+COPY . .
+
+# Now build TypeScript (after all source files are copied)
+RUN npm run build
+
+# Install Playwright browsers
+RUN npx playwright install chromium
+
+# Default command - run the test suite
+CMD ["npm", "run", "test"]
