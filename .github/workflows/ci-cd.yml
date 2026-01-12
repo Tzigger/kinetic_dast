@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     # Only run on push events (not PRs) to avoid permission issues with forks
     if: github.event_name == 'push'
+    # Grant write permissions to push commits
+    permissions:
+      contents: write
     
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +25,7 @@ jobs:
           # Need to fetch with token that has write permissions
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.head_ref || github.ref_name }}
+          persist-credentials: true
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
