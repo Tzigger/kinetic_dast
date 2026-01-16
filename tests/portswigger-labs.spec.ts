@@ -231,11 +231,7 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       expect(success).toBe(true);
     });
 
-    // TODO: This test is skipped due to a framework bug with hidden CSRF fields.
-    // PayloadInjector.ts line 636 waits for element to be 'visible' before filling,
-    // but hidden fields (like csrf) will never be visible, causing timeout.
-    // Fix: Use page.evaluate() to set hidden field values, or check input type first.
-    test.skip('SQLi Login Bypass (ElementScanner)', async ({ page, context }) => {
+    test('SQLi Login Bypass (ElementScanner)', async ({ page, context }) => {
       // Step 1: Login to PortSwigger
       await loginToPortSwigger(page);
       
@@ -410,10 +406,9 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       expect(success).toBe(true);
     });
 
-    // TODO: This test is skipped due to a framework limitation with hidden CSRF fields.
-    // The PayloadInjector attempts to fill hidden fields using page.fill() which fails
-    // because hidden elements are not "visible, enabled and editable".
-    // This requires framework improvement to handle hidden form fields correctly.
+    // TODO: Stored XSS detection needs improvement - the hidden field fix works,
+    // but the XSS detector's stored XSS logic doesn't properly verify persistence.
+    // The form submits correctly, but detection fails (JSON XSS check times out).
     test.skip('Stored XSS - HTML context (ElementScanner)', async ({ page, context }) => {
       // Step 1: Login to PortSwigger
       await loginToPortSwigger(page);

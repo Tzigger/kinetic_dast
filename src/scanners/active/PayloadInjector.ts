@@ -632,10 +632,31 @@ export class PayloadInjector {
       const otherFields = surface.metadata['otherFields'] as Record<string, string>;
       for (const [selector, value] of Object.entries(otherFields)) {
         try {
-          // Wait for element to be visible before filling
-          await page.waitForSelector(selector, { state: 'visible', timeout: 2000 }).catch(() => {});
-          await page.fill(selector, value);
-          this.logger.debug(`Filled other field: ${selector} = ${value}`);
+          // Check if element is hidden (type="hidden" or not visible)
+          const isHidden = await page
+            .$eval(selector, (el: HTMLInputElement) => {
+              return el.type === 'hidden' || el.offsetParent === null;
+            })
+            .catch(() => false);
+
+          if (isHidden) {
+            // Use evaluate to set hidden field value directly
+            await page.$eval(
+              selector,
+              (el: HTMLInputElement, val: string) => {
+                el.value = val;
+              },
+              value
+            );
+            this.logger.debug(`Set hidden field: ${selector} = ${value}`);
+          } else {
+            // Wait for visible element and use fill
+            await page
+              .waitForSelector(selector, { state: 'visible', timeout: 2000 })
+              .catch(() => {});
+            await page.fill(selector, value);
+            this.logger.debug(`Filled visible field: ${selector} = ${value}`);
+          }
         } catch (e) {
           this.logger.warn(`Failed to fill other field ${selector}: ${e}`);
         }
