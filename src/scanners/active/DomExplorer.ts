@@ -426,6 +426,7 @@ export class DomExplorer {
 
   /**
    * Explorează pagina pentru toate suprafețele de atac
+   * Enhanced: Now deduplicates surfaces to avoid testing the same input multiple times
    */
   public async explore(page: Page, collectedRequests: Request[] = []): Promise<AttackSurface[]> {
     this.logger.info('Starting DOM exploration');
@@ -509,17 +510,41 @@ export class DomExplorer {
       surfaces.push(...clickables);
       this.logger.debug(`[DomExplorer] Clickable elements discovered: ${clickables.length}`);
 
+      // 8. DEDUPLICATION: Remove duplicate surfaces
+      const seenKeys = new Set<string>();
+      const deduplicatedSurfaces: AttackSurface[] = [];
+
+      for (const surface of surfaces) {
+        // Create unique key based on type, name, and URL/value
+        const urlPart = surface.metadata?.url || surface.value || '';
+        const key = `${surface.type}|${surface.name}|${urlPart}`;
+
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          deduplicatedSurfaces.push(surface);
+        }
+      }
+
+      const duplicatesRemoved = surfaces.length - deduplicatedSurfaces.length;
+      if (duplicatesRemoved > 0) {
+        this.logger.debug(`[DomExplorer] Removed ${duplicatesRemoved} duplicate surfaces`);
+      }
+
       // INFO-level summary by type
       const byType: Record<string, number> = {};
-      surfaces.forEach((s) => {
+      deduplicatedSurfaces.forEach((s) => {
         byType[s.type] = (byType[s.type] || 0) + 1;
       });
-      this.logger.info(`DOM exploration completed. Found ${surfaces.length} attack surfaces`);
+      this.logger.info(
+        `DOM exploration completed. Found ${deduplicatedSurfaces.length} unique attack surfaces (${duplicatesRemoved} duplicates removed)`
+      );
       this.logger.info(
         `[DomExplorer] Breakdown: ${Object.entries(byType)
           .map(([t, c]) => `${t}:${c}`)
           .join(', ')}`
       );
+
+      return deduplicatedSurfaces;
     } catch (error) {
       this.logger.error(`Error during DOM exploration: ${error}`);
     }
@@ -730,7 +755,39 @@ export class DomExplorer {
   }
 
   /**
+   * Generate appropriate default value based on input type and name
+   */
+  private getDefaultValueForType(type: string, name: string): string {
+    const nameLower = name.toLowerCase();
+
+    if (type === 'email' || nameLower.includes('email')) {
+      return 'test@example.com';
+    }
+    if (type === 'password' || nameLower.includes('password')) {
+      return 'TestPassword123!';
+    }
+    if (type === 'number' || nameLower.includes('age') || nameLower.includes('quantity')) {
+      return '123';
+    }
+    if (type === 'tel' || nameLower.includes('phone')) {
+      return '555-1234';
+    }
+    if (type === 'date') {
+      return '2024-01-01';
+    }
+    if (type === 'url') {
+      return 'https://example.com';
+    }
+    if (nameLower.includes('name') || nameLower.includes('user')) {
+      return 'testuser';
+    }
+
+    return 'test_value';
+  }
+
+  /**
    * Descoperă toate formularele din pagină
+   * Enhanced: Now captures sibling fields for proper form submission during testing
    */
   public async discoverForms(page: Page): Promise<FormInfo[]> {
     const forms: FormInfo[] = [];
@@ -742,45 +799,84 @@ export class DomExplorer {
         const action = (await form.getAttribute('action')) || page.url();
         const method = ((await form.getAttribute('method')) || 'GET').toUpperCase();
 
-        const inputs: AttackSurface[] = [];
         const inputElements = await form.$$('input, textarea, select');
+
+        // ASP.NET infrastructure fields to skip
+        const aspNetFields = [
+          '__VIEWSTATE',
+          '__EVENTVALIDATION',
+          '__EVENTTARGET',
+          '__EVENTARGUMENT',
+          '__VIEWSTATEGENERATOR',
+        ];
+
+        // First pass: collect all field info
+        const allFieldInfo: Map<
+          string,
+          { selector: string; value: string; type: string; element: any; index: number }
+        > = new Map();
 
         for (let i = 0; i < inputElements.length; i++) {
           const input = inputElements[i];
           if (!input) continue;
+
           const name = await input.getAttribute('name');
           const type = (await input.getAttribute('type')) || 'text';
-          const value = (await input.getAttribute('value')) || '';
 
-          if (name && type !== 'submit' && type !== 'button') {
-            // Skip ASP.NET infrastructure fields
-            if (
-              [
-                '__VIEWSTATE',
-                '__EVENTVALIDATION',
-                '__EVENTTARGET',
-                '__EVENTARGUMENT',
-                '__VIEWSTATEGENERATOR',
-              ].includes(name)
-            ) {
-              continue;
-            }
-
-            inputs.push({
-              id: `form-input-${i}`,
-              type: AttackSurfaceType.FORM_INPUT,
-              element: input,
-              selector: `input[name="${name}"]`,
-              name,
-              value,
-              context: this.determineContext(type, name),
-              metadata: {
-                formAction: action,
-                formMethod: method,
-                inputType: type,
-              },
-            });
+          // Skip submit/button and ASP.NET fields
+          if (!name || type === 'submit' || type === 'button' || aspNetFields.includes(name)) {
+            continue;
           }
+
+          // Get current value or generate default
+          let value = '';
+          try {
+            value = await input.inputValue();
+          } catch {
+            value = (await input.getAttribute('value')) || '';
+          }
+
+          // If empty, generate appropriate default value
+          if (!value) {
+            value = this.getDefaultValueForType(type, name);
+          }
+
+          allFieldInfo.set(name, {
+            selector: `[name="${name}"]`,
+            value,
+            type,
+            element: input,
+            index: i,
+          });
+        }
+
+        // Second pass: create AttackSurfaces with sibling context
+        const inputs: AttackSurface[] = [];
+
+        for (const [name, fieldInfo] of allFieldInfo) {
+          // Build otherFields: all siblings except current field
+          const otherFields: Record<string, string> = {};
+          for (const [sibName, sibInfo] of allFieldInfo) {
+            if (sibName !== name) {
+              otherFields[sibInfo.selector] = sibInfo.value;
+            }
+          }
+
+          inputs.push({
+            id: `form-input-${fieldInfo.index}`,
+            type: AttackSurfaceType.FORM_INPUT,
+            element: fieldInfo.element,
+            selector: fieldInfo.selector,
+            name,
+            value: fieldInfo.value,
+            context: this.determineContext(fieldInfo.type, name),
+            metadata: {
+              formAction: action,
+              formMethod: method,
+              inputType: fieldInfo.type,
+              otherFields, // Now includes sibling fields for proper form submission
+            },
+          });
         }
 
         const submitButton = await form.$('button[type="submit"], input[type="submit"]');
@@ -793,7 +889,7 @@ export class DomExplorer {
         });
       }
 
-      this.logger.debug(`Discovered ${forms.length} forms`);
+      this.logger.debug(`Discovered ${forms.length} forms with sibling field context`);
     } catch (error) {
       this.logger.error(`Error discovering forms: ${error}`);
     }

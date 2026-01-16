@@ -386,15 +386,36 @@ export class ActiveScanner extends BaseScanner {
     // Discover DOM Surfaces
     let domSurfaces = await this.domExplorer.explore(page, capturedRequests);
 
-    // Retry logic for slow SPAs
+    // Retry logic for slow SPAs - optimized to check content first
     if (domSurfaces.length === 0) {
-      context.logger.info('No surfaces found initially, waiting for potential SPA hydration...');
-      await this.spaWaitStrategy.waitForStability(page, 3000, 'navigation');
-      domSurfaces = await this.domExplorer.explore(page, capturedRequests);
-
-      if (domSurfaces.length === 0) {
-        await this.spaWaitStrategy.waitForStability(page, 2000, 'navigation');
+      // Check if page has meaningful content before waiting
+      const pageContent = await page.content();
+      const hasInteractiveElements = pageContent.includes('<input') || 
+                                      pageContent.includes('<form') || 
+                                      pageContent.includes('<button') ||
+                                      pageContent.includes('ng-') ||
+                                      pageContent.includes('v-') ||
+                                      pageContent.includes('onClick') ||
+                                      pageContent.includes('@click');
+      
+      // Only wait for SPA hydration if page has potential interactive content
+      if (hasInteractiveElements && pageContent.length > 2000) {
+        context.logger.info('No surfaces found initially, waiting for potential SPA hydration...');
+        await this.spaWaitStrategy.waitForStability(page, 3000, 'navigation');
         domSurfaces = await this.domExplorer.explore(page, capturedRequests);
+
+        // Second retry only if we still have no surfaces but page looks dynamic
+        if (domSurfaces.length === 0) {
+          const hasReactOrAngular = pageContent.includes('__REACT') || 
+                                     pageContent.includes('ng-app') || 
+                                     pageContent.includes('data-reactroot');
+          if (hasReactOrAngular) {
+            await this.spaWaitStrategy.waitForStability(page, 2000, 'navigation');
+            domSurfaces = await this.domExplorer.explore(page, capturedRequests);
+          }
+        }
+      } else {
+        context.logger.debug('Page has minimal interactive content, skipping SPA retry');
       }
     }
 

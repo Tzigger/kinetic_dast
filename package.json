@@ -41,7 +41,10 @@
     "prepare": "npm run build",
     "prepublishOnly": "npm run test && npm run lint",
     "test:phase2": "npx playwright test tests/integration/phase2-comprehensive.test.ts --reporter=list --project=chromium",
-    "torture": "node torture-server.js"
+    "torture": "node torture-server.js",
+    "test:juice-shop": "npx playwright test tests/juiceshop-comprehensive.spec.ts --project=chromium --reporter=line",
+    "test:dvwa": "npx playwright test tests/dvwa-comprehensive.spec.ts --project=chromium --reporter=line",
+    "test:bwapp": "npx playwright test tests/bwapp-comprehensive.spec.ts --project=chromium --reporter=line"
   },
   "keywords": [
     "kinetic",
@@ -90,6 +93,7 @@
     "@typescript-eslint/parser": "^6.19.0",
     "chokidar-cli": "^3.0.0",
     "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.3",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",

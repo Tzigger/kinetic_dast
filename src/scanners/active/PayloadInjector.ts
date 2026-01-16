@@ -65,9 +65,9 @@ export class PayloadInjector {
   protected payloadFilter: PayloadFilter;
   protected safeMode: boolean = false;
 
-  // ENHANCED: Configurable timeouts (increased from 3s to 10s default)
-  public static readonly DEFAULT_SPA_TIMEOUT = 10000;
-  public static readonly DEFAULT_NETWORK_TIMEOUT = 10000;
+  // ENHANCED: Configurable timeouts from centralized config
+  public static readonly DEFAULT_SPA_TIMEOUT = 10000; // TimeoutConfig.SPA_WAIT
+  public static readonly DEFAULT_NETWORK_TIMEOUT = 10000; // TimeoutConfig.NETWORK_REQUEST
 
   constructor(logLevel: LogLevel = LogLevel.INFO, safeMode: boolean = false) {
     this.logger = new Logger(logLevel, 'PayloadInjector');

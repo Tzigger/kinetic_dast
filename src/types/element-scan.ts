@@ -39,6 +39,8 @@ export interface ElementScanConfig {
   elements: ElementTarget[];
   /** Optional page to navigate to before scanning elements */
   pageUrl?: string;
+  /** Skip automatic navigation - use current page state (useful when page is pre-configured) */
+  skipNavigation?: boolean;
   /** Timeout for page operations */
   pageTimeout?: number;
   /** Delay between element scans */

@@ -45,27 +45,68 @@ test.describe('DVWA Comprehensive Security Assessment', () => {
 
   /**
    * Login and configure DVWA security level before each test
+   * Handles first-time database initialization if needed
    */
   test.beforeEach(async ({ page }) => {
     console.log('\n🔐 Logging into DVWA...');
     
     // Navigate to login page
     await page.goto(`${DVWA_URL}/login.php`);
+    await page.waitForLoadState('networkidle');
     
-    // Fill credentials
-    await page.fill('input[name="username"]', DVWA_USER);
-    await page.fill('input[name="password"]', DVWA_PASS);
-    await page.click('input[type="submit"][name="Login"]');
+    // Check if we need to initialize the database first
+    const currentUrl = page.url();
+    if (currentUrl.includes('setup.php')) {
+      console.log('📦 First-time setup detected, initializing database...');
+      const createDbButton = page.locator('input[name="create_db"], button:has-text("Create"), input[value*="Create"]');
+      if (await createDbButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await createDbButton.click();
+        await page.waitForLoadState('networkidle');
+        console.log('✅ Database initialized');
+      }
+      // Navigate back to login
+      await page.goto(`${DVWA_URL}/login.php`);
+    }
     
-    // Wait for successful login
-    await page.waitForURL(/\/(setup\.php|index\.php|vulnerabilities)/);
+    // Check if login form is visible, if not we might already be logged in
+    const loginForm = page.locator('input[name="username"]');
+    if (await loginForm.isVisible({ timeout: 5000 }).catch(() => false)) {
+      // Fill credentials
+      await page.fill('input[name="username"]', DVWA_USER);
+      await page.fill('input[name="password"]', DVWA_PASS);
+      await page.click('input[type="submit"][name="Login"]');
+      
+      // Wait for successful login
+      await page.waitForLoadState('networkidle');
+    }
+    
+    // Check if redirected to setup page after login (needs DB init)
+    if (page.url().includes('setup.php')) {
+      console.log('📦 Database setup required after login...');
+      const createDbButton = page.locator('input[name="create_db"], button:has-text("Create"), input[value*="Create"]');
+      if (await createDbButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await createDbButton.click();
+        await page.waitForLoadState('networkidle');
+        console.log('✅ Database initialized');
+      }
+    }
     
     // Set security level to LOW for testing
-    await page.goto(`${DVWA_URL}/security.php`);
-    await page.selectOption('select[name="security"]', 'low');
-    await page.click('input[name="seclev_submit"]');
-    
-    console.log('✅ Logged in and security set to LOW\n');
+    try {
+      await page.goto(`${DVWA_URL}/security.php`);
+      await page.waitForLoadState('networkidle');
+      
+      const securitySelect = page.locator('select[name="security"]');
+      if (await securitySelect.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await page.selectOption('select[name="security"]', 'low');
+        await page.click('input[name="seclev_submit"]');
+        console.log('✅ Logged in and security set to LOW\n');
+      } else {
+        console.log('⚠️ Security select not found, continuing anyway...\n');
+      }
+    } catch (e) {
+      console.log(`⚠️ Could not set security level: ${e}\n`);
+    }
   });
 
   // ==========================================================================

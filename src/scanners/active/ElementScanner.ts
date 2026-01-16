@@ -86,7 +86,8 @@ export class ElementScanner extends BaseScanner {
       ? this.actionHelper.resolveUrl(this.elementScanConfig.pageUrl)
       : this.elementScanConfig.baseUrl;
 
-    if (targetPageUrl) {
+    // Skip navigation if explicitly requested (useful when page is already in desired state)
+    if (targetPageUrl && !this.elementScanConfig.skipNavigation) {
       await getGlobalRateLimiter().waitForToken();
       await page.goto(targetPageUrl, {
         waitUntil: 'domcontentloaded',
@@ -337,6 +338,8 @@ export class ElementScanner extends BaseScanner {
 
   /** Filter detectors based on element test categories */
   private getDetectorsForElement(element: ElementTarget): Map<string, IActiveDetector> {
+    this.logger.info(`getDetectorsForElement called for ${element.name}, testCategories: ${JSON.stringify(element.testCategories)}, registered detectors: ${Array.from(this.detectors.keys()).join(', ')}`);
+    
     if (!element.testCategories || element.testCategories.length === 0) {
       return this.detectors;
     }
@@ -346,11 +349,14 @@ export class ElementScanner extends BaseScanner {
 
     for (const [name, detector] of this.detectors) {
       const aliases = this.getDetectorAliases(name);
+      this.logger.info(`Detector ${name} aliases: ${Array.from(aliases).join(', ')}`);
       if (categories.some((c) => aliases.has(c))) {
         filtered.set(name, detector);
+        this.logger.info(`Detector ${name} matched for categories ${categories.join(', ')}`);
       }
     }
 
+    this.logger.info(`getDetectorsForElement result: ${filtered.size} detectors matched`);
     // If no match, fall back to all detectors to avoid skipping tests silently
     return filtered.size > 0 ? filtered : this.detectors;
   }

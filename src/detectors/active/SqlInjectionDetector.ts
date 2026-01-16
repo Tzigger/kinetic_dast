@@ -1250,9 +1250,52 @@ export class SqlInjectionDetector implements IActiveDetector {
     };
   }
 
+  /**
+   * Get technique order based on surface type, input characteristics, and context
+   * Enhanced: Now skips irrelevant techniques based on input type to reduce scan time
+   */
   private getTechniqueOrder(surface: AttackSurface): Array<SqlInjectionTechnique | 'auth-bypass'> {
     const name = surface.name.toLowerCase();
+    const inputType = (surface.metadata?.inputType as string) || 'text';
+
+    // Check if this appears to be an authentication-related field
     const isAuthField = ['email', 'user', 'login', 'username'].some((k) => name.includes(k));
+    const isPasswordField = name.includes('password') || name.includes('pass') || inputType === 'password';
+    const isLoginForm = isAuthField || isPasswordField;
+
+    // Check if this is a search/query field (common SQLi target)
+    const isSearchField = ['search', 'query', 'q', 'keyword', 'filter'].some((k) => name.includes(k));
+
+    // For hidden fields, skip time-based (expensive) and prioritize error-based
+    if (inputType === 'hidden') {
+      return [
+        SqlInjectionTechnique.ERROR_BASED,
+        SqlInjectionTechnique.BOOLEAN_BASED,
+        // Skip TIME_BASED for hidden fields - rarely effective and expensive
+      ];
+    }
+
+    // For checkbox/radio inputs, very limited SQLi surface
+    if (inputType === 'checkbox' || inputType === 'radio') {
+      // These rarely accept freeform input, limit to error-based only
+      return [SqlInjectionTechnique.ERROR_BASED];
+    }
+
+    // For number inputs, limit techniques as SQL syntax often fails validation
+    if (inputType === 'number') {
+      return [
+        SqlInjectionTechnique.ERROR_BASED,
+        SqlInjectionTechnique.BOOLEAN_BASED,
+        // Skip TIME_BASED - number validation often strips sleep syntax
+      ];
+    }
+
+    // For date inputs, limited SQLi potential
+    if (inputType === 'date' || inputType === 'datetime-local' || inputType === 'time') {
+      return [SqlInjectionTechnique.ERROR_BASED];
+    }
+
+    // JSON body fields - prioritize boolean-based (structure comparison works well)
     if (surface.type === AttackSurfaceType.JSON_BODY) {
       return [
         SqlInjectionTechnique.BOOLEAN_BASED,
@@ -1260,6 +1303,8 @@ export class SqlInjectionDetector implements IActiveDetector {
         SqlInjectionTechnique.TIME_BASED,
       ];
     }
+
+    // API parameters - prioritize error-based
     if (surface.type === AttackSurfaceType.API_PARAM) {
       return [
         SqlInjectionTechnique.ERROR_BASED,
@@ -1267,18 +1312,40 @@ export class SqlInjectionDetector implements IActiveDetector {
         SqlInjectionTechnique.TIME_BASED,
       ];
     }
+
+    // Login form with auth field - prioritize auth bypass
     if (
       surface.type === AttackSurfaceType.FORM_INPUT &&
-      isAuthField &&
+      isLoginForm &&
       this.config.enableAuthBypass
     ) {
+      // Only add auth-bypass to the list (don't run on every field)
+      if (isAuthField) {
+        return [
+          'auth-bypass',
+          SqlInjectionTechnique.ERROR_BASED,
+          SqlInjectionTechnique.BOOLEAN_BASED,
+          // Skip TIME_BASED for auth forms - auth bypass is faster
+        ];
+      }
+      // For password fields, skip auth-bypass (it goes on username)
       return [
-        'auth-bypass',
+        SqlInjectionTechnique.ERROR_BASED,
+        SqlInjectionTechnique.BOOLEAN_BASED,
+      ];
+    }
+
+    // Search fields - high value targets, test all techniques
+    if (isSearchField) {
+      return [
         SqlInjectionTechnique.ERROR_BASED,
         SqlInjectionTechnique.BOOLEAN_BASED,
         SqlInjectionTechnique.TIME_BASED,
+        SqlInjectionTechnique.UNION_BASED,
       ];
     }
+
+    // Default order for general text inputs
     return [
       SqlInjectionTechnique.ERROR_BASED,
       SqlInjectionTechnique.BOOLEAN_BASED,

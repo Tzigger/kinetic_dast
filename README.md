@@ -24,7 +24,10 @@ It combines **passive network analysis** with **active vulnerability scanning** 
 - **Production Guardrails**: "Safe Mode" automatically filters destructive payloads (e.g., `DROP TABLE`) on non-local targets.
 - **Plugin Architecture**: Easily extendable with custom Detectors and Reporters.
 - **Advanced XSS Detection**: Multi-context XSS detection (HTML, JavaScript, URL, JSON) with DOM mutation monitoring and CSP bypass analysis.
--  **Global Rate Limiting**: Token bucket algorithm with automatic 429 backoff to prevent overwhelming targets.
+- **Global Rate Limiting**: Token bucket algorithm with automatic 429 backoff to prevent overwhelming targets.
+- **Parallel Execution**: Controlled concurrency for batch detector execution with automatic retry.
+- **Request Deduplication**: TTL-based caching to avoid redundant payload injections.
+- **Docker Testing Infrastructure**: Pre-configured vulnerable apps (Juice Shop, DVWA, bWAPP) for validation.
 
 ## Quick Start
 
@@ -169,6 +172,64 @@ Create a `kinetic.config.json` for advanced control:
 | **[API Reference](./docs/API-QUICK-REFERENCE.md)** | Quick lookups for classes, interfaces, and methods. |
 | **[Safe Mode](./docs/SAFE-MODE.md)** | Details on production guardrails and payload filtering. |
 | **[Migration Guide](./docs/MIGRATION-GUIDE.md)** | Upgrading from v0.1.x to v0.2.0. |
+
+## Utilities
+
+Kinetic includes powerful utilities for advanced use cases:
+
+### Parallel Execution
+
+```typescript
+import { executeParallel, executeWithRetry } from '@tzigger/kinetic/utils/parallel';
+
+// Execute tasks with controlled concurrency
+const results = await executeParallel(tasks, { 
+  concurrency: 3,
+  taskTimeout: 30000,
+  continueOnError: true 
+});
+
+// Automatic retry with exponential backoff
+const result = await executeWithRetry(task, {
+  maxRetries: 3,
+  retryDelay: 1000,
+  backoffMultiplier: 2
+});
+```
+
+### Request Deduplication
+
+```typescript
+import { RequestDeduplicator } from '@tzigger/kinetic/utils/dedup';
+
+const dedup = new RequestDeduplicator({ ttlMs: 60000 });
+
+// Check cache before making request
+const signature = dedup.createSignature(surface, payload);
+const cached = dedup.get(signature);
+
+if (!cached) {
+  const result = await injector.inject(page, surface, payload);
+  dedup.set(signature, result);
+}
+
+// View efficiency stats
+console.log(dedup.getStats()); // { hitRate: 0.45, savedRequests: 127 }
+```
+
+### Docker Testing
+
+Test against real vulnerable applications:
+
+```bash
+# Start vulnerable apps
+./scripts/start-vuln-apps.sh
+
+# Run tests
+./scripts/test-vuln-apps.sh juice    # Juice Shop
+./scripts/test-vuln-apps.sh dvwa     # DVWA
+./scripts/test-vuln-apps.sh bwapp    # bWAPP
+```
 
 ## Supported Vulnerabilities
 

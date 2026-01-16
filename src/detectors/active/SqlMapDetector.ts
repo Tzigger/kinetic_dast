@@ -90,8 +90,8 @@ export class SqlMapDetector implements IActiveDetector {
         method,
         cookie: cookieString,
         batch: true,
-        level: 1, // Keep it fast
-        risk: 1,
+        level: 2, // More thorough testing
+        risk: 2,  // Allow more aggressive payloads
       };
 
       if (data) {

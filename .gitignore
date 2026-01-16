@@ -48,6 +48,12 @@ Thumbs.db
 .project
 .classpath
 .settings/
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+!.env.example
 .vscode-test/
 
 # Environment variables

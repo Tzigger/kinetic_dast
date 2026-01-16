@@ -1,0 +1,168 @@
+# Kinetic DAST - Vulnerable Application Test Environment
+# Usage: docker-compose -f docker-compose.vuln-apps.yml up -d
+
+services:
+  # ============================================================================
+  # OWASP Juice Shop - Primary test target for modern SPA vulnerabilities
+  # ============================================================================
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    container_name: kinetic-juice-shop
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - vuln-network
+
+  # ============================================================================
+  # DVWA - Damn Vulnerable Web Application (Classic LAMP stack)
+  # ============================================================================
+  dvwa:
+    image: vulnerables/web-dvwa:latest
+    container_name: kinetic-dvwa
+    ports:
+      - "8081:80"
+    environment:
+      - DB_SERVER=dvwa-db
+    depends_on:
+      dvwa-db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - vuln-network
+
+  dvwa-db:
+    image: mysql:5.7
+    container_name: kinetic-dvwa-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=dvwa
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=dvwa
+    volumes:
+      - dvwa-db-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pdvwa"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - vuln-network
+
+  # ============================================================================
+  # bWAPP - Buggy Web Application (100+ vulnerability scenarios)
+  # ============================================================================
+  bwapp:
+    image: raesene/bwapp:latest
+    container_name: kinetic-bwapp
+    ports:
+      - "8082:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - vuln-network
+
+  # ============================================================================
+  # WebGoat - OWASP Training Application
+  # ============================================================================
+  webgoat:
+    image: webgoat/webgoat:latest
+    container_name: kinetic-webgoat
+    ports:
+      - "8083:8080"
+      - "9090:9090"
+    environment:
+      - WEBGOAT_HOST=0.0.0.0
+      - WEBGOAT_PORT=8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/WebGoat"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - vuln-network
+
+  # ============================================================================
+  # VAmPI - Vulnerable API (OWASP API Security Top 10)
+  # Port: 8084 - Covers SSRF, SQLi, Auth issues via REST API
+  # ============================================================================
+  vampi:
+    image: erev0s/vampi:latest
+    container_name: kinetic-vampi
+    ports:
+      - "8084:5000"
+    environment:
+      - FLASK_ENV=development
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - vuln-network
+
+  # ============================================================================
+  # OWASP crAPI - Completely Ridiculous API (Modern SSRF/IDOR)
+  # Port: 8085 - Covers SSRF, BOLA, Auth Bypass
+  # ============================================================================
+  crapi-web:
+    image: crapi/crapi-web:latest
+    container_name: kinetic-crapi-web
+    ports:
+      - "8085:80"
+    depends_on:
+      - crapi-community
+    restart: unless-stopped
+    networks:
+      - vuln-network
+
+  crapi-community:
+    image: crapi/crapi-community:latest
+    container_name: kinetic-crapi-community
+    environment:
+      - DB_HOST=crapi-db
+    depends_on:
+      - crapi-db
+    networks:
+      - vuln-network
+
+  crapi-db:
+    image: postgres:14
+    container_name: kinetic-crapi-db
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=crapisecret
+      - POSTGRES_DB=crapi
+    networks:
+      - vuln-network
+
+networks:
+  vuln-network:
+    driver: bridge
+    name: kinetic-vuln-network
+
+volumes:
+  dvwa-db-data:
+    name: kinetic-dvwa-db-data
