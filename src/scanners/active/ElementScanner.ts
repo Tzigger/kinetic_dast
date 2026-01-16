@@ -338,8 +338,10 @@ export class ElementScanner extends BaseScanner {
 
   /** Filter detectors based on element test categories */
   private getDetectorsForElement(element: ElementTarget): Map<string, IActiveDetector> {
-    this.logger.info(`getDetectorsForElement called for ${element.name}, testCategories: ${JSON.stringify(element.testCategories)}, registered detectors: ${Array.from(this.detectors.keys()).join(', ')}`);
-    
+    this.logger.info(
+      `getDetectorsForElement called for ${element.name}, testCategories: ${JSON.stringify(element.testCategories)}, registered detectors: ${Array.from(this.detectors.keys()).join(', ')}`
+    );
+
     if (!element.testCategories || element.testCategories.length === 0) {
       return this.detectors;
     }

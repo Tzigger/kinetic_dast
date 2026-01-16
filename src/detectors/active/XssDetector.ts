@@ -246,7 +246,7 @@ export class XssDetector implements IActiveDetector {
   private setupDialogListener(page: Page): void {
     this.dialogTriggered = false;
     this.dialogMessage = '';
-    
+
     page.on('dialog', async (dialog) => {
       this.dialogTriggered = true;
       this.dialogMessage = dialog.message();
@@ -626,10 +626,22 @@ export class XssDetector implements IActiveDetector {
     } else if (preferUrl) {
       basePayloads.push(...urlContext, ...fastHtml, ...iframeBypasses);
     } else if (reflectionContext === 'html-body') {
-      basePayloads.push(...fastHtml, ...iframeBypasses, ...attributeBreakout, ...jsContext, ...urlContext);
+      basePayloads.push(
+        ...fastHtml,
+        ...iframeBypasses,
+        ...attributeBreakout,
+        ...jsContext,
+        ...urlContext
+      );
     } else {
       // Default: include iframe bypasses early for SPA/Angular apps
-      basePayloads.push(...fastHtml, ...iframeBypasses, ...attributeBreakout, ...jsContext, ...urlContext);
+      basePayloads.push(
+        ...fastHtml,
+        ...iframeBypasses,
+        ...attributeBreakout,
+        ...jsContext,
+        ...urlContext
+      );
     }
 
     if (['search', 'query', 'comment', 'message'].some((key) => nameLower.includes(key))) {

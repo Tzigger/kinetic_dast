@@ -390,14 +390,15 @@ export class ActiveScanner extends BaseScanner {
     if (domSurfaces.length === 0) {
       // Check if page has meaningful content before waiting
       const pageContent = await page.content();
-      const hasInteractiveElements = pageContent.includes('<input') || 
-                                      pageContent.includes('<form') || 
-                                      pageContent.includes('<button') ||
-                                      pageContent.includes('ng-') ||
-                                      pageContent.includes('v-') ||
-                                      pageContent.includes('onClick') ||
-                                      pageContent.includes('@click');
-      
+      const hasInteractiveElements =
+        pageContent.includes('<input') ||
+        pageContent.includes('<form') ||
+        pageContent.includes('<button') ||
+        pageContent.includes('ng-') ||
+        pageContent.includes('v-') ||
+        pageContent.includes('onClick') ||
+        pageContent.includes('@click');
+
       // Only wait for SPA hydration if page has potential interactive content
       if (hasInteractiveElements && pageContent.length > 2000) {
         context.logger.info('No surfaces found initially, waiting for potential SPA hydration...');
@@ -406,9 +407,10 @@ export class ActiveScanner extends BaseScanner {
 
         // Second retry only if we still have no surfaces but page looks dynamic
         if (domSurfaces.length === 0) {
-          const hasReactOrAngular = pageContent.includes('__REACT') || 
-                                     pageContent.includes('ng-app') || 
-                                     pageContent.includes('data-reactroot');
+          const hasReactOrAngular =
+            pageContent.includes('__REACT') ||
+            pageContent.includes('ng-app') ||
+            pageContent.includes('data-reactroot');
           if (hasReactOrAngular) {
             await this.spaWaitStrategy.waitForStability(page, 2000, 'navigation');
             domSurfaces = await this.domExplorer.explore(page, capturedRequests);

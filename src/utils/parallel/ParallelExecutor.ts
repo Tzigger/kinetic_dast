@@ -60,7 +60,7 @@ export async function executeParallel<T>(
   // Process tasks in batches based on concurrency
   for (let i = 0; i < tasks.length; i += concurrency) {
     const batch = tasks.slice(i, i + concurrency);
-    
+
     const batchPromises = batch.map(async (task, batchIndex) => {
       const taskIndex = i + batchIndex;
       try {
@@ -68,10 +68,13 @@ export async function executeParallel<T>(
         const result = await Promise.race([
           task(),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Task ${taskIndex} timed out after ${taskTimeout}ms`)), taskTimeout)
+            setTimeout(
+              () => reject(new Error(`Task ${taskIndex} timed out after ${taskTimeout}ms`)),
+              taskTimeout
+            )
           ),
         ]);
-        
+
         results[taskIndex] = result;
         completedCount++;
         return { success: true, result };
@@ -80,7 +83,7 @@ export async function executeParallel<T>(
         errors.push(err);
         failedCount++;
         logger.warn(`Task ${taskIndex} failed: ${err.message}`);
-        
+
         if (!continueOnError) {
           throw err;
         }
@@ -90,12 +93,16 @@ export async function executeParallel<T>(
 
     // Wait for current batch to complete
     await Promise.all(batchPromises);
-    
-    logger.debug(`Batch ${Math.floor(i / concurrency) + 1} complete: ${completedCount}/${tasks.length} done`);
+
+    logger.debug(
+      `Batch ${Math.floor(i / concurrency) + 1} complete: ${completedCount}/${tasks.length} done`
+    );
   }
 
   const duration = Date.now() - startTime;
-  logger.info(`Parallel execution complete: ${completedCount} succeeded, ${failedCount} failed in ${duration}ms`);
+  logger.info(
+    `Parallel execution complete: ${completedCount} succeeded, ${failedCount} failed in ${duration}ms`
+  );
 
   return {
     results: results.filter((r) => r !== undefined),
@@ -133,7 +140,7 @@ export async function executeWithRetry<T>(
       return await task();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      
+
       if (attempt < maxRetries) {
         logger.debug(`Attempt ${attempt + 1} failed, retrying in ${delay}ms: ${lastError.message}`);
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -163,7 +170,7 @@ export class RateLimiter {
 
   async acquire(): Promise<void> {
     this.refillTokens();
-    
+
     if (this.tokens > 0) {
       this.tokens--;
       return;
@@ -180,7 +187,7 @@ export class RateLimiter {
     const now = Date.now();
     const elapsed = (now - this.lastRefill) / 1000;
     const tokensToAdd = elapsed * this.refillRate;
-    
+
     this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
     this.lastRefill = now;
   }
@@ -200,12 +207,12 @@ export class ResultCache<K, V> {
   get(key: K): V | undefined {
     const entry = this.cache.get(key);
     if (!entry) return undefined;
-    
+
     if (Date.now() - entry.timestamp > this.ttl) {
       this.cache.delete(key);
       return undefined;
     }
-    
+
     return entry.value;
   }
 

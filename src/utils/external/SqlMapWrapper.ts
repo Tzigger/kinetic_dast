@@ -110,7 +110,7 @@ export class SqlMapWrapper {
 
       process.on('close', (code) => {
         this.logger.info(`sqlmap finished with code ${code}`);
-        
+
         const vulnerabilities = this.parseOutput(output);
 
         if (vulnerabilities.length > 0) {
@@ -191,20 +191,23 @@ export class SqlMapWrapper {
 
       // Catch "appears to be injectable" confirmations
       // Format: "[INFO] URI parameter '#1*' appears to be 'SQLite AND boolean-based blind...' injectable"
-      if (line.includes("appears to be") && line.includes("injectable")) {
-        const confirmMatch = line.match(/parameter\s+'([^']+)'\s+appears to be\s+'([^']+)'\s+injectable/i);
+      if (line.includes('appears to be') && line.includes('injectable')) {
+        const confirmMatch = line.match(
+          /parameter\s+'([^']+)'\s+appears to be\s+'([^']+)'\s+injectable/i
+        );
         if (confirmMatch && confirmMatch[1] && confirmMatch[2]) {
           // Extract technique info for payload
           const technique = confirmMatch[2];
           let samplePayload = '';
-          
+
           // Generate representative payload based on technique
           if (technique.includes('boolean-based')) {
             samplePayload = "' AND 1=1 AND 'a'='a";
           } else if (technique.includes('time-based')) {
             samplePayload = "'; WAITFOR DELAY '0:0:5'--";
           } else if (technique.includes('error-based')) {
-            samplePayload = "' AND (SELECT 1 FROM(SELECT COUNT(*),CONCAT(0x71,(SELECT database()),0x71,FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--";
+            samplePayload =
+              "' AND (SELECT 1 FROM(SELECT COUNT(*),CONCAT(0x71,(SELECT database()),0x71,FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--";
           } else if (technique.includes('UNION')) {
             samplePayload = "' UNION SELECT NULL,NULL,NULL--";
           } else {

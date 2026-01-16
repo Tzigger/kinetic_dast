@@ -72,7 +72,6 @@ export class RequestDeduplicator {
       includeResponseBody: config?.includeResponseBody ?? false,
     };
 
-
     this.logger = new Logger(logLevel, 'RequestDeduplicator');
     this.stats = {
       totalRequests: 0,
@@ -193,7 +192,9 @@ export class RequestDeduplicator {
     });
 
     this.stats.cacheSize = this.cache.size;
-    this.logger.debug(`[Dedup] Cached: ${signature.surfaceName} + ${signature.payload.substring(0, 20)}...`);
+    this.logger.debug(
+      `[Dedup] Cached: ${signature.surfaceName} + ${signature.payload.substring(0, 20)}...`
+    );
   }
 
   /**
@@ -246,7 +247,7 @@ export class RequestDeduplicator {
     const stats = this.getStats();
     this.logger.info(
       `[Dedup] Summary: ${stats.cacheHits}/${stats.totalRequests} hits ` +
-      `(${(stats.hitRate * 100).toFixed(1)}%), saved ${stats.savedRequests} requests`
+        `(${(stats.hitRate * 100).toFixed(1)}%), saved ${stats.savedRequests} requests`
     );
   }
 }

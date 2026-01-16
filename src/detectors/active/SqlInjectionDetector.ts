@@ -1260,11 +1260,14 @@ export class SqlInjectionDetector implements IActiveDetector {
 
     // Check if this appears to be an authentication-related field
     const isAuthField = ['email', 'user', 'login', 'username'].some((k) => name.includes(k));
-    const isPasswordField = name.includes('password') || name.includes('pass') || inputType === 'password';
+    const isPasswordField =
+      name.includes('password') || name.includes('pass') || inputType === 'password';
     const isLoginForm = isAuthField || isPasswordField;
 
     // Check if this is a search/query field (common SQLi target)
-    const isSearchField = ['search', 'query', 'q', 'keyword', 'filter'].some((k) => name.includes(k));
+    const isSearchField = ['search', 'query', 'q', 'keyword', 'filter'].some((k) =>
+      name.includes(k)
+    );
 
     // For hidden fields, skip time-based (expensive) and prioritize error-based
     if (inputType === 'hidden') {
@@ -1329,10 +1332,7 @@ export class SqlInjectionDetector implements IActiveDetector {
         ];
       }
       // For password fields, skip auth-bypass (it goes on username)
-      return [
-        SqlInjectionTechnique.ERROR_BASED,
-        SqlInjectionTechnique.BOOLEAN_BASED,
-      ];
+      return [SqlInjectionTechnique.ERROR_BASED, SqlInjectionTechnique.BOOLEAN_BASED];
     }
 
     // Search fields - high value targets, test all techniques
