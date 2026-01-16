@@ -297,9 +297,19 @@ export class ElementScanner extends BaseScanner {
         .catch(() => ({}));
     }
 
+    // Merge metadata: auto-detected formMeta first, then explicit config overwrites
+    // Also merge otherFields specifically - explicit config should win
+    const explicitOtherFields = (elementTarget.metadata as any)?.otherFields || {};
+    const autoOtherFields = (formMeta as any)?.otherFields || {};
+    
     const metadata = {
-      ...(elementTarget.metadata || {}),
-      ...formMeta,
+      ...formMeta,                        // Auto-detected form fields
+      ...(elementTarget.metadata || {}),  // Explicit config wins
+      // Merge otherFields: auto-detected + explicit (explicit wins on conflict)
+      otherFields: {
+        ...autoOtherFields,
+        ...explicitOtherFields,
+      },
     } as AttackSurface['metadata'];
 
     // Explicit method from target wins
@@ -307,17 +317,19 @@ export class ElementScanner extends BaseScanner {
       metadata['method'] = elementTarget.method;
     }
 
+    // Always set URL for the page where this element is located
+    // This is critical for stored XSS detection to navigate back to the correct page
+    if (!metadata.url) {
+      metadata.url = this.elementScanConfig.pageUrl
+        ? this.actionHelper.resolveUrl(this.elementScanConfig.pageUrl)
+        : this.elementScanConfig.baseUrl;
+    }
+
     if (
       elementTarget.type === AttackSurfaceType.API_PARAM ||
       elementTarget.type === AttackSurfaceType.JSON_BODY ||
       elementTarget.type === AttackSurfaceType.URL_PARAMETER
     ) {
-      if (!metadata.url) {
-        metadata.url = this.elementScanConfig.pageUrl
-          ? this.actionHelper.resolveUrl(this.elementScanConfig.pageUrl)
-          : this.elementScanConfig.baseUrl;
-      }
-
       // Sensible defaults if method not provided
       if (!metadata['method']) {
         metadata['method'] = elementTarget.type === AttackSurfaceType.JSON_BODY ? 'POST' : 'GET';

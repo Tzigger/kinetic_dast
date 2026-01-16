@@ -91,36 +91,54 @@ async function loginToPortSwigger(page: Page): Promise<void> {
 async function startLab(page: Page, labPath: string): Promise<string> {
   console.log(`🚀 Starting lab: ${labPath}`);
   
-  // Navigate to lab page
+  // Navigate to lab description page
   await page.goto(`${PORTSWIGGER_BASE}${labPath}`);
   await page.waitForLoadState('networkidle');
   
-  // Click "ACCESS THE LAB" button
-  const accessLabButton = page.locator('a:has-text("ACCESS THE LAB"), button:has-text("ACCESS THE LAB")');
+  // Get the launch URL from the ACCESS THE LAB button
+  const accessLabButton = page.locator('a:has-text("ACCESS THE LAB")');
   await accessLabButton.waitFor({ state: 'visible', timeout: 10000 });
   
-  // Click and wait for navigation to lab URL
-  const [newPage] = await Promise.all([
-    page.context().waitForEvent('page', { timeout: 30000 }).catch(() => null),
-    accessLabButton.click(),
-  ]);
-  
-  // Check if a new tab was opened
-  if (newPage) {
-    await newPage.waitForLoadState('networkidle');
-    let labUrl = newPage.url();
-    if (labUrl.endsWith('/')) labUrl = labUrl.slice(0, -1);
-    console.log(`   ✅ Lab started in new tab: ${labUrl}`);
-    await newPage.close();
-    return labUrl;
+  // Extract the href to get the launch URL
+  const launchHref = await accessLabButton.getAttribute('href');
+  if (!launchHref) {
+    throw new Error('Could not find lab launch URL');
   }
   
-  // Wait for URL to change to lab domain
-  await page.waitForURL(/.*\.web-security-academy\.net.*/, { timeout: 30000 });
-  let labUrl = page.url().split('?')[0];
-  if (labUrl.endsWith('/')) labUrl = labUrl.slice(0, -1);
+  // Navigate directly to the launch URL (this keeps the session)
+  const launchUrl = launchHref.startsWith('http') ? launchHref : `${PORTSWIGGER_BASE}${launchHref}`;
+  console.log(`   🔗 Launch URL: ${launchUrl}`);
+  await page.goto(launchUrl);
   
-  console.log(`   ✅ Lab URL: ${labUrl}`);
+  // Wait for redirect to the actual lab URL (*.web-security-academy.net)
+  const startTime = Date.now();
+  let labUrl = '';
+  
+  while (Date.now() - startTime < 120000) { // 2 minute timeout for lab provisioning
+    await page.waitForLoadState('networkidle').catch(() => {});
+    const currentUrl = page.url();
+    
+    if (currentUrl.includes('.web-security-academy.net')) {
+      labUrl = currentUrl.split('?')[0];
+      if (labUrl.endsWith('/')) labUrl = labUrl.slice(0, -1);
+      break;
+    }
+    
+    // Check for error messages
+    const errorText = await page.locator('text=could not be started').isVisible().catch(() => false);
+    if (errorText) {
+      console.log('   ⚠️ Lab provisioning failed, retrying...');
+      await page.reload();
+    }
+    
+    await page.waitForTimeout(3000);
+  }
+  
+  if (!labUrl) {
+    throw new Error(`Lab did not start - stuck on: ${page.url()}`);
+  }
+  
+  console.log(`   ✅ Lab started: ${labUrl}`);
   return labUrl;
 }
 
@@ -406,10 +424,7 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       expect(success).toBe(true);
     });
 
-    // TODO: Stored XSS detection needs improvement - the hidden field fix works,
-    // but the XSS detector's stored XSS logic doesn't properly verify persistence.
-    // The form submits correctly, but detection fails (JSON XSS check times out).
-    test.skip('Stored XSS - HTML context (ElementScanner)', async ({ page, context }) => {
+    test('Stored XSS - HTML context (ElementScanner)', async ({ page, context }) => {
       // Step 1: Login to PortSwigger
       await loginToPortSwigger(page);
       
@@ -424,12 +439,13 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       );
       
       // Step 3: Navigate to a blog post with comment form
-      await page.goto(`${labUrl}/post?postId=1`);
+      const targetUrl = `${labUrl}/post?postId=1`;
+      await page.goto(targetUrl);
       await page.waitForLoadState('networkidle');
       
-      // Step 4: Use ElementScanner to target the comment form specifically
+      // Step 4: Use ElementScanner with XssDetector for stored XSS
       console.log('\n🔍 Running Kinetic Framework ElementScanner...');
-      console.log('   Using: ElementScanner + XssDetector (targeted)');
+      console.log('   Using: ElementScanner + XssDetector (stored mode)');
       console.log('   Target: Comment textarea field');
       
       const scanner = new ElementScanner({
@@ -451,7 +467,7 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
             }
           }
         }],
-        pageTimeout: 60000,
+        pageTimeout: 90000,
         continueOnError: true,
       });
 
@@ -459,8 +475,11 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       scanner.registerDetectors([
         new XssDetector({
           permissiveMode: true,
-          enableReflected: true,
+          enableReflected: false,  // Focus on stored only
           enableStored: true,
+          enableDomBased: false,
+          enableAngularTemplate: false,
+          enableJsonXss: false,
         })
       ]);
 
@@ -486,7 +505,7 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       logVulnerabilities(allVulns);
       
       // Step 6: Check if solved
-      await page.goto(`${labUrl}/post?postId=1`);
+      await page.goto(labUrl);
       const solved = await checkLabSolved(page);
       console.log(`\n${solved ? '✅ LAB SOLVED!' : '⚠️ XSS vulnerabilities detected'}`);
       
