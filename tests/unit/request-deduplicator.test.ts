@@ -7,6 +7,7 @@ import {
   DeduplicationStats,
 } from '../../src/utils/dedup/RequestDeduplicator';
 import { AttackSurfaceType, InjectionContext } from '../../src/scanners/active/DomExplorer';
+import { InjectionResult, PayloadEncoding, InjectionStrategy } from '../../src/scanners/active/PayloadInjector';
 
 describe('RequestDeduplicator', () => {
   let deduplicator: RequestDeduplicator;
@@ -90,14 +91,26 @@ describe('RequestDeduplicator', () => {
         encoding: 'none',
       };
 
-      const result = {
-        success: true,
-        pageResponse: {
+      const mockSurface = {
+        id: 'test-1',
+        type: AttackSurfaceType.FORM_INPUT,
+        name: 'test',
+        value: '',
+        context: InjectionContext.SQL,
+        metadata: {},
+      };
+
+      const result: InjectionResult = {
+        payload: 'payload',
+        encoding: PayloadEncoding.NONE,
+        strategy: InjectionStrategy.REPLACE,
+        surface: mockSurface,
+        response: {
           url: 'http://example.com',
           body: '<html></html>',
           status: 200,
           headers: {},
-          timing: { start: 0, end: 100, duration: 100 },
+          timing: 100,
         },
       };
 
@@ -105,7 +118,7 @@ describe('RequestDeduplicator', () => {
       const cached = deduplicator.get(signature);
 
       expect(cached).toBeDefined();
-      expect(cached?.success).toBe(true);
+      expect(cached?.payload).toBe('payload');
     });
 
     it('should return undefined for uncached signatures', () => {
@@ -131,7 +144,7 @@ describe('RequestDeduplicator', () => {
         encoding: 'none',
       };
 
-      deduplicator.set(signature, { success: true } as any);
+      deduplicator.set(signature, { payload: 'test', encoding: PayloadEncoding.NONE, strategy: InjectionStrategy.REPLACE, surface: {} as any });
 
       expect(deduplicator.has(signature)).toBe(true);
     });
@@ -161,7 +174,7 @@ describe('RequestDeduplicator', () => {
         encoding: 'none',
       };
 
-      shortTtlDedup.set(signature, { success: true } as any);
+      shortTtlDedup.set(signature, { payload: 'test', encoding: PayloadEncoding.NONE, strategy: InjectionStrategy.REPLACE, surface: {} as any });
       expect(shortTtlDedup.has(signature)).toBe(true);
 
       await new Promise((r) => setTimeout(r, 100));
@@ -184,7 +197,7 @@ describe('RequestDeduplicator', () => {
       deduplicator.get(signature);
       
       // Set value
-      deduplicator.set(signature, { success: true } as any);
+      deduplicator.set(signature, { payload: 'test', encoding: PayloadEncoding.NONE, strategy: InjectionStrategy.REPLACE, surface: {} as any });
       
       // Cache hit
       deduplicator.get(signature);
@@ -212,7 +225,7 @@ describe('RequestDeduplicator', () => {
           payload: 'test',
           encoding: 'none',
         };
-        smallDedup.set(sig, { success: true } as any);
+        smallDedup.set(sig, { payload: 'test', encoding: PayloadEncoding.NONE, strategy: InjectionStrategy.REPLACE, surface: {} as any });
       }
 
       expect(smallDedup.getStats().cacheSize).toBe(3);
@@ -225,7 +238,7 @@ describe('RequestDeduplicator', () => {
         payload: 'test',
         encoding: 'none',
       };
-      smallDedup.set(newSig, { success: true } as any);
+      smallDedup.set(newSig, { payload: 'test', encoding: PayloadEncoding.NONE, strategy: InjectionStrategy.REPLACE, surface: {} as any });
 
       expect(smallDedup.getStats().cacheSize).toBe(3); // Still max
       expect(smallDedup.has(newSig)).toBe(true); // New entry exists
@@ -244,7 +257,7 @@ describe('RequestDeduplicator', () => {
         encoding: 'none',
       };
 
-      disabledDedup.set(signature, { success: true } as any);
+      disabledDedup.set(signature, { payload: 'test', encoding: PayloadEncoding.NONE, strategy: InjectionStrategy.REPLACE, surface: {} as any });
 
       expect(disabledDedup.has(signature)).toBe(false);
       expect(disabledDedup.get(signature)).toBeUndefined();
@@ -261,7 +274,7 @@ describe('RequestDeduplicator', () => {
         encoding: 'none',
       };
 
-      deduplicator.set(signature, { success: true } as any);
+      deduplicator.set(signature, { payload: 'test', encoding: PayloadEncoding.NONE, strategy: InjectionStrategy.REPLACE, surface: {} as any });
       expect(deduplicator.getStats().cacheSize).toBe(1);
 
       deduplicator.clear();
