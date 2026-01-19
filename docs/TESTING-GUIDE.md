@@ -13,7 +13,8 @@ This guide explains how to integrate Kinetic Security Scanner into your Playwrig
     *   [SPA Testing](#pattern-1-testing-spas)
     *   [Authenticated Scans](#pattern-2-authenticated-scans)
     *   [Targeted Element Scanning](#pattern-3-targeted-element-scanning)
-5.  [Best Practices](#best-practices)
+5.  [Security Report Generator](#security-report-generator)
+6.  [Best Practices](#best-practices)
 
 ---
 
@@ -184,6 +185,133 @@ test('complex search bar check', async ({ page }) => {
   const result = await scanner.execute();
   expect(result.vulnerabilities).toHaveLength(0);
 });
+```
+
+---
+
+## Security Report Generator
+
+The Security Report Generator creates comprehensive vulnerability reports with OWASP 2025 mapping, test context, and rich evidence. Reports can be exported as JSON and HTML.
+
+### Basic Usage
+
+```typescript
+import { test } from '@playwright/test';
+import { 
+  initSecurityReporter, 
+  recordVulnerabilities, 
+  saveSecurityReports, 
+  logSecuritySummary 
+} from './utils/test-reporter';
+
+test.describe('Security Tests', () => {
+  // Initialize reporter at start
+  test.beforeAll(async () => {
+    initSecurityReporter({
+      title: 'My Security Report',
+      target: 'My Application',
+    });
+  });
+
+  // Save reports after all tests
+  test.afterAll(async () => {
+    logSecuritySummary();
+    await saveSecurityReports('test-results', 'security-report');
+  });
+
+  test('my security test', async ({ page }) => {
+    const vulnerabilities = await runActiveSecurityScan(page);
+    
+    // Record findings for the report
+    recordVulnerabilities(vulnerabilities, test.info(), { 
+      scanner: 'ActiveScanner', 
+      detector: 'SqlInjectionDetector' 
+    });
+  });
+});
+```
+
+### Generated Output
+
+Reports are saved as both JSON and HTML:
+- `test-results/security-report.json` - Machine-readable format
+- `test-results/security-report.html` - Human-readable format with styling
+
+### Report Contents
+
+Each finding includes:
+- **OWASP 2025 Mapping**: Auto-enriched from CWE (e.g., `A05:2025 - Injection`)
+- **Test Context**: Test name, file, scanner, and detector
+- **Evidence**: URL, payload, request/response snippets
+- **Remediation**: Steps to fix the vulnerability
+- **References**: Links to CVE, CWE, and OWASP documentation
+
+### JSON Report Structure
+
+```json
+{
+  "reportId": "uuid",
+  "title": "Security Scan Report",
+  "target": "My Application",
+  "generatedAt": "2026-01-19T09:36:08.158Z",
+  "duration": 48242,
+  "summary": {
+    "total": 2,
+    "bySeverity": { "critical": 2 },
+    "byOWASP": { "A05:2025 - Injection": 2 },
+    "byCWE": { "CWE-79": 2 },
+    "highestSeverity": "critical",
+    "averageConfidence": 1
+  },
+  "findings": [
+    {
+      "id": "xss-stored-...",
+      "title": "Cross-Site Scripting (stored)",
+      "severity": "critical",
+      "cwe": "CWE-79",
+      "owasp2025": {
+        "category": "A05:2025",
+        "name": "Injection",
+        "rank": 5
+      },
+      "testContext": {
+        "testName": "Stored XSS Test",
+        "scanner": "ElementScanner",
+        "detector": "XssDetector"
+      },
+      "evidence": {
+        "url": "https://example.com/comment",
+        "payload": "<script>alert(1)</script>",
+        "response": { "status": 200, "snippet": "..." }
+      }
+    }
+  ]
+}
+```
+
+### Programmatic API
+
+```typescript
+import { SecurityReportGenerator } from '@tzigger/kinetic';
+
+const reporter = new SecurityReportGenerator({
+  title: 'Custom Report',
+  target: 'https://example.com',
+});
+
+// Add findings manually
+reporter.addFinding(vulnerability, {
+  testName: 'My Test',
+  scanner: 'ElementScanner',
+  detector: 'XssDetector',
+});
+
+// Generate report object
+const report = reporter.generateReport();
+
+// Export
+await reporter.saveJSON('reports/security.json');
+await reporter.saveHTML('reports/security.html');
 ```
 
 ---

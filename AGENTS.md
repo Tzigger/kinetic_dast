@@ -380,6 +380,12 @@ import {
   InjectionContext            // SQL, HTML, JAVASCRIPT, COMMAND
 } from '@tzigger/kinetic/types';
 
+// Security Report Generator (v0.2.x)
+import { 
+  SecurityReportGenerator, 
+  getSecurityReporter 
+} from '@tzigger/kinetic';
+
 // Utilities
 import { getGlobalRateLimiter } from '@tzigger/kinetic';
 import { PayloadFilter } from '@tzigger/kinetic/utils';

@@ -29,6 +29,15 @@ import { AttackSurfaceType, InjectionContext } from '../src/scanners/active/DomE
 import { Logger } from '../src/utils/logger/Logger';
 import { LogLevel } from '../src/types/enums';
 
+// Security Report Generator for comprehensive vulnerability reports
+import { 
+  initSecurityReporter, 
+  recordVulnerabilities, 
+  saveSecurityReports, 
+  logSecuritySummary,
+  getSecurityReporter
+} from './utils/test-reporter';
+
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -190,6 +199,20 @@ function logVulnerabilities(vulns: Vulnerability[]): void {
 test.describe('PortSwigger Labs - Kinetic Framework', () => {
   test.setTimeout(LAB_TIMEOUT);
 
+  // Initialize security reporter for this test suite
+  test.beforeAll(async () => {
+    initSecurityReporter({
+      title: 'PortSwigger Labs Security Report',
+      target: 'PortSwigger Web Security Academy',
+    });
+  });
+
+  // Generate and save reports after all tests complete
+  test.afterAll(async () => {
+    logSecuritySummary();
+    await saveSecurityReports('test-results', 'portswigger-security-report');
+  });
+
   test.beforeEach(async () => {
     test.skip(!isAccountConfigured(), 'PortSwigger credentials not configured in .env');
   });
@@ -235,6 +258,7 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       
       // Step 5: Report findings
       logVulnerabilities(vulnerabilities);
+      recordVulnerabilities(vulnerabilities, test.info(), { scanner: 'ActiveScanner', detector: 'SqlInjectionDetector' });
       
       // Step 6: Check if lab is solved (framework may have triggered the exploit)
       await page.goto(labUrl);
@@ -327,6 +351,7 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       // Step 5: Report findings
       console.log(`\n📊 Kinetic Framework Results: ${allVulns.length} vulnerabilities found`);
       logVulnerabilities(allVulns);
+      recordVulnerabilities(allVulns, test.info(), { scanner: 'ElementScanner', detector: 'SqlInjectionDetector' });
       
       // Step 6: Check if solved
       await page.goto(`${labUrl}/login`);
@@ -413,6 +438,7 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       // Step 5: Report findings
       console.log(`\n📊 Kinetic Framework Results: ${allVulns.length} vulnerabilities found`);
       logVulnerabilities(allVulns);
+      recordVulnerabilities(allVulns, test.info(), { scanner: 'ElementScanner', detector: 'XssDetector' });
       
       // Step 6: Check if solved
       await page.goto(labUrl);
@@ -503,6 +529,7 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
       // Step 5: Report findings
       console.log(`\n📊 Kinetic Framework Results: ${allVulns.length} vulnerabilities found`);
       logVulnerabilities(allVulns);
+      recordVulnerabilities(allVulns, test.info(), { scanner: 'ElementScanner', detector: 'XssDetector' });
       
       // Step 6: Check if solved
       await page.goto(labUrl);

@@ -20,6 +20,11 @@ export { ConsoleReporter } from './reporters/ConsoleReporter';
 export { JsonReporter } from './reporters/JsonReporter';
 export { HtmlReporter } from './reporters/HtmlReporter';
 export { SarifReporter } from './reporters/SarifReporter';
+export { 
+  SecurityReportGenerator, 
+  getSecurityReporter, 
+  resetSecurityReporter 
+} from './reporters/SecurityReportGenerator';
 
 // Testing utilities for Playwright integration
 export * from './testing/helpers';

@@ -26,3 +26,13 @@ export * from './timeout';
 // Page scan types (v0.2)
 export * from './page-scan';
 export * from './element-scan';
+
+// Security Report types (v0.2.x)
+export type { 
+  SecurityReport, 
+  SecurityFinding, 
+  ReportSummary, 
+  OWASPInfo, 
+  TestContext,
+  FindingEvidence 
+} from './SecurityReport';
