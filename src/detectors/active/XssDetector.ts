@@ -826,10 +826,10 @@ export class XssDetector implements IActiveDetector {
   ): Promise<Vulnerability | null> {
     const marker = `xss-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const proofPayload = `window.${PROOF_VARIABLE}='${PROOF_VALUE}'`;
-    
+
     // Multiple payloads: simple alert first (for labs like PortSwigger), then proof-based
     const storedPayloads = [
-      '<script>alert(1)</script>',  // Simple alert - works for most labs
+      '<script>alert(1)</script>', // Simple alert - works for most labs
       '<script>alert("XSS")</script>',
       `<script>${proofPayload}</script>`,
       `<script>${proofPayload};window.__xss_mark__='${marker}';</script>`,
@@ -840,10 +840,10 @@ export class XssDetector implements IActiveDetector {
 
     for (const storedPayload of storedPayloads) {
       if (this.hasTestedPayload(surface, storedPayload)) continue;
-      
+
       // Reset dialog state before testing each payload
       this.resetDialogState();
-      
+
       try {
         const result = await this.injector.inject(page, surface, storedPayload, {
           encoding: PayloadEncoding.NONE,
@@ -853,7 +853,7 @@ export class XssDetector implements IActiveDetector {
 
         // Wait for form submission to complete
         await page.waitForTimeout(500);
-        
+
         // Navigate back to the page where the XSS payload was stored
         // Use surface metadata URL if available, otherwise use the URL before form submission
         const storedPageUrl = surface.metadata?.url || baseUrl;
@@ -882,7 +882,10 @@ export class XssDetector implements IActiveDetector {
 
         const confidence = executed
           ? 1.0
-          : Math.max(0.95, this.calculateConfidence(XssType.STORED, result, { reflectionAnalysis }));
+          : Math.max(
+              0.95,
+              this.calculateConfidence(XssType.STORED, result, { reflectionAnalysis })
+            );
 
         this.markPayloadTested(surface, storedPayload);
 
@@ -904,7 +907,9 @@ export class XssDetector implements IActiveDetector {
             response: safeResponse as any,
           };
 
-          this.logger.info(`[XSS] Stored XSS detected! Payload: ${storedPayload.substring(0, 40)}, executed=${executed}, dialog=${this.dialogTriggered}`);
+          this.logger.info(
+            `[XSS] Stored XSS detected! Payload: ${storedPayload.substring(0, 40)}, executed=${executed}, dialog=${this.dialogTriggered}`
+          );
 
           return this.createVulnerability(
             surface,
@@ -920,7 +925,9 @@ export class XssDetector implements IActiveDetector {
           );
         }
       } catch (error) {
-        this.logger.warn(`Error testing stored XSS with payload ${storedPayload.substring(0, 30)}: ${error}`);
+        this.logger.warn(
+          `Error testing stored XSS with payload ${storedPayload.substring(0, 30)}: ${error}`
+        );
       }
     }
 

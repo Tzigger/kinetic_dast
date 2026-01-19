@@ -301,10 +301,10 @@ export class ElementScanner extends BaseScanner {
     // Also merge otherFields specifically - explicit config should win
     const explicitOtherFields = (elementTarget.metadata as any)?.otherFields || {};
     const autoOtherFields = (formMeta as any)?.otherFields || {};
-    
+
     const metadata = {
-      ...formMeta,                        // Auto-detected form fields
-      ...(elementTarget.metadata || {}),  // Explicit config wins
+      ...formMeta, // Auto-detected form fields
+      ...(elementTarget.metadata || {}), // Explicit config wins
       // Merge otherFields: auto-detected + explicit (explicit wins on conflict)
       otherFields: {
         ...autoOtherFields,

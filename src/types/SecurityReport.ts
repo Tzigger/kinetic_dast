@@ -1,6 +1,6 @@
 /**
  * Security Report Types
- * 
+ *
  * Enhanced report structures for vulnerability findings with OWASP 2025 mapping,
  * test context, and rich evidence.
  */

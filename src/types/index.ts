@@ -28,11 +28,11 @@ export * from './page-scan';
 export * from './element-scan';
 
 // Security Report types (v0.2.x)
-export type { 
-  SecurityReport, 
-  SecurityFinding, 
-  ReportSummary, 
-  OWASPInfo, 
+export type {
+  SecurityReport,
+  SecurityFinding,
+  ReportSummary,
+  OWASPInfo,
   TestContext,
-  FindingEvidence 
+  FindingEvidence,
 } from './SecurityReport';

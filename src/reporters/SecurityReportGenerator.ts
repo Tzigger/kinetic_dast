@@ -1,16 +1,15 @@
 /**
  * Security Report Generator
- * 
+ *
  * Generates comprehensive security reports with OWASP 2025 mapping,
  * test context, and rich evidence from vulnerability findings.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+
 import { v4 as uuidv4 } from 'uuid';
 
-import { VulnerabilitySeverity } from '../types/enums';
-import { Vulnerability } from '../types/vulnerability';
 import {
   SecurityReport,
   SecurityFinding,
@@ -19,6 +18,8 @@ import {
   TestContext,
   FindingEvidence,
 } from '../types/SecurityReport';
+import { VulnerabilitySeverity } from '../types/enums';
+import { Vulnerability } from '../types/vulnerability';
 import {
   getOWASP2025Category,
   OWASP2025Category,
@@ -38,7 +39,8 @@ const OWASP_CATEGORY_NAMES: Record<OWASP2025Category, string> = {
   [OWASP2025Category.A07_AUTHENTICATION_FAILURES]: 'Authentication Failures',
   [OWASP2025Category.A08_SOFTWARE_DATA_INTEGRITY]: 'Software and Data Integrity Failures',
   [OWASP2025Category.A09_LOGGING_ALERTING_FAILURES]: 'Logging & Alerting Failures',
-  [OWASP2025Category.A10_MISHANDLING_EXCEPTIONAL_CONDITIONS]: 'Mishandling of Exceptional Conditions',
+  [OWASP2025Category.A10_MISHANDLING_EXCEPTIONAL_CONDITIONS]:
+    'Mishandling of Exceptional Conditions',
 };
 
 /**
@@ -81,7 +83,10 @@ export class SecurityReportGenerator {
   /**
    * Add a vulnerability finding with test context
    */
-  addFinding(vulnerability: Vulnerability, testContext: Partial<TestContext> = {}): SecurityFinding {
+  addFinding(
+    vulnerability: Vulnerability,
+    testContext: Partial<TestContext> = {}
+  ): SecurityFinding {
     const finding = this.convertToSecurityFinding(vulnerability, testContext);
     this.findings.push(finding);
 
@@ -99,14 +104,20 @@ export class SecurityReportGenerator {
   /**
    * Add multiple vulnerabilities from a scan result
    */
-  addFindings(vulnerabilities: Vulnerability[], testContext: Partial<TestContext> = {}): SecurityFinding[] {
-    return vulnerabilities.map(vuln => this.addFinding(vuln, testContext));
+  addFindings(
+    vulnerabilities: Vulnerability[],
+    testContext: Partial<TestContext> = {}
+  ): SecurityFinding[] {
+    return vulnerabilities.map((vuln) => this.addFinding(vuln, testContext));
   }
 
   /**
    * Convert a Vulnerability to a SecurityFinding with OWASP enrichment
    */
-  private convertToSecurityFinding(vuln: Vulnerability, testContext: Partial<TestContext>): SecurityFinding {
+  private convertToSecurityFinding(
+    vuln: Vulnerability,
+    testContext: Partial<TestContext>
+  ): SecurityFinding {
     // Get OWASP 2025 category from CWE
     const owaspInfo = this.getOWASPInfo(vuln.cwe);
 
@@ -124,7 +135,7 @@ export class SecurityReportGenerator {
       testContext: {
         testName: testContext.testName || 'Unknown Test',
         testFile: testContext.testFile,
-        scanner: testContext.scanner || vuln.metadata?.scannerId as string,
+        scanner: testContext.scanner || (vuln.metadata?.scannerId as string),
         detector: testContext.detector || vuln.detectorId,
         detectorVersion: testContext.detectorVersion,
       },
@@ -176,9 +187,8 @@ export class SecurityReportGenerator {
     let responseSnippet = (evidence as any)?.response?.snippet;
     if (!responseSnippet && (evidence as any)?.response?.body) {
       const body = (evidence as any).response.body;
-      responseSnippet = typeof body === 'string'
-        ? body.substring(0, this.options.maxSnippetLength)
-        : undefined;
+      responseSnippet =
+        typeof body === 'string' ? body.substring(0, this.options.maxSnippetLength) : undefined;
     }
 
     return {
@@ -240,7 +250,10 @@ export class SecurityReportGenerator {
       bySeverity[finding.severity] = (bySeverity[finding.severity] || 0) + 1;
 
       // Track highest severity
-      if (!highestSeverity || severityOrder.indexOf(finding.severity) < severityOrder.indexOf(highestSeverity)) {
+      if (
+        !highestSeverity ||
+        severityOrder.indexOf(finding.severity) < severityOrder.indexOf(highestSeverity)
+      ) {
         highestSeverity = finding.severity;
       }
 
@@ -336,14 +349,14 @@ export class SecurityReportGenerator {
   /**
    * Save both JSON and HTML reports
    */
-  async saveReports(outputDir: string, baseName: string = 'security-report'): Promise<{ json: string; html: string }> {
+  async saveReports(
+    outputDir: string,
+    baseName: string = 'security-report'
+  ): Promise<{ json: string; html: string }> {
     const jsonPath = path.join(outputDir, `${baseName}.json`);
     const htmlPath = path.join(outputDir, `${baseName}.html`);
 
-    await Promise.all([
-      this.saveJSON(jsonPath),
-      this.saveHTML(htmlPath),
-    ]);
+    await Promise.all([this.saveJSON(jsonPath), this.saveHTML(htmlPath)]);
 
     return { json: jsonPath, html: htmlPath };
   }
@@ -367,7 +380,9 @@ export class SecurityReportGenerator {
 
     const formatDate = (d: Date) => new Date(d).toISOString();
 
-    const findingsHTML = report.findings.map((f, i) => `
+    const findingsHTML = report.findings
+      .map(
+        (f, i) => `
       <tr>
         <td>${i + 1}</td>
         <td>${severityBadge(f.severity)}</td>
@@ -396,11 +411,16 @@ export class SecurityReportGenerator {
           </details>
         </td>
       </tr>
-    `).join('\n');
+    `
+      )
+      .join('\n');
 
     const owaspBreakdown = Object.entries(report.summary.byOWASP)
       .sort((a, b) => b[1] - a[1])
-      .map(([cat, count]) => `<div class="owasp-item"><span class="owasp-cat">${cat}</span> <span class="owasp-count">${count}</span></div>`)
+      .map(
+        ([cat, count]) =>
+          `<div class="owasp-item"><span class="owasp-cat">${cat}</span> <span class="owasp-count">${count}</span></div>`
+      )
       .join('\n');
 
     return `<!DOCTYPE html>
@@ -473,18 +493,25 @@ export class SecurityReportGenerator {
     <div class="card severity-breakdown-card" style="margin-bottom: 24px;">
       <div class="card-title">By Severity</div>
       <div class="severity-breakdown">
-        ${Object.entries(report.summary.bySeverity).map(([sev, count]) => 
-          `<div class="severity-item">${severityBadge(sev)} <span>${count}</span></div>`
-        ).join('')}
+        ${Object.entries(report.summary.bySeverity)
+          .map(
+            ([sev, count]) =>
+              `<div class="severity-item">${severityBadge(sev)} <span>${count}</span></div>`
+          )
+          .join('')}
       </div>
     </div>
 
-    ${Object.keys(report.summary.byOWASP).length > 0 ? `
+    ${
+      Object.keys(report.summary.byOWASP).length > 0
+        ? `
     <div class="card owasp-section">
       <div class="card-title">OWASP Top 10 2025 Breakdown</div>
       ${owaspBreakdown}
     </div>
-    ` : ''}
+    `
+        : ''
+    }
 
     <h2>Findings</h2>
     <table>
@@ -550,7 +577,9 @@ let globalReporter: SecurityReportGenerator | null = null;
 /**
  * Get or create the global security report generator
  */
-export function getSecurityReporter(options?: SecurityReportGeneratorOptions): SecurityReportGenerator {
+export function getSecurityReporter(
+  options?: SecurityReportGeneratorOptions
+): SecurityReportGenerator {
   if (!globalReporter) {
     globalReporter = new SecurityReportGenerator(options);
   }
