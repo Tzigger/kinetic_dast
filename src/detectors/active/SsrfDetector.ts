@@ -15,8 +15,10 @@ import {
 } from '../../scanners/active/PayloadInjector';
 import {
   IOOBClient,
-  MockOOBClient,
+  createOOBClient,
+  type InteractshClientOptions,
 } from '../../core/network/OOBClient';
+import { OOBWatcher, type OOBWatcherOptions } from '../../core/network/OOBWatcher';
 import { Page } from 'playwright';
 
 /**
@@ -35,7 +37,20 @@ export interface SsrfDetectorConfig {
 
   // OOB configuration
   oobClient?: IOOBClient;
+  oobClientType?: 'mock' | 'interactsh' | 'collaborator';
+  oobClientOptions?: {
+    server?: string;
+    token?: string;
+    callbackPort?: number;
+    baseUrl?: string;
+    pollInterval?: number;
+    maxPolls?: number;
+    timeout?: number;
+  };
   oobWaitMs: number;
+
+  // OOB Watcher configuration (for automated interaction monitoring)
+  oobWatcherOptions?: OOBWatcherOptions;
 
   // Timing configuration
   timingThresholdMs: number;
@@ -115,6 +130,7 @@ export class SsrfDetector implements IActiveDetector {
   private injector: PayloadInjector;
   private config: SsrfDetectorConfig;
   private oobClient?: IOOBClient;
+  private oobWatcher?: OOBWatcher;
 
   constructor(config: Partial<SsrfDetectorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -122,7 +138,17 @@ export class SsrfDetector implements IActiveDetector {
 
     // Initialize OOB client if enabled
     if (this.config.enableOOB) {
-      this.oobClient = this.config.oobClient ?? new MockOOBClient();
+      // Support configuration from config system
+      const oobClientType = this.config.oobClientType ?? 'mock';
+      const oobClientOptions: InteractshClientOptions = {
+        server: this.config.oobClientOptions?.server,
+        token: this.config.oobClientOptions?.token,
+        pollInterval: this.config.oobClientOptions?.pollInterval,
+        maxPolls: this.config.oobClientOptions?.maxPolls,
+        timeout: this.config.oobClientOptions?.timeout,
+      };
+
+      this.oobClient = this.config.oobClient ?? createOOBClient(oobClientType, oobClientOptions);
     }
   }
 
@@ -852,8 +878,14 @@ export class SsrfDetector implements IActiveDetector {
     if (!this.oobClient) return null;
 
     try {
-      // Step 1: Generate unique callback URL
-      const { url, id } = await this.oobClient.generatePayload();
+      // Initialize OOBWatcher if not already initialized
+      if (!this.oobWatcher && this.oobClient) {
+        this.oobWatcher = new OOBWatcher(this.oobClient, this.config.oobWatcherOptions);
+        await this.oobWatcher.initialize();
+      }
+
+      // Step 1: Generate unique callback URL using watcher
+      const { url, id } = await this.oobWatcher!.registerPayload();
 
       // Step 2: Inject the payload
       await this.injector.inject(page, surface, url, {
@@ -862,14 +894,11 @@ export class SsrfDetector implements IActiveDetector {
         baseUrl,
       });
 
-      // Step 3: Wait for potential callback
-      await page.waitForTimeout(this.config.oobWaitMs);
+      // Step 3: Wait for interaction using watcher (event-driven)
+      const result = await this.oobWatcher!.waitForInteraction(id, this.config.oobWaitMs);
 
-      // Step 4: Check for interactions
-      const interactions = await this.oobClient.checkInteractions(id);
-
-      if (interactions.length > 0) {
-        const interaction = interactions[0];
+      if (result.success && result.interactions.length > 0) {
+        const interaction = result.interactions[0];
         const protocolName = interaction?.protocol?.toUpperCase() ?? 'UNKNOWN';
         return this.createVulnerability(
           surface,
@@ -1027,6 +1056,10 @@ export class SsrfDetector implements IActiveDetector {
    * Cleanup OOB client resources
    */
   async cleanup(): Promise<void> {
+    if (this.oobWatcher) {
+      await this.oobWatcher.cleanup();
+      this.oobWatcher = undefined;
+    }
     if (this.oobClient?.cleanup) {
       await this.oobClient.cleanup();
     }

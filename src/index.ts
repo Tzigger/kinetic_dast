@@ -46,9 +46,30 @@ export {
   type IOOBClient,
   type OOBInteraction,
   MockOOBClient,
-  InteractshClientStub,
+  InteractshClient,
+  type InteractshClientOptions,
   createOOBClient,
 } from './core/network/OOBClient';
+
+// Browser-based Interactsh client (real OOB detection)
+export {
+  BrowserInteractshClient,
+  createBrowserInteractshClient,
+  type BrowserInteractshOptions,
+  type InteractionEvent,
+} from './core/network/BrowserInteractshClient';
+
+// OOB Watcher for automated interaction monitoring
+export {
+  OOBWatcher,
+  createOOBWatcher,
+  type OOBWatcherOptions,
+  type InteractionDetectedEvent,
+  type PayloadRegisteredEvent,
+  type WaitCompleteEvent,
+  type ErrorEvent,
+  type WatcherStats,
+} from './core/network/OOBWatcher';
 
 
 // Verification

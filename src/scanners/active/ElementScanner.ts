@@ -168,11 +168,47 @@ export class ElementScanner extends BaseScanner {
     this.logger.info(`Scanning element: ${elementTarget.name} (${elementTarget.locator})`);
 
     const locator = page.locator(elementTarget.locator).first();
+    
+    // Configuration for wait and retry
+    const waitForElement = elementTarget.waitForElement ?? false;
+    const waitTimeout = elementTarget.waitTimeout ?? 10000;
+    const maxRetries = elementTarget.retryCount ?? 0;
+    const retryDelay = elementTarget.retryDelay ?? 1000;
 
     try {
-      const elementHandle = await locator.elementHandle({
-        timeout: this.elementScanConfig.pageTimeout || 5000,
-      });
+      let elementHandle = null;
+      let lastError: Error | null = null;
+      
+      // Try to find element with optional wait and retries
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        if (attempt > 0) {
+          this.logger.info(`Retry ${attempt}/${maxRetries} for element: ${elementTarget.name}`);
+          await this.delay(retryDelay);
+        }
+
+        try {
+          // If waitForElement is enabled, wait for it to be visible first
+          if (waitForElement) {
+            await page.waitForSelector(elementTarget.locator, { 
+              timeout: waitTimeout,
+              state: 'visible'
+            });
+            this.logger.info(`Element ${elementTarget.name} is now visible`);
+          }
+
+          elementHandle = await locator.elementHandle({
+            timeout: waitForElement ? 5000 : (this.elementScanConfig.pageTimeout || 5000),
+          });
+          
+          if (elementHandle) {
+            break; // Found the element, exit retry loop
+          }
+        } catch (error) {
+          lastError = error as Error;
+          this.logger.warn(`Attempt ${attempt + 1} failed to locate element: ${error}`);
+        }
+      }
+
       if (!elementHandle) {
         return {
           element: elementTarget,
@@ -180,7 +216,7 @@ export class ElementScanner extends BaseScanner {
           found: false,
           vulnerabilityCount: 0,
           duration: Date.now() - elementStart,
-          error: 'Element not found',
+          error: lastError?.message || 'Element not found after retries',
         };
       }
 
@@ -386,6 +422,16 @@ export class ElementScanner extends BaseScanner {
 
     if (lower.includes('xss')) {
       aliases.push('xss', VulnerabilityCategory.XSS.toLowerCase(), 'cross-site-scripting');
+    }
+
+    // SSRF detector aliases
+    if (lower.includes('ssrf') || lower.includes('server-side request')) {
+      aliases.push(
+        'ssrf',
+        'server-side-request-forgery',
+        'url-injection',
+        'request-forgery'
+      );
     }
 
     if (lower.includes('generic injection') || lower.includes('injection')) {

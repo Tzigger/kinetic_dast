@@ -178,6 +178,30 @@ export interface DetectorConfig {
 
   /** Detector-specific tuning options */
   tuning?: Record<string, unknown>;
+
+  /** SSRF-specific configuration */
+  ssrf?: {
+    enableReflected?: boolean;
+    enableTiming?: boolean;
+    enableOOB?: boolean;
+    enableWafBypass?: boolean;
+    enableCloudMetadata?: boolean;
+    enableProtocolSmuggling?: boolean;
+    oobClientType?: 'mock' | 'interactsh' | 'collaborator';
+    oobClientOptions?: {
+      server?: string;
+      token?: string;
+      callbackPort?: number;
+      baseUrl?: string;
+      pollInterval?: number;
+      maxPolls?: number;
+      timeout?: number;
+    };
+    oobWaitMs?: number;
+    timingThresholdMs?: number;
+    timingMultiplier?: number;
+    adminPaths?: string[];
+  };
 }
 
 /**

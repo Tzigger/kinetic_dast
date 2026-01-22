@@ -27,6 +27,14 @@ export interface ElementTarget {
   method?: string;
   /** Enable/disable this target (default: true) */
   enabled?: boolean;
+  /** Wait for element to be visible before scanning (useful for dynamic content) */
+  waitForElement?: boolean;
+  /** Timeout in ms when waiting for element (default: 10000) */
+  waitTimeout?: number;
+  /** Number of retries if element not found (default: 0) */
+  retryCount?: number;
+  /** Delay between retries in ms (default: 1000) */
+  retryDelay?: number;
 }
 
 /**
