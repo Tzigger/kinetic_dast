@@ -6,6 +6,7 @@ import { Command } from 'commander';
 import { ConfigurationManager } from '../core/config/ConfigurationManager';
 import { ScanEngine } from '../core/engine/ScanEngine';
 import { getGlobalRateLimiter } from '../core/network/RateLimiter';
+import { McpToolServer } from '../mcp/McpServer';
 import { ActiveScanner } from '../scanners/active/ActiveScanner';
 import { PassiveScanner } from '../scanners/passive/PassiveScanner';
 import { ScanConfiguration } from '../types/config';
@@ -32,6 +33,7 @@ interface CliOptions {
   safemodeDisable: boolean;
   rateLimit: string;
   auth?: string;
+  mcp?: boolean;
 }
 
 const program = new Command();
@@ -56,8 +58,16 @@ program
   .option('--rate-limit <n>', 'Rate limit (requests per second)', '10')
   .option('--auth <credentials>', 'Basic auth credentials (username:password)')
   .option('--detectors <list>', 'Comma-separated list of detectors to enable (e.g. xss,sqli)')
+  .option('--mcp', 'Run as MCP stdio server for AI agents', false)
   .action(async (url: string | undefined, options: CliOptions & { detectors?: string }) => {
     try {
+      if (options.mcp) {
+        process.env['KINETIC_MCP_MODE'] = 'true';
+        const server = new McpToolServer();
+        await server.runStdio();
+        return;
+      }
+
       const configManager = ConfigurationManager.getInstance();
       let config: ScanConfiguration;
 

@@ -170,6 +170,7 @@ export class ScanEngine extends EventEmitter {
 
         // 2. Create context and page
         browserContext = await this.browserManager.createContext(this.scanId);
+        await this.applyTargetRequestContext(browserContext, config);
         page = await this.browserManager.createPage(this.scanId);
       }
 
@@ -208,6 +209,7 @@ export class ScanEngine extends EventEmitter {
             // Per-scanner context and page
             subContextId = `${this.scanId}-${String(type)}`;
             const subBrowserContext = await this.browserManager.createContext(subContextId);
+            await this.applyTargetRequestContext(subBrowserContext, config);
             const subPage = await this.browserManager.createPage(subContextId);
 
             ctx = {
@@ -354,6 +356,39 @@ export class ScanEngine extends EventEmitter {
       summary,
       config,
     };
+  }
+
+  /** Apply request context supplied by the configured target to every scanner context. */
+  private async applyTargetRequestContext(
+    browserContext: BrowserContext,
+    config: ScanConfiguration
+  ): Promise<void> {
+    const headers = config.target.customHeaders;
+    if (headers && Object.keys(headers).length > 0) {
+      await browserContext.setExtraHTTPHeaders(headers);
+    }
+
+    const cookies = config.target.cookies;
+    if (!cookies || cookies.length === 0) {
+      return;
+    }
+
+    const normalizedCookies = cookies.map((cookie) => {
+      if (cookie.domain) {
+        return cookie;
+      }
+
+      return {
+        name: cookie.name,
+        value: cookie.value,
+        url: config.target.url,
+        path: cookie.path,
+        secure: cookie.secure,
+        httpOnly: cookie.httpOnly,
+      };
+    });
+
+    await browserContext.addCookies(normalizedCookies);
   }
 
   /**

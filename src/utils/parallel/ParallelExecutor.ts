@@ -3,8 +3,8 @@
  * Provides controlled concurrency for detector execution
  */
 
-import { Logger } from '../logger/Logger';
 import { LogLevel } from '../../types/enums';
+import { Logger } from '../logger/Logger';
 
 /**
  * Task function type for parallel execution
@@ -51,6 +51,10 @@ export async function executeParallel<T>(
     logger = new Logger(LogLevel.INFO, 'ParallelExecutor'),
   } = options;
 
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error('concurrency must be a positive integer');
+  }
+
   const startTime = Date.now();
   const results: T[] = [];
   const errors: Error[] = [];
@@ -64,16 +68,7 @@ export async function executeParallel<T>(
     const batchPromises = batch.map(async (task, batchIndex) => {
       const taskIndex = i + batchIndex;
       try {
-        // Create timeout wrapper
-        const result = await Promise.race([
-          task(),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error(`Task ${taskIndex} timed out after ${taskTimeout}ms`)),
-              taskTimeout
-            )
-          ),
-        ]);
+        const result = await executeWithTimeout(task, taskTimeout, taskIndex);
 
         results[taskIndex] = result;
         completedCount++;
@@ -111,6 +106,29 @@ export async function executeParallel<T>(
     failedCount,
     duration,
   };
+}
+
+/** Runs one task with a timeout and always clears the timer when it settles. */
+async function executeWithTimeout<T>(task: AsyncTask<T>, timeout: number, taskIndex: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Task ${taskIndex} timed out after ${timeout}ms`)),
+      timeout
+    );
+
+    Promise.resolve()
+      .then(task)
+      .then(
+        (result) => {
+          clearTimeout(timer);
+          resolve(result);
+        },
+        (error: unknown) => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+  });
 }
 
 /**

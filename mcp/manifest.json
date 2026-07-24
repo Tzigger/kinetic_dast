@@ -1,0 +1,107 @@
+{
+  "name": "kinetic-dast",
+  "version": "0.2.0",
+  "description": "MCP server for AI-assisted dynamic application security testing with Kinetic DAST",
+  "transport": {
+    "type": "stdio"
+  },
+  "tools": [
+    {
+      "name": "passive_check",
+      "description": "Inspect one URL for headers, cookies, transmission, and obvious sensitive-data issues without injecting payloads.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["url"],
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "allowRemote": { "type": "boolean" },
+          "confirmProduction": { "type": "boolean" },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "cookies": { "type": "object", "additionalProperties": { "type": "string" } },
+          "authToken": { "type": "string" },
+          "dryRun": { "type": "boolean" },
+          "allowedHosts": { "type": "array", "items": { "type": "string" } },
+          "allowedPaths": { "type": "array", "items": { "type": "string" } },
+          "scope": { "type": "object" }
+        }
+      }
+    },
+    {
+      "name": "targeted_scan",
+      "description": "Run a low-aggressiveness, safe-mode active scan in an explicit URL scope. Remote scans require host and path allow-lists.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["url"],
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "allowRemote": { "type": "boolean" },
+          "confirmProduction": { "type": "boolean" },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "cookies": { "type": "object", "additionalProperties": { "type": "string" } },
+          "authToken": { "type": "string" },
+          "dryRun": { "type": "boolean" },
+          "allowedHosts": { "type": "array", "items": { "type": "string" } },
+          "allowedPaths": { "type": "array", "items": { "type": "string" } },
+          "scope": { "type": "object" },
+          "maxPages": { "type": "integer", "minimum": 1, "maximum": 10, "default": 3 },
+          "maxDepth": { "type": "integer", "minimum": 0, "maximum": 3, "default": 1 }
+        }
+      }
+    },
+    {
+      "name": "probe_json_endpoint",
+      "description": "POST one supplied JSON object and passively inspect the request/response pair. This does not fuzz the payload.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["url", "body"],
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "body": { "type": "object" },
+          "allowRemote": { "type": "boolean" },
+          "confirmProduction": { "type": "boolean" },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "cookies": { "type": "object", "additionalProperties": { "type": "string" } },
+          "authToken": { "type": "string" },
+          "dryRun": { "type": "boolean" },
+          "allowedHosts": { "type": "array", "items": { "type": "string" } },
+          "allowedPaths": { "type": "array", "items": { "type": "string" } },
+          "allowedMethods": { "type": "array", "items": { "type": "string" } },
+          "scope": { "type": "object" }
+        }
+      }
+    },
+    {
+      "name": "scan_changed_routes",
+      "description": "Convert provided changed route or source-file hints into a scoped scan plan without contacting the target.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["url", "changedFiles"],
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "changedFiles": { "type": "array", "items": { "type": "string" } },
+          "allowRemote": { "type": "boolean" },
+          "confirmProduction": { "type": "boolean" },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "cookies": { "type": "object", "additionalProperties": { "type": "string" } },
+          "authToken": { "type": "string" },
+          "dryRun": { "type": "boolean" },
+          "allowedHosts": { "type": "array", "items": { "type": "string" } },
+          "allowedPaths": { "type": "array", "items": { "type": "string" } },
+          "scope": { "type": "object" }
+        }
+      }
+    }
+  ],
+  "security": {
+    "safeByDefault": true,
+    "guardrails": [
+      "Networked non-local targets require explicit allowRemote=true",
+      "Production targets require explicit confirmProduction=true",
+      "Remote active scans and JSON probes require allowedHosts plus allowedPaths or scope.include"
+    ]
+  }
+}

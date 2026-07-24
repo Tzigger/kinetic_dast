@@ -3,7 +3,7 @@ import { IActiveDetector } from '../../core/interfaces/IActiveDetector';
 import { Vulnerability } from '../../types/vulnerability';
 import { ScanResult, ScanStatistics, VulnerabilitySummary } from '../../types/scan-result';
 import { LogLevel, ScanStatus, VulnerabilitySeverity, ScannerType } from '../../types/enums';
-import { DomExplorer, AttackSurfaceType } from './DomExplorer';
+import { AttackSurface, DomExplorer, AttackSurfaceType } from './DomExplorer';
 import { Request, Page } from 'playwright';
 import { VerificationEngine } from '../../core/verification/VerificationEngine';
 import { TimeoutManager, getGlobalTimeoutManager } from '../../core/timeout/TimeoutManager';
@@ -375,7 +375,7 @@ export class ActiveScanner extends BaseScanner {
       const baseUrl = page.url().split('#')[0];
       hashRoutes.forEach((route) => {
         const fullUrl = baseUrl + route;
-        if (!this.visitedUrls.has(fullUrl)) {
+        if (!this.visitedUrls.has(fullUrl) && this.isValidUrl(fullUrl, targetUrl)) {
           if (!this.crawlQueue.some((item) => item.url === fullUrl)) {
             this.crawlQueue.push({ url: fullUrl, depth: depth + 1 });
           }
@@ -515,7 +515,10 @@ export class ActiveScanner extends BaseScanner {
     }
 
     // --- 2. RUN ACTIVE DETECTORS ---
-    const testableSurfaces = attackSurfaces.filter((s) => s.type !== AttackSurfaceType.BUTTON);
+    const testableSurfaces = attackSurfaces.filter(
+      (surface) =>
+        surface.type !== AttackSurfaceType.BUTTON && this.isAttackSurfaceInScope(surface, targetUrl)
+    );
     const safeMode = this.config.safeMode ?? context.config.scanners.active?.safeMode ?? false;
 
     for (const [name, detector] of this.detectors) {
@@ -604,8 +607,28 @@ export class ActiveScanner extends BaseScanner {
     try {
       const urlObj = new URL(url);
       const baseUrlObj = new URL(baseUrl);
+      const scope = this.getContext().config.target.scope;
 
-      if (urlObj.hostname !== baseUrlObj.hostname) {
+      // The active scanner has always stayed on the hostname. Keeping the scan
+      // on the exact origin also prevents a scoped scan from crossing to a
+      // different port or protocol on the same host.
+      if (urlObj.origin !== baseUrlObj.origin) {
+        return false;
+      }
+
+      if (scope?.allowedHosts?.length && !this.matchesAllowedHost(urlObj.hostname, scope.allowedHosts)) {
+        return false;
+      }
+
+      if (scope?.allowedPaths?.length && !this.matchesAllowedPath(urlObj.pathname, scope.allowedPaths)) {
+        return false;
+      }
+
+      if (scope?.include?.length && !this.matchesAllowedPath(urlObj.pathname, scope.include)) {
+        return false;
+      }
+
+      if (scope?.exclude?.length && this.matchesAllowedPath(urlObj.pathname, scope.exclude)) {
         return false;
       }
 
@@ -631,6 +654,37 @@ export class ActiveScanner extends BaseScanner {
     } catch (error) {
       return false;
     }
+  }
+
+  private isAttackSurfaceInScope(surface: AttackSurface, baseUrl: string): boolean {
+    const endpoint = surface.metadata['url'] ?? surface.metadata['formAction'];
+    if (typeof endpoint !== 'string' || endpoint.length === 0) {
+      return true;
+    }
+
+    try {
+      return this.isValidUrl(new URL(endpoint, baseUrl).toString(), baseUrl);
+    } catch {
+      return false;
+    }
+  }
+
+  private matchesAllowedHost(hostname: string, allowedHosts: string[]): boolean {
+    const normalizedHostname = hostname.toLowerCase().replace(/\.$/, '');
+    return allowedHosts.some((allowedHost) => {
+      const normalizedAllowedHost = allowedHost.toLowerCase().replace(/\.$/, '');
+      if (normalizedAllowedHost.startsWith('*.')) {
+        return normalizedHostname.endsWith(`.${normalizedAllowedHost.slice(2)}`);
+      }
+      return normalizedHostname === normalizedAllowedHost;
+    });
+  }
+
+  private matchesAllowedPath(pathname: string, allowedPaths: string[]): boolean {
+    return allowedPaths.some((allowedPath) => {
+      const normalizedPath = allowedPath.length > 1 ? allowedPath.replace(/\/+$/, '') : allowedPath;
+      return normalizedPath === '/' || pathname === normalizedPath || pathname.startsWith(`${normalizedPath}/`);
+    });
   }
 
   public getDetectorCount(): number {

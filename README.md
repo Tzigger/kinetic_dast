@@ -29,6 +29,17 @@ It combines **passive network analysis** with **active vulnerability scanning** 
 - **Request Deduplication**: TTL-based caching to avoid redundant payload injections.
 - **Docker Testing Infrastructure**: Pre-configured vulnerable apps (Juice Shop, DVWA, bWAPP) for validation.
 
+### MCP Capabilities
+
+Kinetic can also run as a Model Context Protocol (MCP) server for AI-assisted security workflows.
+
+- **Tool-based access** for passive checks, targeted scans, JSON endpoint probing, and changed-route planning.
+  - **Safety guardrails** for remote targets, production confirmation, and explicit host/path allow-lists for remote active scans.
+- **Structured outputs** optimized for LLM clients, with compact findings, guardrail status, and request metadata.
+- **Dry-run support** for planning scans without executing a full test run.
+
+See [examples/mcp/README.md](./examples/mcp/README.md) for setup and usage examples.
+
 ## Quick Start
 
 ### 1. CLI Usage

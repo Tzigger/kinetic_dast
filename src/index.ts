@@ -52,6 +52,10 @@ export {
   type ResponseAnalyzerConfig,
 } from './core/analysis/ResponseAnalyzer';
 
+// NEW: MCP server support
+export { McpToolServer, type McpToolDefinition, type McpToolCallParams, type McpJsonRpcRequest, type McpJsonRpcResponse, type McpToolResult } from './mcp/McpServer';
+export { ScopeGuard, type ScopeGuardOptions, type ScopeGuardResult } from './mcp/ScopeGuard';
+
 // NEW: SPA Content Waiting
 export {
   SPAContentWaiter,

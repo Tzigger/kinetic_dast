@@ -131,8 +131,11 @@ describe('ParallelExecutor', () => {
         // Expected to fail
       }
 
-      // Second delay should be roughly double the first (with some tolerance)
-      expect(delays[1]).toBeGreaterThan(delays[0] * 1.5);
+      // Verify each configured backoff interval independently. Comparing the
+      // two observed gaps is flaky when the test process is paused between
+      // retries by unrelated work on the host.
+      expect(delays[0]).toBeGreaterThanOrEqual(15);
+      expect(delays[1]).toBeGreaterThanOrEqual(35);
     });
   });
 
