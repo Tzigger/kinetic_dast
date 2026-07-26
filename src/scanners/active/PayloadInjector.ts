@@ -735,7 +735,20 @@ export class PayloadInjector {
     payload: string
   ): Promise<number | null> {
     const currentUrl = new URL(page.url());
-    currentUrl.searchParams.set(surface.name, payload);
+
+    if (surface.metadata['source'] === 'hash') {
+      const hashQueryIndex = currentUrl.hash.indexOf('?');
+      const hashRoute =
+        hashQueryIndex === -1 ? currentUrl.hash : currentUrl.hash.slice(0, hashQueryIndex);
+      const hashQuery = hashQueryIndex === -1 ? '' : currentUrl.hash.slice(hashQueryIndex + 1);
+      const hashParams = new URLSearchParams(hashQuery);
+
+      hashParams.set(surface.name, payload);
+      currentUrl.hash = `${hashRoute}?${hashParams.toString()}`;
+    } else {
+      currentUrl.searchParams.set(surface.name, payload);
+    }
+
     const response = await page.goto(currentUrl.toString(), { waitUntil: 'domcontentloaded' });
     return response ? response.status() : null;
   }

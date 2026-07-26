@@ -650,6 +650,16 @@ export class XssDetector implements IActiveDetector {
       basePayloads.unshift(`<iframe src="javascript:alert(\`xss\`)">`);
     }
 
+    if (surface.metadata?.['source'] === 'hash') {
+      // Hash routers frequently render their query state through a DOM sink.
+      // Test a dialog-producing iframe before merely reflective javascript:
+      // URLs, otherwise a high-confidence reflection can prematurely mask the
+      // stronger execution signal. The proof payload remains next so callers
+      // that suppress dialogs still get a non-destructive execution marker.
+      basePayloads.unshift(`<iframe src="javascript:${proofPayload}">`);
+      basePayloads.unshift(`<iframe src="javascript:alert(\`xss\`)">`);
+    }
+
     if (this.config.permissiveMode) {
       // Prioritize simple, bWAPP-effective payloads and iframe bypasses for Angular apps
       basePayloads.unshift(

@@ -243,30 +243,7 @@ export class SqlInjectionDetector implements IActiveDetector {
     };
     this.testedPayloads.clear();
 
-    const sqlTargets = attackSurfaces.filter((surface) => {
-      // Skip API endpoints and API-like URL parameters if we want to delegate to sqlmap
-      // This assumes SqlMapDetector is enabled and will handle them
-      if (
-        surface.type === AttackSurfaceType.API_ENDPOINT ||
-        surface.type === AttackSurfaceType.API_PARAM
-      ) {
-        return false;
-      }
-
-      if (surface.type === AttackSurfaceType.URL_PARAMETER) {
-        const url = surface.metadata['url'] as string;
-        if (url && (url.includes('/rest/') || url.includes('/api/') || url.includes('/v1/'))) {
-          return false;
-        }
-      }
-
-      const eligibleTypes = [
-        AttackSurfaceType.FORM_INPUT,
-        AttackSurfaceType.JSON_BODY,
-        AttackSurfaceType.URL_PARAMETER,
-      ];
-      return eligibleTypes.includes(surface.type);
-    });
+    const sqlTargets = this.getSqlTargets(attackSurfaces);
 
     const maxTargets = this.config.maxSurfacesPerPage ?? sqlTargets.length;
     const prioritizedTargets = this.prioritizeTargets(sqlTargets).slice(0, maxTargets);
@@ -363,6 +340,36 @@ export class SqlInjectionDetector implements IActiveDetector {
 
     this.logger.info(`SQLi stats: ${this.stats.vulnsFound} found, ${this.stats.timeouts} timeouts`);
     return vulnerabilities;
+  }
+
+  /**
+   * Select injectible SQL targets. API_PARAM is deliberately included: it is
+   * replayed by PayloadInjector with the captured request method and headers,
+   * while API_ENDPOINT has no concrete parameter to mutate. Historically the
+   * scanner skipped API_PARAM under the assumption that sqlmap was also
+   * enabled, which made the built-in detector silently miss captured APIs.
+   */
+  private getSqlTargets(attackSurfaces: AttackSurface[]): AttackSurface[] {
+    return attackSurfaces.filter((surface) => {
+      if (surface.type === AttackSurfaceType.API_ENDPOINT) {
+        return false;
+      }
+
+      if (surface.type === AttackSurfaceType.URL_PARAMETER) {
+        const url = surface.metadata['url'] as string;
+        if (url && (url.includes('/rest/') || url.includes('/api/') || url.includes('/v1/'))) {
+          return false;
+        }
+      }
+
+      const eligibleTypes = [
+        AttackSurfaceType.FORM_INPUT,
+        AttackSurfaceType.JSON_BODY,
+        AttackSurfaceType.URL_PARAMETER,
+        AttackSurfaceType.API_PARAM,
+      ];
+      return eligibleTypes.includes(surface.type);
+    });
   }
 
   private prioritizeTargets(surfaces: AttackSurface[]): AttackSurface[] {

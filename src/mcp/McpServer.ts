@@ -1,8 +1,15 @@
 import { ScanEngine } from '../core/engine/ScanEngine';
 import { ActiveScanner } from '../scanners/active/ActiveScanner';
+import { AttackSurfaceType } from '../scanners/active/DomExplorer';
 import { PassiveScanner } from '../scanners/passive/PassiveScanner';
 import { ScanConfiguration } from '../types/config';
-import { AggressivenessLevel, BrowserType, LogLevel, ReportFormat, VerbosityLevel } from '../types/enums';
+import {
+  AggressivenessLevel,
+  BrowserType,
+  LogLevel,
+  ReportFormat,
+  VerbosityLevel,
+} from '../types/enums';
 import { DetectorRegistry } from '../utils/DetectorRegistry';
 import { registerBuiltInDetectors } from '../utils/builtInDetectors';
 
@@ -11,9 +18,35 @@ import { ScopeGuard } from './ScopeGuard';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_PROTOCOL_VERSIONS = new Set(['2024-11-05', '2025-03-26', MCP_PROTOCOL_VERSION]);
-const TOOL_NAMES = ['passive_check', 'targeted_scan', 'probe_json_endpoint', 'scan_changed_routes'] as const;
-const SENSITIVE_KEY = /^(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api[-_]?key|password|passwd|secret|token|access[-_]?token|refresh[-_]?token|session(?:id)?|jwt)$/i;
+const TOOL_NAMES = [
+  'passive_check',
+  'targeted_scan',
+  'probe_json_endpoint',
+  'scan_changed_routes',
+] as const;
+const SENSITIVE_KEY =
+  /^(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api[-_]?key|password|passwd|secret|token|access[-_]?token|refresh[-_]?token|session(?:id)?|jwt)$/i;
 const RAW_CONTENT_KEY = /^(?:body|postdata|post_data|html|content|responsebody|response_body)$/i;
+const DEFAULT_ACTIVE_DETECTORS = ['sql-injection', 'xss', 'error-based'] as const;
+const AVAILABLE_ACTIVE_DETECTORS = [
+  ...DEFAULT_ACTIVE_DETECTORS,
+  'path-traversal',
+  'ssrf',
+  'command-injection',
+] as const;
+const INJECTABLE_SURFACE_TYPES = [
+  AttackSurfaceType.FORM_INPUT,
+  AttackSurfaceType.URL_PARAMETER,
+  AttackSurfaceType.COOKIE,
+  AttackSurfaceType.JSON_BODY,
+  AttackSurfaceType.API_PARAM,
+] as const;
+const PASSIVE_DETECTORS = [
+  'sensitive-data',
+  'header-security',
+  'cookie-security',
+  'insecure-transmission',
+] as const;
 
 type McpToolName = (typeof TOOL_NAMES)[number];
 type JsonRpcId = string | number | null;
@@ -141,7 +174,10 @@ export class McpToolServer {
     return this.protocolError(request.id ?? null, -32601, `Method not found: ${request.method}`);
   }
 
-  public async callTool(toolName: string, argumentsObj: Record<string, unknown>): Promise<McpToolResult> {
+  public async callTool(
+    toolName: string,
+    argumentsObj: Record<string, unknown>
+  ): Promise<McpToolResult> {
     const tool = this.getTool(toolName);
     if (!tool) {
       return this.toolError(toolName, 'Unknown MCP tool');
@@ -156,7 +192,8 @@ export class McpToolServer {
     const scope = this.getScope(argumentsObj['scope']);
     const headers = this.getStringRecord(argumentsObj['headers']);
     const cookies = this.getStringRecord(argumentsObj['cookies']);
-    const authToken = typeof argumentsObj['authToken'] === 'string' ? argumentsObj['authToken'] : undefined;
+    const authToken =
+      typeof argumentsObj['authToken'] === 'string' ? argumentsObj['authToken'] : undefined;
     const dryRun = argumentsObj['dryRun'] === true;
     const changedFiles = this.getStringArray(argumentsObj['changedFiles']) ?? [];
     const allowedHosts = this.getStringArray(argumentsObj['allowedHosts']);
@@ -212,6 +249,20 @@ export class McpToolServer {
     }
 
     if (dryRun) {
+      const activeScanPlan =
+        tool.name === 'targeted_scan'
+          ? {
+              maxPages: this.getBoundedInteger(argumentsObj['maxPages'], 3, 1, 10),
+              maxDepth: this.getBoundedInteger(argumentsObj['maxDepth'], 1, 0, 3),
+              safeMode: true,
+              aggressiveness: AggressivenessLevel.LOW,
+              detectors: this.getActiveDetectorSelection(argumentsObj),
+              ...(this.getSurfaceTypeSelection(argumentsObj)
+                ? { surfaceTypes: this.getSurfaceTypeSelection(argumentsObj) }
+                : {}),
+            }
+          : {};
+
       return {
         ok: true,
         tool: tool.name,
@@ -226,6 +277,7 @@ export class McpToolServer {
             targetUrl: this.safeUrl(url),
             scope: guardrails.scope,
             httpMethod,
+            ...activeScanPlan,
           },
           requestContext: this.requestContextMetadata(headers, cookies, authToken),
         },
@@ -234,7 +286,17 @@ export class McpToolServer {
 
     let engine: ScanEngine | undefined;
     try {
-      const config = this.buildConfig(tool.name, url, argumentsObj, headers, cookies, authToken, scope, allowedHosts, allowedPaths);
+      const config = this.buildConfig(
+        tool.name,
+        url,
+        argumentsObj,
+        headers,
+        cookies,
+        authToken,
+        scope,
+        allowedHosts,
+        allowedPaths
+      );
       registerBuiltInDetectors();
       const registry = DetectorRegistry.getInstance();
       engine = new ScanEngine();
@@ -248,23 +310,32 @@ export class McpToolServer {
         probeScanner.registerDetectors(registry.getPassiveDetectors(config.detectors));
         engine.registerScanner(probeScanner);
       } else {
-        const activeScanner = new ActiveScanner();
+        const activeConfig = config.scanners.active;
+        const activeScanner = new ActiveScanner({
+          maxPages: activeConfig.maxPages,
+          maxDepth: activeConfig.maxDepth,
+          safeMode: activeConfig.safeMode,
+          aggressiveness: activeConfig.aggressiveness,
+          surfaceTypes: this.getSurfaceTypeSelection(argumentsObj),
+        });
         activeScanner.registerDetectors(registry.getActiveDetectors(config.detectors));
         engine.registerScanner(activeScanner);
       }
 
       await engine.loadConfiguration(config);
       const result = await engine.scan();
-      const mappedFindings: Array<Record<string, unknown>> = result.vulnerabilities.map((vulnerability) => ({
-        title: vulnerability.title,
-        description: vulnerability.description,
-        severity: vulnerability.severity,
-        category: vulnerability.category,
-        confidence: vulnerability.confidence,
-        evidence: vulnerability.evidence,
-        remediation: vulnerability.remediation,
-        url: vulnerability.url,
-      }));
+      const mappedFindings: Array<Record<string, unknown>> = result.vulnerabilities.map(
+        (vulnerability) => ({
+          title: vulnerability.title,
+          description: vulnerability.description,
+          severity: vulnerability.severity,
+          category: vulnerability.category,
+          confidence: vulnerability.confidence,
+          evidence: vulnerability.evidence,
+          remediation: vulnerability.remediation,
+          url: vulnerability.url,
+        })
+      );
 
       return {
         ok: true,
@@ -319,7 +390,9 @@ export class McpToolServer {
             process.stdout.write(`${JSON.stringify(response)}\n`);
           }
         } catch {
-          process.stdout.write(`${JSON.stringify(this.protocolError(null, -32603, 'Internal error'))}\n`);
+          process.stdout.write(
+            `${JSON.stringify(this.protocolError(null, -32603, 'Internal error'))}\n`
+          );
         }
       });
     };
@@ -343,7 +416,9 @@ export class McpToolServer {
   }
 
   /** Converts framework findings into bounded, secret-safe output for an LLM. */
-  public formatFindingsForLlm(findings: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  public formatFindingsForLlm(
+    findings: Array<Record<string, unknown>>
+  ): Array<Record<string, unknown>> {
     return findings.map((finding) => ({
       endpoint: this.safeUrl(typeof finding['url'] === 'string' ? finding['url'] : undefined),
       severity: String(finding['severity'] ?? 'info'),
@@ -375,8 +450,14 @@ export class McpToolServer {
     };
     const commonProperties: Record<string, unknown> = {
       url: { type: 'string', format: 'uri', description: 'HTTP(S) URL to assess.' },
-      allowRemote: { type: 'boolean', description: 'Explicit authorization to contact a non-local target.' },
-      confirmProduction: { type: 'boolean', description: 'Explicit authorization for a production target.' },
+      allowRemote: {
+        type: 'boolean',
+        description: 'Explicit authorization to contact a non-local target.',
+      },
+      confirmProduction: {
+        type: 'boolean',
+        description: 'Explicit authorization for a production target.',
+      },
       headers: {
         type: 'object',
         additionalProperties: { type: 'string' },
@@ -385,10 +466,17 @@ export class McpToolServer {
       cookies: {
         type: 'object',
         additionalProperties: { type: 'string' },
-        description: 'Cookies to apply to the target origin. Values are never returned by the server.',
+        description:
+          'Cookies to apply to the target origin. Values are never returned by the server.',
       },
-      authToken: { type: 'string', description: 'Bearer token applied only to the target request context.' },
-      dryRun: { type: 'boolean', description: 'Return the validated plan without contacting the target.' },
+      authToken: {
+        type: 'string',
+        description: 'Bearer token applied only to the target request context.',
+      },
+      dryRun: {
+        type: 'boolean',
+        description: 'Return the validated plan without contacting the target.',
+      },
       allowedHosts: {
         type: 'array',
         items: { type: 'string' },
@@ -409,7 +497,10 @@ export class McpToolServer {
         additionalProperties: false,
       },
     };
-    const schema = (properties: Record<string, unknown>, required: string[]): Record<string, unknown> => ({
+    const schema = (
+      properties: Record<string, unknown>,
+      required: string[]
+    ): Record<string, unknown> => ({
       type: 'object',
       properties: { ...commonProperties, ...properties },
       required,
@@ -420,31 +511,55 @@ export class McpToolServer {
       {
         name: 'passive_check',
         title: 'Passive Security Check',
-        description: 'Inspect one URL for headers, cookies, transmission, and obvious sensitive-data issues without injecting payloads.',
+        description:
+          'Inspect one URL for headers, cookies, transmission, and obvious sensitive-data issues without injecting payloads.',
         inputSchema: schema({}, ['url']),
         outputSchema,
-        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
         safeByDefault: true,
       },
       {
         name: 'targeted_scan',
         title: 'Targeted Active Scan',
-        description: 'Run a low-aggressiveness, safe-mode active scan in an explicit URL scope. Remote scans require host and path allow-lists.',
+        description:
+          'Run a low-aggressiveness, safe-mode active scan in an explicit URL scope. Optional detector and injectable-surface filters bound the scan. Remote scans require host and path allow-lists.',
         inputSchema: schema(
           {
             maxPages: { type: 'integer', minimum: 1, maximum: 10, default: 3 },
             maxDepth: { type: 'integer', minimum: 0, maximum: 3, default: 1 },
+            detectors: {
+              type: 'array',
+              items: { type: 'string', enum: AVAILABLE_ACTIVE_DETECTORS },
+              description:
+                'Optional active detector IDs. Defaults to SQL injection, XSS, and error disclosure.',
+            },
+            surfaceTypes: {
+              type: 'array',
+              items: { type: 'string', enum: INJECTABLE_SURFACE_TYPES },
+              description: 'Optional injectable attack-surface types to test.',
+            },
           },
           ['url']
         ),
         outputSchema,
-        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
         safeByDefault: true,
       },
       {
         name: 'probe_json_endpoint',
         title: 'JSON Endpoint Probe',
-        description: 'POST one supplied JSON object and passively inspect the request/response pair. This does not fuzz the payload.',
+        description:
+          'POST one supplied JSON object and passively inspect the request/response pair. This does not fuzz the payload.',
         inputSchema: schema(
           {
             body: { type: 'object', description: 'JSON object to send once as the POST body.' },
@@ -457,13 +572,19 @@ export class McpToolServer {
           ['url', 'body']
         ),
         outputSchema,
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
         safeByDefault: true,
       },
       {
         name: 'scan_changed_routes',
         title: 'Changed-Route Scan Plan',
-        description: 'Convert provided changed route or source-file hints into a scoped scan plan without contacting the target.',
+        description:
+          'Convert provided changed route or source-file hints into a scoped scan plan without contacting the target.',
         inputSchema: schema(
           {
             changedFiles: {
@@ -475,7 +596,12 @@ export class McpToolServer {
           ['url', 'changedFiles']
         ),
         outputSchema,
-        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
         safeByDefault: true,
       },
     ];
@@ -485,7 +611,11 @@ export class McpToolServer {
     const params = this.isRecord(request.params) ? request.params : undefined;
     const protocolVersion = params?.['protocolVersion'];
     if (typeof protocolVersion !== 'string' || !SUPPORTED_PROTOCOL_VERSIONS.has(protocolVersion)) {
-      return this.protocolError(request.id ?? null, -32602, `Unsupported protocol version: ${String(protocolVersion ?? '')}`);
+      return this.protocolError(
+        request.id ?? null,
+        -32602,
+        `Unsupported protocol version: ${String(protocolVersion ?? '')}`
+      );
     }
 
     this.initializationAccepted = true;
@@ -507,12 +637,18 @@ export class McpToolServer {
   private async handleStdioLine(line: string): Promise<McpJsonRpcResponse | null> {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(line);
+      // PowerShell and a few Windows MCP clients prefix the first pipe-delivered
+      // JSON-RPC line with a UTF-8 BOM. It is transport metadata, not JSON.
+      parsed = JSON.parse(line.replace(/^\uFEFF/, ''));
     } catch {
       return this.protocolError(null, -32700, 'Parse error');
     }
 
-    if (!this.isRecord(parsed) || parsed['jsonrpc'] !== '2.0' || typeof parsed['method'] !== 'string') {
+    if (
+      !this.isRecord(parsed) ||
+      parsed['jsonrpc'] !== '2.0' ||
+      typeof parsed['method'] !== 'string'
+    ) {
       return this.protocolError(this.getRequestId(parsed), -32600, 'Invalid Request');
     }
 
@@ -543,9 +679,15 @@ export class McpToolServer {
     const maxPages = this.getBoundedInteger(argumentsObj['maxPages'], 3, 1, 10);
     const maxDepth = this.getBoundedInteger(argumentsObj['maxDepth'], 1, 0, 3);
     const isPassive = toolName === 'passive_check' || toolName === 'probe_json_endpoint';
+    const enabledDetectors = isPassive
+      ? [...PASSIVE_DETECTORS]
+      : this.getActiveDetectorSelection(argumentsObj);
     const customHeaders = { ...(headers ?? {}) };
 
-    if (authToken && !Object.keys(customHeaders).some((header) => header.toLowerCase() === 'authorization')) {
+    if (
+      authToken &&
+      !Object.keys(customHeaders).some((header) => header.toLowerCase() === 'authorization')
+    ) {
       customHeaders['Authorization'] = `Bearer ${authToken}`;
     }
 
@@ -588,7 +730,7 @@ export class McpToolServer {
         },
       },
       detectors: {
-        enabled: ['sql-injection', 'xss', 'error-based', 'sensitive-data', 'header-security', 'cookie-security', 'insecure-transmission'],
+        enabled: enabledDetectors,
         disabled: [],
         tuning: {},
       },
@@ -611,7 +753,10 @@ export class McpToolServer {
     };
   }
 
-  private validateToolArguments(toolName: McpToolName, argumentsObj: Record<string, unknown>): string[] {
+  private validateToolArguments(
+    toolName: McpToolName,
+    argumentsObj: Record<string, unknown>
+  ): string[] {
     const errors: string[] = [];
     if (typeof argumentsObj['url'] !== 'string' || !argumentsObj['url'].trim()) {
       errors.push('url must be a non-empty string.');
@@ -626,7 +771,10 @@ export class McpToolServer {
 
     for (const arrayName of ['allowedHosts', 'allowedPaths', 'allowedMethods', 'changedFiles']) {
       const value = argumentsObj[arrayName];
-      if (value !== undefined && (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string'))) {
+      if (
+        value !== undefined &&
+        (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string'))
+      ) {
         errors.push(`${arrayName} must be an array of strings.`);
       }
     }
@@ -640,15 +788,61 @@ export class McpToolServer {
 
     const scope = argumentsObj['scope'];
     if (scope !== undefined && !this.isScope(scope)) {
-      errors.push('scope must contain only string-array include/exclude fields and an optional boolean stayOnDomain.');
+      errors.push(
+        'scope must contain only string-array include/exclude fields and an optional boolean stayOnDomain.'
+      );
     }
 
     if (toolName === 'targeted_scan') {
       this.validateBoundedInteger(argumentsObj['maxPages'], 'maxPages', 1, 10, errors);
       this.validateBoundedInteger(argumentsObj['maxDepth'], 'maxDepth', 0, 3, errors);
-      if (argumentsObj['allowedMethods'] !== undefined) {
-        errors.push('allowedMethods is not supported by targeted_scan because discovered requests may use multiple methods.');
+
+      const selectedDetectors = argumentsObj['detectors'];
+      if (selectedDetectors !== undefined) {
+        const detectorIds = this.getStringArray(selectedDetectors);
+        if (!detectorIds?.length) {
+          errors.push('detectors must be a non-empty array of active detector IDs.');
+        } else {
+          const unsupported = detectorIds.filter(
+            (detectorId) =>
+              !AVAILABLE_ACTIVE_DETECTORS.includes(
+                detectorId as (typeof AVAILABLE_ACTIVE_DETECTORS)[number]
+              )
+          );
+          if (unsupported.length > 0) {
+            errors.push(`Unsupported targeted_scan detector IDs: ${unsupported.join(', ')}.`);
+          }
+        }
       }
+
+      const selectedSurfaceTypes = argumentsObj['surfaceTypes'];
+      if (selectedSurfaceTypes !== undefined) {
+        const surfaceTypes = this.getStringArray(selectedSurfaceTypes);
+        if (!surfaceTypes?.length) {
+          errors.push('surfaceTypes must be a non-empty array of injectable attack-surface types.');
+        } else {
+          const unsupported = surfaceTypes.filter(
+            (surfaceType) =>
+              !INJECTABLE_SURFACE_TYPES.includes(
+                surfaceType as (typeof INJECTABLE_SURFACE_TYPES)[number]
+              )
+          );
+          if (unsupported.length > 0) {
+            errors.push(`Unsupported targeted_scan surfaceTypes: ${unsupported.join(', ')}.`);
+          }
+        }
+      }
+
+      if (argumentsObj['allowedMethods'] !== undefined) {
+        errors.push(
+          'allowedMethods is not supported by targeted_scan because discovered requests may use multiple methods.'
+        );
+      }
+    } else if (
+      argumentsObj['detectors'] !== undefined ||
+      argumentsObj['surfaceTypes'] !== undefined
+    ) {
+      errors.push('detectors and surfaceTypes are supported only by targeted_scan.');
     }
 
     if (toolName === 'passive_check' && argumentsObj['allowedMethods'] !== undefined) {
@@ -704,7 +898,9 @@ export class McpToolServer {
     };
   }
 
-  private toGuardrailMetadata(guardrails: ReturnType<typeof ScopeGuard.evaluate>): McpToolResult['guardrails'] {
+  private toGuardrailMetadata(
+    guardrails: ReturnType<typeof ScopeGuard.evaluate>
+  ): McpToolResult['guardrails'] {
     return {
       blocked: !guardrails.allowed,
       reason: guardrails.reason,
@@ -775,10 +971,21 @@ export class McpToolServer {
     if (key && RAW_CONTENT_KEY.test(key)) {
       return '[OMITTED: untrusted response content]';
     }
+    if (key && /^(?:url|uri|endpoint|href|location)$/i.test(key) && typeof value === 'string') {
+      return this.safeUrl(value) ?? '[invalid URL]';
+    }
     if (typeof value === 'string') {
+      if (this.looksLikeCredential(value)) {
+        return '[REDACTED]';
+      }
       return this.limitText(value);
     }
-    if (typeof value === 'number' || typeof value === 'boolean' || value === null || value === undefined) {
+    if (
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      value === null ||
+      value === undefined
+    ) {
       return value;
     }
     if (depth >= 5) {
@@ -788,13 +995,26 @@ export class McpToolServer {
       return value.slice(0, 20).map((item) => this.redactEvidence(item, undefined, depth + 1));
     }
     if (this.isRecord(value)) {
+      const namedSecret = typeof value['name'] === 'string' && SENSITIVE_KEY.test(value['name']);
       return Object.fromEntries(
         Object.entries(value)
           .slice(0, 30)
-          .map(([entryKey, entryValue]) => [entryKey, this.redactEvidence(entryValue, entryKey, depth + 1)])
+          .map(([entryKey, entryValue]) => [
+            entryKey,
+            namedSecret && entryKey === 'value'
+              ? '[REDACTED]'
+              : this.redactEvidence(entryValue, entryKey, depth + 1),
+          ])
       );
     }
     return String(value);
+  }
+
+  private looksLikeCredential(value: string): boolean {
+    return (
+      /^(?:Bearer|Basic)\s+\S+/i.test(value) ||
+      /^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$/.test(value)
+    );
   }
 
   private safeErrorMessage(error: unknown): string {
@@ -847,7 +1067,29 @@ export class McpToolServer {
     return undefined;
   }
 
-  private getScope(value: unknown): { include?: string[]; exclude?: string[]; stayOnDomain?: boolean } | undefined {
+  private getActiveDetectorSelection(argumentsObj: Record<string, unknown>): string[] {
+    const requested = this.getStringArray(argumentsObj['detectors']);
+    return requested?.length ? [...new Set(requested)] : [...DEFAULT_ACTIVE_DETECTORS];
+  }
+
+  private getSurfaceTypeSelection(
+    argumentsObj: Record<string, unknown>
+  ): AttackSurfaceType[] | undefined {
+    const requested = this.getStringArray(argumentsObj['surfaceTypes']);
+    if (!requested?.length) {
+      return undefined;
+    }
+
+    return requested
+      .filter((surfaceType) =>
+        INJECTABLE_SURFACE_TYPES.includes(surfaceType as (typeof INJECTABLE_SURFACE_TYPES)[number])
+      )
+      .map((surfaceType) => surfaceType as AttackSurfaceType);
+  }
+
+  private getScope(
+    value: unknown
+  ): { include?: string[]; exclude?: string[]; stayOnDomain?: boolean } | undefined {
     if (!this.isScope(value)) {
       return undefined;
     }
@@ -859,7 +1101,9 @@ export class McpToolServer {
   }
 
   private getStringArray(value: unknown): string[] | undefined {
-    return Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value : undefined;
+    return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+      ? value
+      : undefined;
   }
 
   private getStringRecord(value: unknown): Record<string, string> | undefined {
@@ -870,11 +1114,19 @@ export class McpToolServer {
     return this.isRecord(value) ? value : undefined;
   }
 
-  private getBoundedInteger(value: unknown, defaultValue: number, minimum: number, maximum: number): number {
+  private getBoundedInteger(
+    value: unknown,
+    defaultValue: number,
+    minimum: number,
+    maximum: number
+  ): number {
     if (value === undefined) {
       return defaultValue;
     }
-    return typeof value === 'number' && Number.isInteger(value) && value >= minimum && value <= maximum
+    return typeof value === 'number' &&
+      Number.isInteger(value) &&
+      value >= minimum &&
+      value <= maximum
       ? value
       : defaultValue;
   }
@@ -886,13 +1138,20 @@ export class McpToolServer {
     maximum: number,
     errors: string[]
   ): void {
-    if (value !== undefined && (!Number.isInteger(value) || typeof value !== 'number' || value < minimum || value > maximum)) {
+    if (
+      value !== undefined &&
+      (!Number.isInteger(value) || typeof value !== 'number' || value < minimum || value > maximum)
+    ) {
       errors.push(`${name} must be an integer between ${minimum} and ${maximum}.`);
     }
   }
 
   private isToolCallParams(value: unknown): value is McpToolCallParams {
-    return this.isRecord(value) && typeof value['name'] === 'string' && (value['arguments'] === undefined || this.isRecord(value['arguments']));
+    return (
+      this.isRecord(value) &&
+      typeof value['name'] === 'string' &&
+      (value['arguments'] === undefined || this.isRecord(value['arguments']))
+    );
   }
 
   private isScope(value: unknown): value is Record<string, unknown> {

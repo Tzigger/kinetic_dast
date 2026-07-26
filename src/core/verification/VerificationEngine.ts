@@ -44,6 +44,23 @@ export class VerificationEngine {
   ): Promise<VerificationResult> {
     this.logger.info(`Verifying vulnerability: ${vulnerability.title} (${vulnerability.id})`);
 
+    // The XSS detector can observe an actual JavaScript execution in the page
+    // it just exercised. Replaying it with generic payloads risks mutating a
+    // different surface (notably hash-router parameters), so retain this
+    // first-party proof instead of treating it as an unverified reflection.
+    if (
+      vulnerability.category === VulnerabilityCategory.XSS &&
+      (vulnerability.evidence?.metadata as Record<string, unknown> | undefined)?.['executed'] ===
+        true
+    ) {
+      return {
+        shouldReport: true,
+        confidence: 1,
+        status: 'confirmed',
+        reason: 'XSS payload execution was observed by the detector',
+      };
+    }
+
     this.timeBasedVerifier.setPage(page);
     this.responseDiffVerifier.setPage(page);
 

@@ -43,7 +43,7 @@
     "prepublishOnly": "npm run test && npm run lint",
     "test:phase2": "npx playwright test tests/integration/phase2-comprehensive.test.ts --reporter=list --project=chromium",
     "torture": "node torture-server.js",
-    "test:juice-shop": "npx playwright test tests/juiceshop-comprehensive.spec.ts --project=chromium --reporter=line",
+    "test:juice-shop": "npx playwright test --config=playwright.juice-shop.config.ts --project=chromium",
     "test:dvwa": "npx playwright test tests/dvwa-comprehensive.spec.ts --project=chromium --reporter=line",
     "test:bwapp": "npx playwright test tests/bwapp-comprehensive.spec.ts --project=chromium --reporter=line"
   },

@@ -26,6 +26,8 @@ export interface ActiveScannerConfig {
   skipStaticResources?: boolean; // Skip images, CSS, JS
   aggressiveness?: 'low' | 'medium' | 'high'; // Aggressiveness level
   safeMode?: boolean; // Explicit safe mode override
+  /** Restrict detectors to these discovered attack-surface types. */
+  surfaceTypes?: AttackSurfaceType[];
 }
 
 /**
@@ -60,8 +62,8 @@ export class ActiveScanner extends BaseScanner {
     super();
     // PERFORMANCE FIX: Reduce default delay from 500ms to 100ms
     this.config = {
-      maxDepth: config.maxDepth || 3,
-      maxPages: config.maxPages || 20,
+      maxDepth: config.maxDepth ?? 3,
+      maxPages: config.maxPages ?? 20,
       delayBetweenRequests: config.delayBetweenRequests ?? 100,
       followRedirects: config.followRedirects !== false,
       respectRobotsTxt: config.respectRobotsTxt !== false,
@@ -93,6 +95,20 @@ export class ActiveScanner extends BaseScanner {
 
     this.visitedUrls.clear();
     this.crawlQueue = [];
+
+    // An ActiveScanner is usually constructed before the ScanEngine has loaded
+    // its configuration. Apply the engine-level limits here so callers of the
+    // public helpers and MCP tool get the maxPages/maxDepth/aggressiveness they
+    // explicitly requested instead of the constructor defaults.
+    const configuredActiveScanner = context.config.scanners.active;
+    this.config.maxDepth =
+      configuredActiveScanner.maxDepth ?? context.config.target.crawlDepth ?? this.config.maxDepth;
+    this.config.maxPages =
+      configuredActiveScanner.maxPages ?? context.config.target.maxPages ?? this.config.maxPages;
+    this.config.parallelism = configuredActiveScanner.parallelism ?? this.config.parallelism;
+    this.config.safeMode = configuredActiveScanner.safeMode ?? this.config.safeMode;
+    this.config.aggressiveness =
+      configuredActiveScanner.aggressiveness ?? this.config.aggressiveness;
 
     // Update parallelism from global config if available
     if (context.config.advanced?.parallelism) {
@@ -436,6 +452,10 @@ export class ActiveScanner extends BaseScanner {
       context.logger.warn(`Swagger discovery failed: ${e}`);
     }
 
+    // Links drive crawling but are not injectable targets. Keep them separate
+    // so active detectors do not waste a payload matrix trying to mutate a
+    // navigation URL as if it were a form field.
+    const crawlableLinks = allSurfaces.filter((surface) => surface.type === AttackSurfaceType.LINK);
     const attackSurfaces = allSurfaces.filter((s) =>
       [
         AttackSurfaceType.FORM_INPUT,
@@ -517,7 +537,9 @@ export class ActiveScanner extends BaseScanner {
     // --- 2. RUN ACTIVE DETECTORS ---
     const testableSurfaces = attackSurfaces.filter(
       (surface) =>
-        surface.type !== AttackSurfaceType.BUTTON && this.isAttackSurfaceInScope(surface, targetUrl)
+        surface.type !== AttackSurfaceType.BUTTON &&
+        this.isAttackSurfaceInScope(surface, targetUrl) &&
+        (!this.config.surfaceTypes || this.config.surfaceTypes.includes(surface.type))
     );
     const safeMode = this.config.safeMode ?? context.config.scanners.active?.safeMode ?? false;
 
@@ -579,8 +601,7 @@ export class ActiveScanner extends BaseScanner {
     }
 
     // 3. Discover new links for crawling
-    const links = attackSurfaces.filter((s) => s.type === AttackSurfaceType.LINK);
-    for (const link of links) {
+    for (const link of crawlableLinks) {
       if (
         link.value &&
         !this.visitedUrls.has(link.value) &&
@@ -616,11 +637,17 @@ export class ActiveScanner extends BaseScanner {
         return false;
       }
 
-      if (scope?.allowedHosts?.length && !this.matchesAllowedHost(urlObj.hostname, scope.allowedHosts)) {
+      if (
+        scope?.allowedHosts?.length &&
+        !this.matchesAllowedHost(urlObj.hostname, scope.allowedHosts)
+      ) {
         return false;
       }
 
-      if (scope?.allowedPaths?.length && !this.matchesAllowedPath(urlObj.pathname, scope.allowedPaths)) {
+      if (
+        scope?.allowedPaths?.length &&
+        !this.matchesAllowedPath(urlObj.pathname, scope.allowedPaths)
+      ) {
         return false;
       }
 
@@ -683,7 +710,11 @@ export class ActiveScanner extends BaseScanner {
   private matchesAllowedPath(pathname: string, allowedPaths: string[]): boolean {
     return allowedPaths.some((allowedPath) => {
       const normalizedPath = allowedPath.length > 1 ? allowedPath.replace(/\/+$/, '') : allowedPath;
-      return normalizedPath === '/' || pathname === normalizedPath || pathname.startsWith(`${normalizedPath}/`);
+      return (
+        normalizedPath === '/' ||
+        pathname === normalizedPath ||
+        pathname.startsWith(`${normalizedPath}/`)
+      );
     });
   }
 
@@ -699,12 +730,14 @@ export class ActiveScanner extends BaseScanner {
     visitedPages: number;
     queuedPages: number;
     maxDepth: number;
+    maxPages: number;
     detectorCount: number;
   } {
     return {
       visitedPages: this.visitedUrls.size,
       queuedPages: this.crawlQueue.length,
       maxDepth: this.config.maxDepth!,
+      maxPages: this.config.maxPages!,
       detectorCount: this.detectors.size,
     };
   }

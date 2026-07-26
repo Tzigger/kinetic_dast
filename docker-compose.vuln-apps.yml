@@ -12,7 +12,8 @@ services:
       - "3000:3000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      # The Juice Shop image is distroless and does not ship wget/curl.
+      test: ["CMD", "/nodejs/bin/node", "-e", "require('http').get('http://127.0.0.1:3000', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -72,7 +73,9 @@ services:
       - "8082:80"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      # This image ships PHP but not curl. Use PHP's HTTP stream wrapper so
+      # Docker reflects actual application readiness instead of a missing binary.
+      test: ["CMD", "php", "-r", "exit((int) !@file_get_contents('http://127.0.0.1/login.php'));"]
       interval: 10s
       timeout: 5s
       retries: 10
