@@ -16,7 +16,8 @@ export class JsonEndpointProbeScanner extends BaseScanner {
   public readonly name = 'MCP JSON Endpoint Probe Scanner';
   public readonly version = '1.0.0';
   public readonly type = 'passive' as const;
-  public readonly description = 'Posts a supplied JSON object once and passively analyzes the response';
+  public readonly description =
+    'Posts a supplied JSON object once and passively analyzes the response';
 
   private readonly body: Record<string, unknown>;
   private readonly requestHeaders: Record<string, string>;
@@ -43,7 +44,10 @@ export class JsonEndpointProbeScanner extends BaseScanner {
     const targetUrl = config.target.url;
     const requestHeaders = {
       ...this.requestHeaders,
-      'Content-Type': this.requestHeaders['Content-Type'] ?? this.requestHeaders['content-type'] ?? 'application/json',
+      'Content-Type':
+        this.requestHeaders['Content-Type'] ??
+        this.requestHeaders['content-type'] ??
+        'application/json',
     };
 
     const response = await page.request.fetch(targetUrl, {
@@ -104,11 +108,21 @@ export class JsonEndpointProbeScanner extends BaseScanner {
   private summarize(vulnerabilities: Vulnerability[]): VulnerabilitySummary {
     return {
       total: vulnerabilities.length,
-      critical: vulnerabilities.filter((vulnerability) => vulnerability.severity === VulnerabilitySeverity.CRITICAL).length,
-      high: vulnerabilities.filter((vulnerability) => vulnerability.severity === VulnerabilitySeverity.HIGH).length,
-      medium: vulnerabilities.filter((vulnerability) => vulnerability.severity === VulnerabilitySeverity.MEDIUM).length,
-      low: vulnerabilities.filter((vulnerability) => vulnerability.severity === VulnerabilitySeverity.LOW).length,
-      info: vulnerabilities.filter((vulnerability) => vulnerability.severity === VulnerabilitySeverity.INFO).length,
+      critical: vulnerabilities.filter(
+        (vulnerability) => vulnerability.severity === VulnerabilitySeverity.CRITICAL
+      ).length,
+      high: vulnerabilities.filter(
+        (vulnerability) => vulnerability.severity === VulnerabilitySeverity.HIGH
+      ).length,
+      medium: vulnerabilities.filter(
+        (vulnerability) => vulnerability.severity === VulnerabilitySeverity.MEDIUM
+      ).length,
+      low: vulnerabilities.filter(
+        (vulnerability) => vulnerability.severity === VulnerabilitySeverity.LOW
+      ).length,
+      info: vulnerabilities.filter(
+        (vulnerability) => vulnerability.severity === VulnerabilitySeverity.INFO
+      ).length,
     };
   }
 }

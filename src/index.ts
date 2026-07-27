@@ -32,6 +32,11 @@ export * from './testing/helpers';
 // Scanners
 export { ActiveScanner } from './scanners/active/ActiveScanner';
 export { ElementScanner } from './scanners/active/ElementScanner';
+export {
+  AttackSurfaceType,
+  InjectionContext,
+  type AttackSurface,
+} from './scanners/active/DomExplorer';
 
 // Detectors
 export { SqlInjectionDetector } from './detectors/active/SqlInjectionDetector';
@@ -53,7 +58,14 @@ export {
 } from './core/analysis/ResponseAnalyzer';
 
 // NEW: MCP server support
-export { McpToolServer, type McpToolDefinition, type McpToolCallParams, type McpJsonRpcRequest, type McpJsonRpcResponse, type McpToolResult } from './mcp/McpServer';
+export {
+  McpToolServer,
+  type McpToolDefinition,
+  type McpToolCallParams,
+  type McpJsonRpcRequest,
+  type McpJsonRpcResponse,
+  type McpToolResult,
+} from './mcp/McpServer';
 export { ScopeGuard, type ScopeGuardOptions, type ScopeGuardResult } from './mcp/ScopeGuard';
 
 // NEW: SPA Content Waiting

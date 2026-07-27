@@ -242,6 +242,20 @@ Test against real vulnerable applications:
 ./scripts/test-vuln-apps.sh bwapp    # bWAPP
 ```
 
+The CI regression gate uses the focused suites below. They fail when Kinetic
+stops rediscovering the confirmed vulnerabilities; no vulnerable-app result is
+allowed to pass as a warning.
+
+```bash
+docker compose -f docker-compose.vuln-apps.yml up -d --wait juice-shop bwapp
+
+# Juice Shop: MCP-confirmed active and passive findings
+JUICE_SHOP_URL=http://localhost:3000 npm run test:juice-shop
+
+# bWAPP: SQLi, reflected XSS, command injection, and detector filtering
+BWAPP_URL=http://localhost:8082 npm run test:bwapp:regression
+```
+
 ## Supported Vulnerabilities
 
 | Category | Detectors |

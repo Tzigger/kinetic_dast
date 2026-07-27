@@ -1,16 +1,18 @@
-import { BaseScanner } from '../../core/interfaces/IScanner';
-import { IActiveDetector } from '../../core/interfaces/IActiveDetector';
-import { Vulnerability } from '../../types/vulnerability';
-import { ScanResult, ScanStatistics, VulnerabilitySummary } from '../../types/scan-result';
-import { LogLevel, ScanStatus, VulnerabilitySeverity, ScannerType } from '../../types/enums';
-import { AttackSurface, DomExplorer, AttackSurfaceType } from './DomExplorer';
 import { Request, Page } from 'playwright';
-import { VerificationEngine } from '../../core/verification/VerificationEngine';
-import { TimeoutManager, getGlobalTimeoutManager } from '../../core/timeout/TimeoutManager';
-import { SPAWaitStrategy, getGlobalSPAWaitStrategy } from '../../core/timeout/SPAWaitStrategy';
-import { OperationType } from '../../types/timeout';
+
 import { SessionManager } from '../../core/auth/SessionManager';
+import { IActiveDetector } from '../../core/interfaces/IActiveDetector';
+import { BaseScanner } from '../../core/interfaces/IScanner';
 import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
+import { SPAWaitStrategy, getGlobalSPAWaitStrategy } from '../../core/timeout/SPAWaitStrategy';
+import { TimeoutManager, getGlobalTimeoutManager } from '../../core/timeout/TimeoutManager';
+import { VerificationEngine } from '../../core/verification/VerificationEngine';
+import { LogLevel, ScanStatus, VulnerabilitySeverity, ScannerType } from '../../types/enums';
+import { ScanResult, ScanStatistics, VulnerabilitySummary } from '../../types/scan-result';
+import { OperationType } from '../../types/timeout';
+import { Vulnerability } from '../../types/vulnerability';
+
+import { AttackSurface, DomExplorer, AttackSurfaceType } from './DomExplorer';
 
 /**
  * Configuration for ActiveScanner

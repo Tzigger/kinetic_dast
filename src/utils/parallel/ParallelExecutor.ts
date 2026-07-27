@@ -109,7 +109,11 @@ export async function executeParallel<T>(
 }
 
 /** Runs one task with a timeout and always clears the timer when it settles. */
-async function executeWithTimeout<T>(task: AsyncTask<T>, timeout: number, taskIndex: number): Promise<T> {
+async function executeWithTimeout<T>(
+  task: AsyncTask<T>,
+  timeout: number,
+  taskIndex: number
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error(`Task ${taskIndex} timed out after ${timeout}ms`)),
@@ -125,7 +129,11 @@ async function executeWithTimeout<T>(task: AsyncTask<T>, timeout: number, taskIn
         },
         (error: unknown) => {
           clearTimeout(timer);
-          reject(error);
+          reject(
+            error instanceof Error
+              ? error
+              : new Error('Task rejected with a non-Error value', { cause: error })
+          );
         }
       );
   });
@@ -180,6 +188,10 @@ export class RateLimiter {
   private readonly refillRate: number; // tokens per second
 
   constructor(requestsPerSecond: number) {
+    if (!Number.isFinite(requestsPerSecond) || requestsPerSecond <= 0) {
+      throw new Error('requestsPerSecond must be a positive finite number');
+    }
+
     this.maxTokens = requestsPerSecond;
     this.tokens = requestsPerSecond;
     this.refillRate = requestsPerSecond;
@@ -189,16 +201,16 @@ export class RateLimiter {
   async acquire(): Promise<void> {
     this.refillTokens();
 
-    if (this.tokens > 0) {
-      this.tokens--;
-      return;
+    while (this.tokens < 1) {
+      // A fractional token is not enough to authorize a request. Wait only
+      // for the remaining fraction, then re-check in case timer resolution
+      // woke us slightly early.
+      const waitTime = Math.ceil(((1 - this.tokens) / this.refillRate) * 1000);
+      await new Promise((resolve) => setTimeout(resolve, Math.max(1, waitTime)));
+      this.refillTokens();
     }
 
-    // Wait for next token
-    const waitTime = 1000 / this.refillRate;
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
-    this.refillTokens();
-    this.tokens--;
+    this.tokens -= 1;
   }
 
   private refillTokens(): void {

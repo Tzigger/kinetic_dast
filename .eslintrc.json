@@ -9,7 +9,7 @@
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
-    "plugin:@typescript-eslint/recommended-requiring-type-checking",
+    "plugin:@typescript-eslint/recommended-type-checked",
     "plugin:import/typescript",
     "prettier"
   ],
@@ -34,5 +34,13 @@
     "node": true,
     "es2022": true
   },
+  "overrides": [
+    {
+      "files": ["src/cli/**/*.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ],
   "ignorePatterns": ["dist", "node_modules", "coverage", "*.js"]
 }

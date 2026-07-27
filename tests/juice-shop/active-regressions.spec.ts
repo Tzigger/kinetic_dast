@@ -1,5 +1,4 @@
-import { runActiveSecurityScan } from '../../src/testing/helpers';
-import { AttackSurfaceType } from '../../src/scanners/active/DomExplorer';
+import { AttackSurfaceType, runActiveSecurityScan } from '../../dist';
 import { mcpConfirmedActiveFindings } from './cases';
 import { test, expect } from './fixtures';
 

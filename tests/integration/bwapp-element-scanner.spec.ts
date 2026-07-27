@@ -1,14 +1,18 @@
 import { test, expect, Page, BrowserContext } from '@playwright/test';
-import { ElementScanner } from '../../src/scanners/active/ElementScanner';
-import { IActiveDetector } from '../../src/core/interfaces/IActiveDetector';
-import { SqlInjectionDetector } from '../../src/detectors/active/SqlInjectionDetector';
-import { XssDetector } from '../../src/detectors/active/XssDetector';
-import { InjectionDetector } from '../../src/detectors/active/InjectionDetector';
-import { Logger } from '../../src/utils/logger/Logger';
-import { LogLevel, VulnerabilitySeverity } from '../../src/types/enums';
-import { ElementScanConfig } from '../../src/types/element-scan';
-import { AttackSurfaceType, InjectionContext } from '../../src/scanners/active/DomExplorer';
-import { Vulnerability } from '../../src/types/vulnerability';
+import {
+  AttackSurfaceType,
+  ElementScanner,
+  InjectionContext,
+  InjectionDetector,
+  Logger,
+  LogLevel,
+  SqlInjectionDetector,
+  VulnerabilitySeverity,
+  XssDetector,
+  type ElementScanConfig,
+  type IActiveDetector,
+  type Vulnerability,
+} from '../../dist';
 
 const BASE_URL = process.env.BWAPP_URL || 'http://localhost:8080';
 const BWAPP_USER = process.env.BWAPP_USER || 'bee';

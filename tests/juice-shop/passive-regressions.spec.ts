@@ -1,4 +1,4 @@
-import { runPassiveSecurityScan } from '../../src/testing/helpers';
+import { runPassiveSecurityScan } from '../../dist';
 import { mcpConfirmedPassiveFindings } from './cases';
 import { test, expect } from './fixtures';
 

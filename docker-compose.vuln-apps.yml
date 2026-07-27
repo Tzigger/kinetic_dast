@@ -6,7 +6,7 @@ services:
   # OWASP Juice Shop - Primary test target for modern SPA vulnerabilities
   # ============================================================================
   juice-shop:
-    image: bkimminich/juice-shop:latest
+    image: bkimminich/juice-shop@sha256:e68144772ebaaca0ec117b38d44903af92416793230288ef7c5437fc4f26850a
     container_name: kinetic-juice-shop
     ports:
       - "3000:3000"
@@ -67,7 +67,7 @@ services:
   # bWAPP - Buggy Web Application (100+ vulnerability scenarios)
   # ============================================================================
   bwapp:
-    image: raesene/bwapp:latest
+    image: raesene/bwapp@sha256:2f41183ea9f9e8fb36678d7a2a0c8a9db9a59f4569cee02fe6664b419b2600ee
     container_name: kinetic-bwapp
     ports:
       - "8082:80"

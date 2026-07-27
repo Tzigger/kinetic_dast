@@ -4,6 +4,38 @@
   "description": "Kinetic - High-performance Dynamic Application Security Testing (DAST) engine built on Playwright",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/helpers.d.ts",
+      "require": "./dist/testing/helpers.js",
+      "default": "./dist/testing/helpers.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "require": "./dist/types/index.js",
+      "default": "./dist/types/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "require": "./dist/utils/index.js",
+      "default": "./dist/utils/index.js"
+    },
+    "./utils/parallel": {
+      "types": "./dist/utils/parallel/index.d.ts",
+      "require": "./dist/utils/parallel/index.js",
+      "default": "./dist/utils/parallel/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "require": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
   "bin": {
     "kinetic": "dist/cli/index.js"
   },
@@ -17,6 +49,7 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "typecheck": "tsc --noEmit",
     "dev": "ts-node src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "pretest": "npm run build",
@@ -24,7 +57,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:unit": "jest tests/unit",
-    "test:integration": "jest tests/integration",
+    "test:integration": "npm run test:bwapp:regression",
     "test:e2e": "jest tests/e2e",
     "test:juice-sqli": "npx playwright test tests/juice-shop-sqli.spec.ts --project=chromium --reporter=line",
     "test:juice-owasp": "npx playwright test tests/owasp-top10-juice-shop.spec.ts --project=chromium --reporter=line",
@@ -34,18 +67,22 @@
     "juice:inventory": "ts-node scripts/juiceshop-inventory.ts",
     "juice:metrics": "ts-node scripts/juiceshop-metrics.ts",
     "juice:confirm": "ts-node scripts/juiceshop-confirm-candidates.ts",
-    "lint": "eslint src/**/*.ts",
-    "lint:fix": "eslint src/**/*.ts --fix",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\"",
+    "lint": "npm run lint:changed",
+    "lint:all": "eslint --ext .ts src",
+    "lint:fix": "eslint --ext .ts src --fix",
+    "lint:changed": "node scripts/check-changed-lint.js",
+    "audit:dependency:report": "node scripts/report-dependency-audit.js",
+    "format": "prettier --write \"src/**/*.ts\" .github/workflows/ci-cd.yml .eslintrc.json jest.config.js package.json README.md scripts/check-changed-lint.js scripts/report-dependency-audit.js tests/README.md",
+    "format:check": "prettier --check \"src/**/*.ts\" .github/workflows/ci-cd.yml .eslintrc.json jest.config.js package.json README.md scripts/check-changed-lint.js scripts/report-dependency-audit.js tests/README.md",
     "clean": "rm -rf dist coverage",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run test && npm run lint",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run lint && npm run format:check",
     "test:phase2": "npx playwright test tests/integration/phase2-comprehensive.test.ts --reporter=list --project=chromium",
     "torture": "node torture-server.js",
-    "test:juice-shop": "npx playwright test --config=playwright.juice-shop.config.ts --project=chromium",
+    "test:juice-shop": "npm run build && npx playwright test --config=playwright.juice-shop.config.ts --project=chromium",
     "test:dvwa": "npx playwright test tests/dvwa-comprehensive.spec.ts --project=chromium --reporter=line",
-    "test:bwapp": "npx playwright test tests/bwapp-comprehensive.spec.ts --project=chromium --reporter=line"
+    "test:bwapp": "npx playwright test tests/bwapp-comprehensive.spec.ts --project=chromium --reporter=line",
+    "test:bwapp:regression": "npm run build && npx playwright test tests/integration/bwapp-element-scanner.spec.ts --project=chromium --reporter=line"
   },
   "keywords": [
     "kinetic",
@@ -77,7 +114,7 @@
     "url": "git+https://github.com/Tzigger/kinetic_dast.git"
   },
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=18.18.0",
     "npm": ">=8.0.0"
   },
   "publishConfig": {
@@ -86,34 +123,32 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
-    "@types/cookie-parser": "^1.4.10",
-    "@types/express": "^5.0.6",
     "@types/jest": "^29.5.11",
-    "@types/node": "^24.10.1",
-    "@typescript-eslint/eslint-plugin": "^6.19.0",
-    "@typescript-eslint/parser": "^6.19.0",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
     "chokidar-cli": "^3.0.0",
-    "cookie-parser": "^1.4.7",
     "dotenv": "^17.2.3",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-security": "^2.1.0",
-    "express": "^5.2.1",
     "jest": "^29.7.0",
+    "jest-util": "^29.7.0",
     "prettier": "^3.2.4",
     "ts-jest": "^29.1.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@types/node": "^24.10.1",
     "@types/uuid": "^10.0.0",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
-    "handlebars": "^4.7.8",
+    "handlebars": "^4.7.9",
     "ora": "^5.4.1",
+    "playwright": "^1.56.1",
     "tslib": "^2.6.2",
-    "uuid": "^9.0.0",
+    "uuid": "^11.1.1",
     "winston": "^3.11.0"
   }
 }

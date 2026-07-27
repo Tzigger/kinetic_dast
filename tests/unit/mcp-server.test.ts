@@ -326,6 +326,32 @@ describe('MCP tool server', () => {
     expect(serialized).toContain('"value":"[REDACTED]"');
   });
 
+  it('keeps non-scalar LLM finding fields bounded and non-stringified', () => {
+    const server = new McpToolServer();
+    const [finding] = server.formatFindingsForLlm([
+      {
+        severity: 7,
+        title: { untrusted: 'object' },
+        description: ['untrusted', 'array'],
+        evidence: {
+          unsupported: () => 'do not expose implementation details',
+          count: 1n,
+        },
+      },
+    ]);
+
+    expect(finding).toMatchObject({
+      severity: '7',
+      summary: 'Finding',
+      description: '',
+      evidence: {
+        unsupported: '[OMITTED: unsupported evidence value]',
+        count: '1',
+      },
+    });
+    expect(JSON.stringify(finding)).not.toContain('[object Object]');
+  });
+
   it('executes a JSON probe against a local endpoint and forwards auth context without exposing it', async () => {
     const received: { method?: string; body?: string; authorization?: string; cookie?: string } =
       {};

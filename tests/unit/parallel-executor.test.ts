@@ -53,6 +53,18 @@ describe('ParallelExecutor', () => {
       ).rejects.toThrow('Task 2 failed');
     });
 
+    it('wraps non-Error task rejections', async () => {
+      const result = await executeParallel([async () => { throw 'task failed'; }], {
+        concurrency: 1,
+        continueOnError: true,
+      });
+
+      expect(result.errors[0]).toMatchObject({
+        message: 'Task rejected with a non-Error value',
+        cause: 'task failed',
+      });
+    });
+
     it('should respect task timeout', async () => {
       const tasks = [
         async () => {
@@ -162,6 +174,13 @@ describe('ParallelExecutor', () => {
       const elapsed = Date.now() - start;
       
       expect(elapsed).toBeGreaterThanOrEqual(100); // Should wait ~500ms
+    });
+
+    it('rejects an invalid request rate', () => {
+      expect(() => new RateLimiter(0)).toThrow('requestsPerSecond must be a positive finite number');
+      expect(() => new RateLimiter(Number.NaN)).toThrow(
+        'requestsPerSecond must be a positive finite number'
+      );
     });
   });
 

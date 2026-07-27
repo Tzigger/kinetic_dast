@@ -2,19 +2,12 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.test.json',
-    },
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
   },
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.d.ts',
-    '!src/cli/**',
-    '!src/plugins/examples/**',
-  ],
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/cli/**', '!src/plugins/examples/**'],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
   moduleNameMapper: {
@@ -33,6 +26,6 @@ module.exports = {
   testPathIgnorePatterns: [
     '/node_modules/',
     'tests/integration/phase2-comprehensive.test.ts',
-    'tests/integration/phase3-active-scanner.test.ts'
-  ]
+    'tests/integration/phase3-active-scanner.test.ts',
+  ],
 };

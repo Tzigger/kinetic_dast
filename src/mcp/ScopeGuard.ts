@@ -126,7 +126,13 @@ export class ScopeGuard {
       targetEnvironment: validation.environment,
       isLocal: validation.isLocal,
       isProduction: validation.isProduction,
-      scope: this.describeScope(allowedHosts, allowedPaths, includedPaths, excludedPaths, options.scope),
+      scope: this.describeScope(
+        allowedHosts,
+        allowedPaths,
+        includedPaths,
+        excludedPaths,
+        options.scope
+      ),
     };
   }
 
@@ -191,7 +197,12 @@ export class ScopeGuard {
     const normalized = new Set<string>();
     for (const path of paths) {
       const value = path.trim();
-      if (!value.startsWith('/') || value.includes('?') || value.includes('#') || /%2f|%5c|%2e/i.test(value)) {
+      if (
+        !value.startsWith('/') ||
+        value.includes('?') ||
+        value.includes('#') ||
+        /%2f|%5c|%2e/i.test(value)
+      ) {
         reason.push(`${optionName} must contain absolute, non-encoded path prefixes`);
         continue;
       }

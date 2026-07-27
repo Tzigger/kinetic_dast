@@ -50,8 +50,7 @@ export class VerificationEngine {
     // first-party proof instead of treating it as an unverified reflection.
     if (
       vulnerability.category === VulnerabilityCategory.XSS &&
-      (vulnerability.evidence?.metadata as Record<string, unknown> | undefined)?.['executed'] ===
-        true
+      vulnerability.evidence.metadata?.['executed'] === true
     ) {
       return {
         shouldReport: true,

@@ -18,12 +18,11 @@ import { ScopeGuard } from './ScopeGuard';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_PROTOCOL_VERSIONS = new Set(['2024-11-05', '2025-03-26', MCP_PROTOCOL_VERSION]);
-const TOOL_NAMES = [
-  'passive_check',
-  'targeted_scan',
-  'probe_json_endpoint',
-  'scan_changed_routes',
-] as const;
+type McpToolName =
+  | 'passive_check'
+  | 'targeted_scan'
+  | 'probe_json_endpoint'
+  | 'scan_changed_routes';
 const SENSITIVE_KEY =
   /^(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api[-_]?key|password|passwd|secret|token|access[-_]?token|refresh[-_]?token|session(?:id)?|jwt)$/i;
 const RAW_CONTENT_KEY = /^(?:body|postdata|post_data|html|content|responsebody|response_body)$/i;
@@ -48,7 +47,6 @@ const PASSIVE_DETECTORS = [
   'insecure-transmission',
 ] as const;
 
-type McpToolName = (typeof TOOL_NAMES)[number];
 type JsonRpcId = string | number | null;
 
 export interface McpToolDefinition {
@@ -421,9 +419,9 @@ export class McpToolServer {
   ): Array<Record<string, unknown>> {
     return findings.map((finding) => ({
       endpoint: this.safeUrl(typeof finding['url'] === 'string' ? finding['url'] : undefined),
-      severity: String(finding['severity'] ?? 'info'),
-      summary: this.limitText(String(finding['title'] ?? 'Finding')),
-      description: this.limitText(String(finding['description'] ?? '')),
+      severity: this.scalarText(finding['severity'], 'info'),
+      summary: this.limitText(this.scalarText(finding['title'], 'Finding')),
+      description: this.limitText(this.scalarText(finding['description'], '')),
       category: finding['category'] ?? undefined,
       confidence: finding['confidence'] ?? 0,
       evidence: this.redactEvidence(finding['evidence']),
@@ -614,7 +612,7 @@ export class McpToolServer {
       return this.protocolError(
         request.id ?? null,
         -32602,
-        `Unsupported protocol version: ${String(protocolVersion ?? '')}`
+        `Unsupported protocol version: ${typeof protocolVersion === 'string' ? protocolVersion : ''}`
       );
     }
 
@@ -1007,7 +1005,20 @@ export class McpToolServer {
           ])
       );
     }
-    return String(value);
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    return '[OMITTED: unsupported evidence value]';
+  }
+
+  private scalarText(value: unknown, fallback: string): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+      return value.toString();
+    }
+    return fallback;
   }
 
   private looksLikeCredential(value: string): boolean {
