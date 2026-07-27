@@ -200,6 +200,7 @@ export class ElementScanner extends BaseScanner {
             page,
             attackSurfaces: [attackSurface],
             baseUrl,
+            safeMode: this.elementScanConfig.safeMode ?? false,
           };
 
           const found = await detector.detect(detectorContext);

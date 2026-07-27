@@ -83,4 +83,38 @@ describe('PayloadInjector URL parameter injection', () => {
     expect(targetUrl.searchParams.get('q')).toBe('updated');
     expect(new URLSearchParams(targetUrl.hash.split('?')[1]).get('q')).toBe('fragment-value');
   });
+
+  it('skips the generic stability wait when a stronger completion signal is supplied', async () => {
+    const page = {
+      content: jest.fn().mockResolvedValue('<html></html>'),
+      goto: jest.fn().mockResolvedValue({ status: () => 200 }),
+      isClosed: jest.fn(() => false),
+      url: jest.fn(() => 'https://example.test/?q=original'),
+    } as unknown as Page;
+    const surface: AttackSurface = {
+      id: 'query-q',
+      type: AttackSurfaceType.URL_PARAMETER,
+      name: 'q',
+      value: 'original',
+      context: InjectionContext.URL,
+      metadata: {},
+    };
+    const injector = new PayloadInjector();
+    const injectorWithWaitStrategy = injector as unknown as {
+      spaWaitStrategy: { waitForStability: jest.Mock };
+    };
+    injectorWithWaitStrategy.spaWaitStrategy.waitForStability = jest.fn().mockResolvedValue({});
+
+    await injector.inject(page, surface, 'probe', { stabilityTimeoutMs: 0 });
+
+    expect(injectorWithWaitStrategy.spaWaitStrategy.waitForStability).not.toHaveBeenCalled();
+
+    await injector.inject(page, surface, 'probe', { stabilityTimeoutMs: 123 });
+
+    expect(injectorWithWaitStrategy.spaWaitStrategy.waitForStability).toHaveBeenCalledWith(
+      page,
+      123,
+      'navigation'
+    );
+  });
 });

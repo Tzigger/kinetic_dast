@@ -114,6 +114,12 @@ export class PayloadInjector {
       strategy?: InjectionStrategy;
       submit?: boolean;
       baseUrl?: string;
+      /**
+       * Optional post-injection SPA stability wait. Set to 0 for flows that
+       * have a stronger completion signal, such as an awaited authentication
+       * API response.
+       */
+      stabilityTimeoutMs?: number;
     } = {}
   ): Promise<InjectionResult> {
     const encoding = options.encoding || PayloadEncoding.NONE;
@@ -289,9 +295,13 @@ export class PayloadInjector {
           surface.type === AttackSurfaceType.API_PARAM ||
           surface.type === AttackSurfaceType.JSON_BODY;
         const context = isBackgroundRequest ? 'api' : 'navigation';
-        const timeout = isBackgroundRequest ? 2000 : PayloadInjector.DEFAULT_NETWORK_TIMEOUT;
+        const timeout =
+          options.stabilityTimeoutMs ??
+          (isBackgroundRequest ? 2000 : PayloadInjector.DEFAULT_NETWORK_TIMEOUT);
 
-        await this.spaWaitStrategy.waitForStability(page, timeout, context);
+        if (timeout > 0) {
+          await this.spaWaitStrategy.waitForStability(page, timeout, context);
+        }
 
         const body = await page.content();
         result.response = {
@@ -464,6 +474,7 @@ export class PayloadInjector {
       delayMs?: number;
       baseUrl?: string;
       maxConcurrent?: number;
+      stabilityTimeoutMs?: number;
     } = {}
   ): Promise<InjectionResult[]> {
     this.logger.info(

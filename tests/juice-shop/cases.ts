@@ -120,8 +120,8 @@ export const mcpConfirmedPassiveFindings: ExpectedFinding[] = [
 
 /**
  * Active findings confirmed through the MCP after an explicit local dry run.
- * The tests below invoke Kinetic's public Playwright helper rather than
- * reimplementing the payloads or checking Juice Shop's DOM directly.
+ * The tests below invoke Kinetic's public scanning APIs rather than
+ * reimplementing payloads or checking Juice Shop's DOM directly.
  */
 export const mcpConfirmedActiveFindings = {
   hashRouteXss: {
