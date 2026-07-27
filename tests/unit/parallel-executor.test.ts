@@ -53,6 +53,18 @@ describe('ParallelExecutor', () => {
       ).rejects.toThrow('Task 2 failed');
     });
 
+    it('wraps non-Error task rejections', async () => {
+      const result = await executeParallel([async () => { throw 'task failed'; }], {
+        concurrency: 1,
+        continueOnError: true,
+      });
+
+      expect(result.errors[0]).toMatchObject({
+        message: 'Task rejected with a non-Error value',
+        cause: 'task failed',
+      });
+    });
+
     it('should respect task timeout', async () => {
       const tasks = [
         async () => {
@@ -131,8 +143,11 @@ describe('ParallelExecutor', () => {
         // Expected to fail
       }
 
-      // Second delay should be roughly double the first (with some tolerance)
-      expect(delays[1]).toBeGreaterThan(delays[0] * 1.5);
+      // Verify each configured backoff interval independently. Comparing the
+      // two observed gaps is flaky when the test process is paused between
+      // retries by unrelated work on the host.
+      expect(delays[0]).toBeGreaterThanOrEqual(15);
+      expect(delays[1]).toBeGreaterThanOrEqual(35);
     });
   });
 
@@ -159,6 +174,13 @@ describe('ParallelExecutor', () => {
       const elapsed = Date.now() - start;
       
       expect(elapsed).toBeGreaterThanOrEqual(100); // Should wait ~500ms
+    });
+
+    it('rejects an invalid request rate', () => {
+      expect(() => new RateLimiter(0)).toThrow('requestsPerSecond must be a positive finite number');
+      expect(() => new RateLimiter(Number.NaN)).toThrow(
+        'requestsPerSecond must be a positive finite number'
+      );
     });
   });
 

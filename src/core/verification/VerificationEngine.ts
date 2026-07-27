@@ -1,15 +1,18 @@
 import { Page } from 'playwright';
-import { Vulnerability } from '../../types/vulnerability';
+
 import { VulnerabilityCategory, LogLevel } from '../../types/enums';
-import { Logger } from '../../utils/logger/Logger';
-import { TimeBasedVerifier } from './techniques/TimeBasedVerifier';
-import { ResponseDiffVerifier } from './techniques/ResponseDiffVerifier';
 import {
   VerificationConfig,
   VerificationStatus,
   VerificationLevel,
 } from '../../types/verification';
+import { Vulnerability } from '../../types/vulnerability';
+import { Logger } from '../../utils/logger/Logger';
 import { getGlobalRateLimiter } from '../network/RateLimiter';
+
+import { AuthenticationResponseVerifier } from './techniques/AuthenticationResponseVerifier';
+import { ResponseDiffVerifier } from './techniques/ResponseDiffVerifier';
+import { TimeBasedVerifier } from './techniques/TimeBasedVerifier';
 
 export interface VerificationResult {
   shouldReport: boolean;
@@ -23,11 +26,13 @@ export class VerificationEngine {
   private logger: Logger;
   private timeBasedVerifier: TimeBasedVerifier;
   private responseDiffVerifier: ResponseDiffVerifier;
+  private authenticationResponseVerifier: AuthenticationResponseVerifier;
 
   private constructor() {
     this.logger = new Logger(LogLevel.INFO, 'VerificationEngine');
     this.timeBasedVerifier = new TimeBasedVerifier();
     this.responseDiffVerifier = new ResponseDiffVerifier();
+    this.authenticationResponseVerifier = new AuthenticationResponseVerifier();
   }
 
   public static getInstance(): VerificationEngine {
@@ -44,6 +49,22 @@ export class VerificationEngine {
   ): Promise<VerificationResult> {
     this.logger.info(`Verifying vulnerability: ${vulnerability.title} (${vulnerability.id})`);
 
+    // The XSS detector can observe an actual JavaScript execution in the page
+    // it just exercised. Replaying it with generic payloads risks mutating a
+    // different surface (notably hash-router parameters), so retain this
+    // first-party proof instead of treating it as an unverified reflection.
+    if (
+      vulnerability.category === VulnerabilityCategory.XSS &&
+      vulnerability.evidence.metadata?.['executed'] === true
+    ) {
+      return {
+        shouldReport: true,
+        confidence: 1,
+        status: 'confirmed',
+        reason: 'XSS payload execution was observed by the detector',
+      };
+    }
+
     this.timeBasedVerifier.setPage(page);
     this.responseDiffVerifier.setPage(page);
 
@@ -56,6 +77,20 @@ export class VerificationEngine {
     };
 
     try {
+      const authenticationResult = await this.authenticationResponseVerifier.verify(
+        page,
+        vulnerability,
+        config
+      );
+      if (authenticationResult) {
+        return {
+          shouldReport: authenticationResult.shouldReport,
+          confidence: authenticationResult.confidence,
+          status: authenticationResult.status,
+          reason: authenticationResult.reason,
+        };
+      }
+
       if (this.isTimeBased(vulnerability)) {
         const result = await this.timeBasedVerifier.verify(vulnerability, config);
         if (result.status === VerificationStatus.CONFIRMED) {

@@ -63,5 +63,21 @@ describe('Logger', () => {
       logger.debug('Debug message');
       expect(consoleSpy).not.toHaveBeenCalled();
     });
+
+    it('should route logs to stderr in MCP mode', () => {
+      process.env.KINETIC_MCP_MODE = 'true';
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+
+      const mcpLogger = new Logger(LogLevel.INFO);
+      mcpLogger.info('MCP message');
+
+      expect(errorSpy).toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+
+      delete process.env.KINETIC_MCP_MODE;
+      errorSpy.mockRestore();
+      logSpy.mockRestore();
+    });
   });
 });

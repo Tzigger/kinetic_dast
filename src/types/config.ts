@@ -101,6 +101,12 @@ export interface ScopeConfig {
 
   /** Whether to stay within the domain */
   stayOnDomain?: boolean;
+
+  /** Exact hosts or wildcard subdomains permitted for a scoped scan. */
+  allowedHosts?: string[];
+
+  /** Absolute path prefixes permitted for a scoped scan. */
+  allowedPaths?: string[];
 }
 
 /**

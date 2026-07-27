@@ -41,6 +41,16 @@ interface SqlInjectionDetectorConfig {
   maxSurfacesPerPage?: number;
   skipTimeBasedWhenErrorBasedSucceeds?: boolean;
   permissiveMode?: boolean;
+  /**
+   * Post-injection SPA stability wait passed to PayloadInjector. Set to 0
+   * when the target has a stronger response-level completion signal.
+   */
+  postInjectionStabilityTimeoutMs?: number;
+  /**
+   * Clear authentication artifacts before each login boolean probe so a true
+   * condition cannot authenticate the browser and taint the false condition.
+   */
+  isolateAuthenticationAttempts?: boolean;
   tuning?: {
     booleanBased?: {
       minRowCountDiff?: number;
@@ -69,6 +79,28 @@ interface SqlDetectorStats {
   timeoutsByTechnique: Record<SqlInjectionTechnique, number> & { authBypass: number };
 }
 
+interface AuthenticationResponse {
+  body: unknown;
+  headers: Record<string, string>;
+  status: number;
+  url: string;
+}
+
+interface AuthenticationProbe {
+  apiResponse: AuthenticationResponse | null;
+  injection: InjectionResult;
+}
+
+interface AuthenticationProbeMetadata {
+  endpointPath?: string;
+  falsePayload: string;
+  method: 'POST';
+  pageUrl: string;
+  passwordSelector: string;
+  selector: string;
+  truePayload: string;
+}
+
 const DEFAULT_SQLI_DETECTOR_CONFIG: ResolvedSqlInjectionDetectorConfig = {
   techniqueTimeouts: {
     authBypass: 8000,
@@ -92,6 +124,8 @@ const DEFAULT_SQLI_DETECTOR_CONFIG: ResolvedSqlInjectionDetectorConfig = {
   maxSurfacesPerPage: 4,
   skipTimeBasedWhenErrorBasedSucceeds: true,
   permissiveMode: false,
+  postInjectionStabilityTimeoutMs: PayloadInjector.DEFAULT_NETWORK_TIMEOUT,
+  isolateAuthenticationAttempts: true,
 };
 
 /**
@@ -243,30 +277,7 @@ export class SqlInjectionDetector implements IActiveDetector {
     };
     this.testedPayloads.clear();
 
-    const sqlTargets = attackSurfaces.filter((surface) => {
-      // Skip API endpoints and API-like URL parameters if we want to delegate to sqlmap
-      // This assumes SqlMapDetector is enabled and will handle them
-      if (
-        surface.type === AttackSurfaceType.API_ENDPOINT ||
-        surface.type === AttackSurfaceType.API_PARAM
-      ) {
-        return false;
-      }
-
-      if (surface.type === AttackSurfaceType.URL_PARAMETER) {
-        const url = surface.metadata['url'] as string;
-        if (url && (url.includes('/rest/') || url.includes('/api/') || url.includes('/v1/'))) {
-          return false;
-        }
-      }
-
-      const eligibleTypes = [
-        AttackSurfaceType.FORM_INPUT,
-        AttackSurfaceType.JSON_BODY,
-        AttackSurfaceType.URL_PARAMETER,
-      ];
-      return eligibleTypes.includes(surface.type);
-    });
+    const sqlTargets = this.getSqlTargets(attackSurfaces);
 
     const maxTargets = this.config.maxSurfacesPerPage ?? sqlTargets.length;
     const prioritizedTargets = this.prioritizeTargets(sqlTargets).slice(0, maxTargets);
@@ -304,12 +315,17 @@ export class SqlInjectionDetector implements IActiveDetector {
               );
             } else if (step === SqlInjectionTechnique.BOOLEAN_BASED) {
               this.stats.attempts[SqlInjectionTechnique.BOOLEAN_BASED] += 1;
-              vuln = await this.withTimeout(
-                this.testBooleanBased(page, surface, baseUrl),
-                this.config.techniqueTimeouts.booleanBased,
-                'testBooleanBased',
-                SqlInjectionTechnique.BOOLEAN_BASED
-              );
+              // Login boolean probes have their own response-level deadline
+              // and may reset authentication state between true/false cases.
+              // Do not abandon their page mutations through Promise.race.
+              vuln = this.isAuthenticationField(surface)
+                ? await this.testBooleanBased(page, surface, baseUrl)
+                : await this.withTimeout(
+                    this.testBooleanBased(page, surface, baseUrl),
+                    this.config.techniqueTimeouts.booleanBased,
+                    'testBooleanBased',
+                    SqlInjectionTechnique.BOOLEAN_BASED
+                  );
             } else if (step === SqlInjectionTechnique.TIME_BASED) {
               this.stats.attempts[SqlInjectionTechnique.TIME_BASED] += 1;
               vuln = await this.withTimeout(
@@ -365,6 +381,36 @@ export class SqlInjectionDetector implements IActiveDetector {
     return vulnerabilities;
   }
 
+  /**
+   * Select injectible SQL targets. API_PARAM is deliberately included: it is
+   * replayed by PayloadInjector with the captured request method and headers,
+   * while API_ENDPOINT has no concrete parameter to mutate. Historically the
+   * scanner skipped API_PARAM under the assumption that sqlmap was also
+   * enabled, which made the built-in detector silently miss captured APIs.
+   */
+  private getSqlTargets(attackSurfaces: AttackSurface[]): AttackSurface[] {
+    return attackSurfaces.filter((surface) => {
+      if (surface.type === AttackSurfaceType.API_ENDPOINT) {
+        return false;
+      }
+
+      if (surface.type === AttackSurfaceType.URL_PARAMETER) {
+        const url = surface.metadata['url'] as string;
+        if (url && (url.includes('/rest/') || url.includes('/api/') || url.includes('/v1/'))) {
+          return false;
+        }
+      }
+
+      const eligibleTypes = [
+        AttackSurfaceType.FORM_INPUT,
+        AttackSurfaceType.JSON_BODY,
+        AttackSurfaceType.URL_PARAMETER,
+        AttackSurfaceType.API_PARAM,
+      ];
+      return eligibleTypes.includes(surface.type);
+    });
+  }
+
   private prioritizeTargets(surfaces: AttackSurface[]): AttackSurface[] {
     return surfaces
       .map((surface) => ({ surface, score: this.scoreSurface(surface) }))
@@ -401,74 +447,54 @@ export class SqlInjectionDetector implements IActiveDetector {
     surface: AttackSurface,
     baseUrl: string
   ): Promise<Vulnerability | null> {
-    const payloads = ["' OR 1=1--", "' OR '1'='1", "admin' --", "' OR true--"];
+    const payloads = [
+      { truePayload: "' OR 1=1--", falsePayload: "' AND 1=2--" },
+      { truePayload: "' OR '1'='1", falsePayload: "' OR '1'='2" },
+      { truePayload: "admin' --", falsePayload: "admin' AND '1'='2" },
+      { truePayload: "' OR true--", falsePayload: "' AND false--" },
+    ];
+    const authenticationSurface = this.withAuthenticationCompanionFields(surface);
+    const authenticationPageUrl = this.getAuthenticationPageUrl(surface, baseUrl);
 
     const deadline = Date.now() + this.config.techniqueTimeouts.authBypass;
 
-    // Pre-fill password field with dummy value
-    try {
-      const passwordInput = await page.$('input[type="password"]');
-      if (passwordInput) {
-        await passwordInput.fill('password123');
-      }
-    } catch (e) {
-      /* ignore */
-    }
-
-    for (const payload of payloads) {
+    for (const { truePayload, falsePayload } of payloads) {
       if (Date.now() > deadline) {
         this.stats.timeouts += 1;
         this.stats.timeoutsByTechnique.authBypass += 1;
         break;
       }
 
-      if (!this.shouldTestPayload(surface, payload)) {
+      if (!this.shouldTestPayload(surface, truePayload)) {
         continue;
       }
 
+      await this.resetAuthenticationAttempt(page, authenticationPageUrl, true);
       const remaining = Math.max(0, deadline - Date.now());
       const beforeUrl = page.url();
-      let apiResponse: any = null;
-
-      const responseListener = async (response: any) => {
-        const url = response.url();
-        if (url.includes('/login') && response.request().method() === 'POST') {
-          try {
-            if (response.status() >= 300 && response.status() < 400) {
-              return;
-            }
-            apiResponse = await response.json();
-          } catch (e) {
-            try {
-              apiResponse = await response.text();
-            } catch (textError) {
-              return;
-            }
-          }
-        }
-      };
-
-      page.on('response', responseListener);
+      // Register the waiter before injection. A response event listener plus a
+      // fixed delay can miss a slow SPA's login response, which in turn hides
+      // an otherwise proven authentication bypass on CI hosts.
+      const authenticationResponse = this.waitForAuthenticationResponse(page, remaining);
       let result: InjectionResult | null = null;
 
       try {
-        result = await this.withTimeout(
-          this.injector.inject(page, surface, payload, {
-            encoding: PayloadEncoding.NONE,
-            submit: true,
-            baseUrl,
-          }),
-          remaining,
-          'auth-bypass-inject',
-          'authBypass'
-        );
-
-        await page.waitForTimeout(500);
+        // Do not race a page-mutating injection against a timer: a timed-out
+        // Promise.race leaves the injector operating on the same page while
+        // subsequent SQLi techniques start. Authentication bypass has its own
+        // bounded login-response waiter below, and does not need the generic
+        // SPA-stability delay used by content-oriented detectors.
+        result = await this.injector.inject(page, authenticationSurface, truePayload, {
+          encoding: PayloadEncoding.NONE,
+          submit: true,
+          stabilityTimeoutMs: 0,
+        });
       } catch (e) {
         result = null;
-      } finally {
-        page.off('response', responseListener);
       }
+
+      const loginResponse = await authenticationResponse;
+      const apiResponse = loginResponse?.body ?? null;
 
       if (!result) {
         continue;
@@ -483,36 +509,43 @@ export class SqlInjectionDetector implements IActiveDetector {
         afterUrl
       );
 
-      if (success.isAuthenticated) {
+      if (success.isAuthenticated && this.isSuccessfulAuthenticationResponse(loginResponse)) {
         const cwe = 'CWE-89';
         const owasp = getOWASP2025Category(cwe) || 'A03:2021';
 
         return {
           id: `sqli-auth-bypass-${Date.now()}`,
           title: 'SQL Injection (Authentication Bypass)',
-          description: `Authentication bypass detected using SQL injection payload '${payload}' in field '${surface.name}'`,
+          description: `Authentication bypass detected using SQL injection payload '${truePayload}' in field '${surface.name}'`,
           severity: VulnerabilitySeverity.CRITICAL,
           category: VulnerabilityCategory.INJECTION,
           cwe,
           owasp,
           url: result.response?.url || baseUrl,
           evidence: {
-            payload,
+            payload: truePayload,
             request: {
-              body: payload,
-              url: surface.metadata?.url || baseUrl,
+              body: truePayload,
+              url: surface.metadata?.url || authenticationPageUrl,
               method: (surface.metadata?.['method'] as string) || 'POST',
             },
             response: {
               body: JSON.stringify(apiResponse || {}).substring(0, 500),
-              status: result.response?.status,
-              headers: result.response?.headers,
+              status: loginResponse?.status ?? result.response?.status,
+              headers: loginResponse?.headers ?? result.response?.headers,
             },
             metadata: {
               technique: 'auth-bypass',
               confidence: success.confidence,
               indicators: success.indicators,
               evidence: await this.extractAuthenticationEvidence(page, apiResponse),
+              authenticationProbe: this.createAuthenticationProbeMetadata(
+                surface,
+                authenticationPageUrl,
+                loginResponse,
+                truePayload,
+                falsePayload
+              ),
               verificationStatus: 'unverified',
             },
             description: `Login successful. Indicators: ${success.indicators.join(', ')}`,
@@ -525,6 +558,261 @@ export class SqlInjectionDetector implements IActiveDetector {
       }
     }
     return null;
+  }
+
+  /**
+   * Wait for the POST response generated by an authentication attempt.
+   *
+   * The waiter is intentionally registered before form injection because SPAs
+   * can dispatch the request before the injector's stability wait completes.
+   * It is scoped to POST login routes so unrelated API traffic cannot become
+   * authentication evidence.
+   */
+  private async waitForAuthenticationResponse(
+    page: Page,
+    timeout: number
+  ): Promise<AuthenticationResponse | null> {
+    if (timeout <= 0) {
+      return null;
+    }
+
+    try {
+      const response = await page.waitForResponse(
+        (candidate) =>
+          candidate.request().method() === 'POST' &&
+          candidate.url().toLowerCase().includes('/login'),
+        { timeout }
+      );
+
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        try {
+          body = await response.text();
+        } catch {
+          body = null;
+        }
+      }
+
+      return {
+        body,
+        headers: response.headers(),
+        status: response.status(),
+        url: response.url(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private isAuthenticationField(surface: AttackSurface): boolean {
+    if (surface.type !== AttackSurfaceType.FORM_INPUT) {
+      return false;
+    }
+
+    const inputType = String(surface.metadata?.['inputType'] || '').toLowerCase();
+    if (inputType === 'password') {
+      return false;
+    }
+
+    const identifier = `${surface.name} ${surface.selector || ''}`.toLowerCase();
+    const looksLikeIdentity = /(^|[^a-z0-9])(email|user(name)?|login)([^a-z0-9]|$)/.test(
+      identifier
+    );
+    const configuredAsAuthenticationField = surface.metadata?.['authenticationField'] === true;
+    const otherFields: unknown = surface.metadata?.['otherFields'];
+    const hasPasswordCompanion =
+      typeof otherFields === 'object' &&
+      otherFields !== null &&
+      Object.keys(otherFields).some((selector) => /pass(word)?/i.test(selector));
+    const authenticationRoute = /(?:^|[/#])(login|sign-in|signin|authenticate)(?:[/?#]|$)/i.test(
+      `${surface.metadata?.['formAction'] || ''} ${surface.metadata?.['url'] || ''}`
+    );
+
+    return (
+      configuredAsAuthenticationField ||
+      (looksLikeIdentity && (hasPasswordCompanion || authenticationRoute))
+    );
+  }
+
+  /**
+   * DOM explorers cannot always infer sibling inputs from framework forms.
+   * Supplying a harmless password value through PayloadInjector ensures it is
+   * filled after the injector resets the SPA route for every login attempt.
+   */
+  private withAuthenticationCompanionFields(surface: AttackSurface): AttackSurface {
+    const configuredOtherFields: unknown = surface.metadata?.['otherFields'];
+    const otherFields =
+      configuredOtherFields && typeof configuredOtherFields === 'object'
+        ? { ...(configuredOtherFields as Record<string, string>) }
+        : {};
+    const hasPasswordField = Object.keys(otherFields).some((selector) =>
+      /pass(word)?/i.test(selector)
+    );
+
+    if (!hasPasswordField) {
+      otherFields['input[type="password"]'] = 'kinetic-auth-probe';
+    }
+
+    return {
+      ...surface,
+      metadata: {
+        ...surface.metadata,
+        otherFields,
+      },
+    };
+  }
+
+  /**
+   * Navigate each login probe to a clean login route. Isolated probes also
+   * clear authentication storage and all context cookies: browser cookies do
+   * not reliably identify which value carries the session.
+   */
+  private async resetAuthenticationAttempt(
+    page: Page,
+    pageUrl: string,
+    forceIsolation: boolean = false
+  ): Promise<void> {
+    if (forceIsolation || this.config.isolateAuthenticationAttempts) {
+      await page
+        .evaluate(() => {
+          const clearAuthenticationKeys = (storage: Storage): void => {
+            for (let index = storage.length - 1; index >= 0; index -= 1) {
+              const key = storage.key(index);
+              if (key && /auth|token|session|jwt|user/i.test(key)) {
+                storage.removeItem(key);
+              }
+            }
+          };
+
+          clearAuthenticationKeys(localStorage);
+          clearAuthenticationKeys(sessionStorage);
+        })
+        .catch(() => undefined);
+      await page.context().clearCookies();
+    }
+
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+  }
+
+  private async submitAuthenticationProbe(
+    page: Page,
+    surface: AttackSurface,
+    payload: string,
+    pageUrl: string,
+    timeout: number
+  ): Promise<AuthenticationProbe | null> {
+    if (timeout <= 0) {
+      return null;
+    }
+
+    await this.resetAuthenticationAttempt(page, pageUrl);
+
+    const authenticationResponse = this.waitForAuthenticationResponse(page, timeout);
+    let injection: InjectionResult;
+
+    try {
+      injection = await this.injector.inject(
+        page,
+        this.withAuthenticationCompanionFields(surface),
+        payload,
+        {
+          encoding: PayloadEncoding.NONE,
+          submit: true,
+          stabilityTimeoutMs: this.config.postInjectionStabilityTimeoutMs,
+        }
+      );
+    } catch {
+      await authenticationResponse;
+      return null;
+    }
+
+    return {
+      apiResponse: await authenticationResponse,
+      injection,
+    };
+  }
+
+  private isSuccessfulAuthenticationResponse(response: AuthenticationResponse | null): boolean {
+    if (!response || response.status < 200 || response.status >= 300) {
+      return false;
+    }
+
+    const body =
+      typeof response.body === 'string' ? response.body : JSON.stringify(response.body ?? {});
+    return (
+      /"(?:token|jwt)"\s*:\s*"[^"\s][^"]*"/i.test(body) ||
+      /"authenticated"\s*:\s*true\b/i.test(body)
+    );
+  }
+
+  private resultWithAuthenticationResponse(probe: AuthenticationProbe): InjectionResult {
+    if (!probe.apiResponse) {
+      return probe.injection;
+    }
+
+    const body =
+      typeof probe.apiResponse.body === 'string'
+        ? probe.apiResponse.body
+        : JSON.stringify(probe.apiResponse.body ?? {});
+
+    return {
+      ...probe.injection,
+      response: {
+        url: probe.apiResponse.url,
+        status: probe.apiResponse.status,
+        body,
+        headers: probe.apiResponse.headers,
+        timing: probe.injection.response?.timing ?? 0,
+      },
+    };
+  }
+
+  private getAuthenticationPageUrl(surface: AttackSurface, fallbackUrl: string): string {
+    const configuredUrl = surface.metadata?.['url'];
+    return typeof configuredUrl === 'string' && configuredUrl.length > 0
+      ? configuredUrl
+      : fallbackUrl;
+  }
+
+  private createAuthenticationProbeMetadata(
+    surface: AttackSurface,
+    pageUrl: string,
+    response: AuthenticationResponse | null,
+    truePayload: string,
+    falsePayload: string
+  ): AuthenticationProbeMetadata | undefined {
+    if (!surface.selector) {
+      return undefined;
+    }
+
+    const otherFields: unknown = surface.metadata?.['otherFields'];
+    const passwordSelector =
+      otherFields && typeof otherFields === 'object'
+        ? Object.keys(otherFields as Record<string, unknown>).find((selector) =>
+            /pass(word)?/i.test(selector)
+          )
+        : undefined;
+
+    let endpointPath: string | undefined;
+    if (response?.url) {
+      try {
+        endpointPath = new URL(response.url).pathname;
+      } catch {
+        endpointPath = undefined;
+      }
+    }
+
+    return {
+      pageUrl,
+      selector: surface.selector,
+      passwordSelector: passwordSelector || 'input[type="password"]',
+      endpointPath,
+      method: 'POST',
+      truePayload,
+      falsePayload,
+    };
   }
 
   /**
@@ -547,6 +835,7 @@ export class SqlInjectionDetector implements IActiveDetector {
       encoding: PayloadEncoding.NONE,
       submit: true,
       baseUrl,
+      stabilityTimeoutMs: this.config.postInjectionStabilityTimeoutMs,
       delayMs: 100,
       maxConcurrent: 1,
     });
@@ -595,6 +884,7 @@ export class SqlInjectionDetector implements IActiveDetector {
         encoding: PayloadEncoding.NONE,
         submit: true,
         baseUrl,
+        stabilityTimeoutMs: this.config.postInjectionStabilityTimeoutMs,
       });
       if (result && result.response && result.response.body) {
         lengths.push(result.response.body.length);
@@ -638,6 +928,10 @@ export class SqlInjectionDetector implements IActiveDetector {
     surface: AttackSurface,
     baseUrl: string
   ): Promise<Vulnerability | null> {
+    if (this.isAuthenticationField(surface)) {
+      return this.testLoginBooleanBased(page, surface, baseUrl);
+    }
+
     const { truePayloads, falsePayloads } = this.getBooleanPayloads(surface);
     const filteredTrue = this.getUniquePayloads(surface, truePayloads);
     const filteredFalse = this.getUniquePayloads(surface, falsePayloads);
@@ -646,6 +940,7 @@ export class SqlInjectionDetector implements IActiveDetector {
       encoding: PayloadEncoding.NONE,
       submit: true,
       baseUrl,
+      stabilityTimeoutMs: this.config.postInjectionStabilityTimeoutMs,
       delayMs: 100,
       maxConcurrent: 1,
     });
@@ -654,6 +949,7 @@ export class SqlInjectionDetector implements IActiveDetector {
       encoding: PayloadEncoding.NONE,
       submit: true,
       baseUrl,
+      stabilityTimeoutMs: this.config.postInjectionStabilityTimeoutMs,
       delayMs: 100,
       maxConcurrent: 1,
     });
@@ -807,6 +1103,7 @@ export class SqlInjectionDetector implements IActiveDetector {
           encoding: PayloadEncoding.NONE,
           submit: true,
           baseUrl,
+          stabilityTimeoutMs: this.config.postInjectionStabilityTimeoutMs,
         });
         const randomLen = randomResult?.response?.body?.length || 0;
         const randomDiff = Math.abs(avgFalseLength - randomLen);
@@ -835,6 +1132,104 @@ export class SqlInjectionDetector implements IActiveDetector {
   }
 
   /**
+   * Login forms need response-level boolean comparison rather than generic
+   * DOM comparison: a successful true payload can authenticate the SPA and
+   * make unrelated page content look different from a false payload.
+   */
+  private async testLoginBooleanBased(
+    page: Page,
+    surface: AttackSurface,
+    baseUrl: string
+  ): Promise<Vulnerability | null> {
+    const { truePayloads, falsePayloads } = this.getBooleanPayloads(surface);
+    const pairCount = Math.min(truePayloads.length, falsePayloads.length);
+    const authenticationPageUrl = this.getAuthenticationPageUrl(surface, baseUrl);
+    const deadline = Date.now() + this.config.techniqueTimeouts.booleanBased;
+
+    for (let index = 0; index < pairCount; index += 1) {
+      const remainingBeforeTrueProbe = deadline - Date.now();
+      if (remainingBeforeTrueProbe <= 0) {
+        this.stats.timeouts += 1;
+        this.stats.timeoutsByTechnique[SqlInjectionTechnique.BOOLEAN_BASED] += 1;
+        break;
+      }
+
+      const truePayload = truePayloads[index];
+      const falsePayload = falsePayloads[index];
+      if (!truePayload || !falsePayload) {
+        continue;
+      }
+      if (
+        !this.shouldTestPayload(surface, truePayload) ||
+        !this.shouldTestPayload(surface, falsePayload)
+      ) {
+        continue;
+      }
+
+      const trueProbe = await this.submitAuthenticationProbe(
+        page,
+        surface,
+        truePayload,
+        authenticationPageUrl,
+        remainingBeforeTrueProbe
+      );
+      const remainingBeforeFalseProbe = deadline - Date.now();
+      if (remainingBeforeFalseProbe <= 0) {
+        this.stats.timeouts += 1;
+        this.stats.timeoutsByTechnique[SqlInjectionTechnique.BOOLEAN_BASED] += 1;
+        break;
+      }
+      const falseProbe = await this.submitAuthenticationProbe(
+        page,
+        surface,
+        falsePayload,
+        authenticationPageUrl,
+        remainingBeforeFalseProbe
+      );
+      if (!trueProbe || !falseProbe) {
+        continue;
+      }
+
+      const trueAuthenticated = this.isSuccessfulAuthenticationResponse(trueProbe.apiResponse);
+      const falseAuthenticated = this.isSuccessfulAuthenticationResponse(falseProbe.apiResponse);
+      const trueStatus = trueProbe.apiResponse?.status;
+      const falseStatus = falseProbe.apiResponse?.status;
+
+      if (
+        trueAuthenticated &&
+        !falseAuthenticated &&
+        typeof trueStatus === 'number' &&
+        typeof falseStatus === 'number' &&
+        (falseStatus >= 400 || falseStatus !== trueStatus)
+      ) {
+        return this.createVulnerability(
+          surface,
+          this.resultWithAuthenticationResponse(trueProbe),
+          SqlInjectionTechnique.BOOLEAN_BASED,
+          baseUrl,
+          {
+            confidence: 0.95,
+            jsonDiff: {
+              false: { authenticated: falseAuthenticated, status: falseStatus },
+              true: { authenticated: trueAuthenticated, status: trueStatus },
+              type: 'authentication-response-diff',
+            },
+            authenticationProbe: this.createAuthenticationProbeMetadata(
+              surface,
+              authenticationPageUrl,
+              trueProbe.apiResponse,
+              truePayload,
+              falsePayload
+            ),
+          }
+        );
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Test for time-based blind SQL injection
    */
   private async testTimeBased(
@@ -848,6 +1243,7 @@ export class SqlInjectionDetector implements IActiveDetector {
       encoding: PayloadEncoding.NONE,
       submit: true,
       baseUrl,
+      stabilityTimeoutMs: this.config.postInjectionStabilityTimeoutMs,
     });
     baselineTime += Date.now() - baselineStart;
 
@@ -862,6 +1258,7 @@ export class SqlInjectionDetector implements IActiveDetector {
         encoding: PayloadEncoding.NONE,
         submit: true,
         baseUrl,
+        stabilityTimeoutMs: this.config.postInjectionStabilityTimeoutMs,
       });
       const duration = Date.now() - startTime;
 
@@ -1144,7 +1541,7 @@ export class SqlInjectionDetector implements IActiveDetector {
       indicators.push('redirect');
 
     const apiBody = JSON.stringify(apiResponse || {});
-    if (/"token"|"jwt"|"auth"/i.test(apiBody)) indicators.push('api-token');
+    if (/"(?:token|jwt)"\s*:\s*"[^"\s][^"]*"/i.test(apiBody)) indicators.push('api-token');
     if (/"authenticated"\s*:\s*true/i.test(apiBody)) indicators.push('api-authenticated');
     if (/"user"|"profile"/i.test(apiBody)) indicators.push('api-user');
 
@@ -1167,7 +1564,8 @@ export class SqlInjectionDetector implements IActiveDetector {
       .count();
     if (domIndicators > 0) indicators.push('dom');
 
-    const confidence = Math.min(1, indicators.length * 0.2);
+    const strongApiProof = indicators.includes('api-token');
+    const confidence = strongApiProof ? 0.95 : Math.min(1, indicators.length * 0.2);
     return { isAuthenticated: indicators.length > 0, confidence, indicators };
   }
 
@@ -1237,12 +1635,26 @@ export class SqlInjectionDetector implements IActiveDetector {
     const truePayloads =
       context === 'numeric'
         ? ['1 OR 1=1', "1' OR 1=1", '1) OR (1=1', "1' AND '1'='1", '1 AND 1=1', "1' OR '1'='1"]
-        : ["' OR '1'='1", "' OR 'a'='a", "') OR ('1'='1", "1' AND '1'='1", "1' OR '1'='1"];
+        : [
+            "' OR 1=1--",
+            "' OR '1'='1",
+            "' OR 'a'='a",
+            "') OR ('1'='1",
+            "1' AND '1'='1",
+            "1' OR '1'='1",
+          ];
 
     const falsePayloads =
       context === 'numeric'
         ? ['1 AND 1=2', "1' AND 1=2", '1) AND (1=0', "1' AND '1'='2", '1 AND 1=0', "1' AND '0'='1"]
-        : ["' AND '1'='2", "' AND 'a'='b", "') AND ('1'='2", "1' AND '1'='2", "1' AND '0'='1"];
+        : [
+            "' AND 1=2--",
+            "' AND '1'='2",
+            "' AND 'a'='b",
+            "') AND ('1'='2",
+            "1' AND '1'='2",
+            "1' AND '0'='1",
+          ];
 
     return {
       truePayloads: Array.from(new Set(truePayloads)),
@@ -1258,8 +1670,9 @@ export class SqlInjectionDetector implements IActiveDetector {
     const name = surface.name.toLowerCase();
     const inputType = (surface.metadata?.inputType as string) || 'text';
 
-    // Check if this appears to be an authentication-related field
-    const isAuthField = ['email', 'user', 'login', 'username'].some((k) => name.includes(k));
+    // Authentication probes require a credential field in a login context;
+    // ordinary email/contact inputs must retain normal SQLi handling.
+    const isAuthField = this.isAuthenticationField(surface);
     const isPasswordField =
       name.includes('password') || name.includes('pass') || inputType === 'password';
     const isLoginForm = isAuthField || isPasswordField;
@@ -1665,6 +2078,7 @@ export class SqlInjectionDetector implements IActiveDetector {
     technique: SqlInjectionTechnique,
     baseUrl: string,
     details: {
+      authenticationProbe?: AuthenticationProbeMetadata;
       matchedPatterns?: string[];
       jsonDiff?: any;
       timing?: number;
@@ -1715,6 +2129,7 @@ export class SqlInjectionDetector implements IActiveDetector {
           technique,
           confidence,
           matchedPatterns: details.matchedPatterns,
+          authenticationProbe: details.authenticationProbe,
           jsonDiff: details.jsonDiff,
           timing: details.timing ?? result.response?.timing,
           responseComparison: details.jsonDiff,

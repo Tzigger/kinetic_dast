@@ -78,15 +78,24 @@ export class Logger {
     const prefixStr = this.prefix ? `[${this.prefix}] ` : '';
 
     const formattedMessage = `${timestamp} ${levelStr} ${prefixStr}${message}`;
+    const isMcpMode = process.env['KINETIC_MCP_MODE'] === 'true';
 
     switch (level) {
       case LogLevel.ERROR:
         console.error(formattedMessage, ...args);
         break;
       case LogLevel.WARN:
+        if (isMcpMode) {
+          console.error(formattedMessage, ...args);
+          break;
+        }
         console.warn(formattedMessage, ...args);
         break;
       default:
+        if (isMcpMode) {
+          console.error(formattedMessage, ...args);
+          break;
+        }
         // eslint-disable-next-line no-console
         console.log(formattedMessage, ...args);
     }

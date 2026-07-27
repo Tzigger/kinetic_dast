@@ -6,13 +6,14 @@ services:
   # OWASP Juice Shop - Primary test target for modern SPA vulnerabilities
   # ============================================================================
   juice-shop:
-    image: bkimminich/juice-shop:latest
+    image: bkimminich/juice-shop@sha256:e68144772ebaaca0ec117b38d44903af92416793230288ef7c5437fc4f26850a
     container_name: kinetic-juice-shop
     ports:
       - "3000:3000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      # The Juice Shop image is distroless and does not ship wget/curl.
+      test: ["CMD", "/nodejs/bin/node", "-e", "require('http').get('http://127.0.0.1:3000', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -66,13 +67,15 @@ services:
   # bWAPP - Buggy Web Application (100+ vulnerability scenarios)
   # ============================================================================
   bwapp:
-    image: raesene/bwapp:latest
+    image: raesene/bwapp@sha256:2f41183ea9f9e8fb36678d7a2a0c8a9db9a59f4569cee02fe6664b419b2600ee
     container_name: kinetic-bwapp
     ports:
       - "8082:80"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      # This image ships PHP but not curl. Use PHP's HTTP stream wrapper so
+      # Docker reflects actual application readiness instead of a missing binary.
+      test: ["CMD", "php", "-r", "exit((int) !@file_get_contents('http://127.0.0.1/login.php'));"]
       interval: 10s
       timeout: 5s
       retries: 10

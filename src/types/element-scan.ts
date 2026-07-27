@@ -47,6 +47,8 @@ export interface ElementScanConfig {
   delayBetweenElements?: number;
   /** Continue scanning on errors */
   continueOnError?: boolean;
+  /** Filter destructive active payloads (defaults to false). */
+  safeMode?: boolean;
   /** Authentication flow (reused from page scans) */
   authentication?: PageAuthConfig;
   /** Actions to run before scanning elements */

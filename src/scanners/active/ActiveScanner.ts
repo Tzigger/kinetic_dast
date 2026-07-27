@@ -1,16 +1,18 @@
-import { BaseScanner } from '../../core/interfaces/IScanner';
-import { IActiveDetector } from '../../core/interfaces/IActiveDetector';
-import { Vulnerability } from '../../types/vulnerability';
-import { ScanResult, ScanStatistics, VulnerabilitySummary } from '../../types/scan-result';
-import { LogLevel, ScanStatus, VulnerabilitySeverity, ScannerType } from '../../types/enums';
-import { DomExplorer, AttackSurfaceType } from './DomExplorer';
 import { Request, Page } from 'playwright';
-import { VerificationEngine } from '../../core/verification/VerificationEngine';
-import { TimeoutManager, getGlobalTimeoutManager } from '../../core/timeout/TimeoutManager';
-import { SPAWaitStrategy, getGlobalSPAWaitStrategy } from '../../core/timeout/SPAWaitStrategy';
-import { OperationType } from '../../types/timeout';
+
 import { SessionManager } from '../../core/auth/SessionManager';
+import { IActiveDetector } from '../../core/interfaces/IActiveDetector';
+import { BaseScanner } from '../../core/interfaces/IScanner';
 import { getGlobalRateLimiter } from '../../core/network/RateLimiter';
+import { SPAWaitStrategy, getGlobalSPAWaitStrategy } from '../../core/timeout/SPAWaitStrategy';
+import { TimeoutManager, getGlobalTimeoutManager } from '../../core/timeout/TimeoutManager';
+import { VerificationEngine } from '../../core/verification/VerificationEngine';
+import { LogLevel, ScanStatus, VulnerabilitySeverity, ScannerType } from '../../types/enums';
+import { ScanResult, ScanStatistics, VulnerabilitySummary } from '../../types/scan-result';
+import { OperationType } from '../../types/timeout';
+import { Vulnerability } from '../../types/vulnerability';
+
+import { AttackSurface, DomExplorer, AttackSurfaceType } from './DomExplorer';
 
 /**
  * Configuration for ActiveScanner
@@ -26,6 +28,8 @@ export interface ActiveScannerConfig {
   skipStaticResources?: boolean; // Skip images, CSS, JS
   aggressiveness?: 'low' | 'medium' | 'high'; // Aggressiveness level
   safeMode?: boolean; // Explicit safe mode override
+  /** Restrict detectors to these discovered attack-surface types. */
+  surfaceTypes?: AttackSurfaceType[];
 }
 
 /**
@@ -60,8 +64,8 @@ export class ActiveScanner extends BaseScanner {
     super();
     // PERFORMANCE FIX: Reduce default delay from 500ms to 100ms
     this.config = {
-      maxDepth: config.maxDepth || 3,
-      maxPages: config.maxPages || 20,
+      maxDepth: config.maxDepth ?? 3,
+      maxPages: config.maxPages ?? 20,
       delayBetweenRequests: config.delayBetweenRequests ?? 100,
       followRedirects: config.followRedirects !== false,
       respectRobotsTxt: config.respectRobotsTxt !== false,
@@ -93,6 +97,20 @@ export class ActiveScanner extends BaseScanner {
 
     this.visitedUrls.clear();
     this.crawlQueue = [];
+
+    // An ActiveScanner is usually constructed before the ScanEngine has loaded
+    // its configuration. Apply the engine-level limits here so callers of the
+    // public helpers and MCP tool get the maxPages/maxDepth/aggressiveness they
+    // explicitly requested instead of the constructor defaults.
+    const configuredActiveScanner = context.config.scanners.active;
+    this.config.maxDepth =
+      configuredActiveScanner.maxDepth ?? context.config.target.crawlDepth ?? this.config.maxDepth;
+    this.config.maxPages =
+      configuredActiveScanner.maxPages ?? context.config.target.maxPages ?? this.config.maxPages;
+    this.config.parallelism = configuredActiveScanner.parallelism ?? this.config.parallelism;
+    this.config.safeMode = configuredActiveScanner.safeMode ?? this.config.safeMode;
+    this.config.aggressiveness =
+      configuredActiveScanner.aggressiveness ?? this.config.aggressiveness;
 
     // Update parallelism from global config if available
     if (context.config.advanced?.parallelism) {
@@ -375,7 +393,7 @@ export class ActiveScanner extends BaseScanner {
       const baseUrl = page.url().split('#')[0];
       hashRoutes.forEach((route) => {
         const fullUrl = baseUrl + route;
-        if (!this.visitedUrls.has(fullUrl)) {
+        if (!this.visitedUrls.has(fullUrl) && this.isValidUrl(fullUrl, targetUrl)) {
           if (!this.crawlQueue.some((item) => item.url === fullUrl)) {
             this.crawlQueue.push({ url: fullUrl, depth: depth + 1 });
           }
@@ -436,6 +454,10 @@ export class ActiveScanner extends BaseScanner {
       context.logger.warn(`Swagger discovery failed: ${e}`);
     }
 
+    // Links drive crawling but are not injectable targets. Keep them separate
+    // so active detectors do not waste a payload matrix trying to mutate a
+    // navigation URL as if it were a form field.
+    const crawlableLinks = allSurfaces.filter((surface) => surface.type === AttackSurfaceType.LINK);
     const attackSurfaces = allSurfaces.filter((s) =>
       [
         AttackSurfaceType.FORM_INPUT,
@@ -515,7 +537,12 @@ export class ActiveScanner extends BaseScanner {
     }
 
     // --- 2. RUN ACTIVE DETECTORS ---
-    const testableSurfaces = attackSurfaces.filter((s) => s.type !== AttackSurfaceType.BUTTON);
+    const testableSurfaces = attackSurfaces.filter(
+      (surface) =>
+        surface.type !== AttackSurfaceType.BUTTON &&
+        this.isAttackSurfaceInScope(surface, targetUrl) &&
+        (!this.config.surfaceTypes || this.config.surfaceTypes.includes(surface.type))
+    );
     const safeMode = this.config.safeMode ?? context.config.scanners.active?.safeMode ?? false;
 
     for (const [name, detector] of this.detectors) {
@@ -576,8 +603,7 @@ export class ActiveScanner extends BaseScanner {
     }
 
     // 3. Discover new links for crawling
-    const links = attackSurfaces.filter((s) => s.type === AttackSurfaceType.LINK);
-    for (const link of links) {
+    for (const link of crawlableLinks) {
       if (
         link.value &&
         !this.visitedUrls.has(link.value) &&
@@ -604,8 +630,34 @@ export class ActiveScanner extends BaseScanner {
     try {
       const urlObj = new URL(url);
       const baseUrlObj = new URL(baseUrl);
+      const scope = this.getContext().config.target.scope;
 
-      if (urlObj.hostname !== baseUrlObj.hostname) {
+      // The active scanner has always stayed on the hostname. Keeping the scan
+      // on the exact origin also prevents a scoped scan from crossing to a
+      // different port or protocol on the same host.
+      if (urlObj.origin !== baseUrlObj.origin) {
+        return false;
+      }
+
+      if (
+        scope?.allowedHosts?.length &&
+        !this.matchesAllowedHost(urlObj.hostname, scope.allowedHosts)
+      ) {
+        return false;
+      }
+
+      if (
+        scope?.allowedPaths?.length &&
+        !this.matchesAllowedPath(urlObj.pathname, scope.allowedPaths)
+      ) {
+        return false;
+      }
+
+      if (scope?.include?.length && !this.matchesAllowedPath(urlObj.pathname, scope.include)) {
+        return false;
+      }
+
+      if (scope?.exclude?.length && this.matchesAllowedPath(urlObj.pathname, scope.exclude)) {
         return false;
       }
 
@@ -633,6 +685,41 @@ export class ActiveScanner extends BaseScanner {
     }
   }
 
+  private isAttackSurfaceInScope(surface: AttackSurface, baseUrl: string): boolean {
+    const endpoint = surface.metadata['url'] ?? surface.metadata['formAction'];
+    if (typeof endpoint !== 'string' || endpoint.length === 0) {
+      return true;
+    }
+
+    try {
+      return this.isValidUrl(new URL(endpoint, baseUrl).toString(), baseUrl);
+    } catch {
+      return false;
+    }
+  }
+
+  private matchesAllowedHost(hostname: string, allowedHosts: string[]): boolean {
+    const normalizedHostname = hostname.toLowerCase().replace(/\.$/, '');
+    return allowedHosts.some((allowedHost) => {
+      const normalizedAllowedHost = allowedHost.toLowerCase().replace(/\.$/, '');
+      if (normalizedAllowedHost.startsWith('*.')) {
+        return normalizedHostname.endsWith(`.${normalizedAllowedHost.slice(2)}`);
+      }
+      return normalizedHostname === normalizedAllowedHost;
+    });
+  }
+
+  private matchesAllowedPath(pathname: string, allowedPaths: string[]): boolean {
+    return allowedPaths.some((allowedPath) => {
+      const normalizedPath = allowedPath.length > 1 ? allowedPath.replace(/\/+$/, '') : allowedPath;
+      return (
+        normalizedPath === '/' ||
+        pathname === normalizedPath ||
+        pathname.startsWith(`${normalizedPath}/`)
+      );
+    });
+  }
+
   public getDetectorCount(): number {
     return this.detectors.size;
   }
@@ -645,12 +732,14 @@ export class ActiveScanner extends BaseScanner {
     visitedPages: number;
     queuedPages: number;
     maxDepth: number;
+    maxPages: number;
     detectorCount: number;
   } {
     return {
       visitedPages: this.visitedUrls.size,
       queuedPages: this.crawlQueue.length,
       maxDepth: this.config.maxDepth!,
+      maxPages: this.config.maxPages!,
       detectorCount: this.detectors.size,
     };
   }

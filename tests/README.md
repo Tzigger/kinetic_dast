@@ -43,8 +43,11 @@ npx playwright test --project=chromium
 ### Run Specific Test Suites
 
 ```bash
-# Integration tests (requires bWAPP)
-npx playwright test tests/integration/ --project=chromium
+# Focused bWAPP scanner regression suite (requires bWAPP)
+BWAPP_URL=http://localhost:8080 npm run test:bwapp:regression
+
+# Focused Juice Shop MCP regression suite (requires Juice Shop)
+JUICE_SHOP_URL=http://localhost:3000 npm run test:juice-shop
 
 # Unit tests
 npm run test:unit
@@ -58,6 +61,17 @@ npm run test:e2e
 ```bash
 npx playwright test tests/integration/bwapp-element-scanner.spec.ts --project=chromium
 ```
+
+### CI Quality Gates
+
+`npm run lint` applies the complete strict ESLint policy to every changed
+TypeScript line. The repository has older lint debt outside the current change
+set, so `npm run lint:all` remains available to report the full baseline while
+new findings cannot enter through a pull request. CI also type-checks, runs the
+unit and CLI suites on Node 18 and 22, blocks moderate-or-higher findings in
+the dependencies shipped to consumers, publishes a non-blocking full dependency
+audit report, installs the tarball in a clean consumer, and executes the focused
+Juice Shop and bWAPP regressions.
 
 ## 📋 Test Categories
 

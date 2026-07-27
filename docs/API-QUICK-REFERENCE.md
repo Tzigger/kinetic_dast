@@ -126,6 +126,7 @@ interface ElementScanConfig {
   elements: ElementTarget[];
   pageUrl?: string;        // Optional: Navigate here before scanning
   pageTimeout?: number;
+  safeMode?: boolean;      // Filter destructive active payloads
   authentication?: PageAuthConfig;
 }
 

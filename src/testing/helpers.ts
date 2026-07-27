@@ -25,6 +25,7 @@ import { Page } from 'playwright';
 
 import { ScanEngine } from '../core/engine/ScanEngine';
 import { ActiveScanner } from '../scanners/active/ActiveScanner';
+import { AttackSurfaceType } from '../scanners/active/DomExplorer';
 import { PassiveScanner } from '../scanners/passive/PassiveScanner';
 import { ScanConfiguration } from '../types/config';
 import {
@@ -54,8 +55,15 @@ export interface ActiveScanOptions {
   headless?: boolean;
   /** Submit forms during scan (default: true) */
   submitForms?: boolean;
-  /** Custom detectors: 'all', 'sql', 'xss', or 'errors' (default: 'all') */
-  detectors?: 'all' | 'sql' | 'xss' | 'errors';
+  /** Enable payload filtering for destructive requests (default: true). */
+  safeMode?: boolean;
+  /** Limit active detectors to discovered attack surfaces of these types. */
+  surfaceTypes?: AttackSurfaceType[];
+  /**
+   * Active detector aliases, built-in detector IDs, or an explicit detector ID list.
+   * Aliases are: 'all', 'sql', 'xss', and 'errors'.
+   */
+  detectors?: string | string[];
 }
 
 export interface PassiveScanOptions {
@@ -65,6 +73,34 @@ export interface PassiveScanOptions {
   headless?: boolean;
   /** Custom detectors: 'all', 'headers', 'cookies', 'data', 'transmission' (default: 'all') */
   detectors?: 'all' | 'headers' | 'cookies' | 'data' | 'transmission';
+}
+
+function resolveActiveDetectorSelection(selection: ActiveScanOptions['detectors']): string[] {
+  if (selection === undefined || selection === 'all') {
+    return ['*'];
+  }
+
+  if (selection === 'sql') {
+    return ['sql-injection'];
+  }
+
+  if (selection === 'xss') {
+    return ['xss'];
+  }
+
+  if (selection === 'errors') {
+    return ['error-based'];
+  }
+
+  if (Array.isArray(selection)) {
+    const detectorIds = [...new Set(selection.map((id) => id.trim()).filter(Boolean))];
+    if (detectorIds.length === 0) {
+      throw new Error('ActiveScanOptions.detectors must contain at least one detector ID.');
+    }
+    return detectorIds;
+  }
+
+  return [selection];
 }
 
 /**
@@ -126,12 +162,16 @@ export async function runActiveSecurityScan(
     aggressiveness = AggressivenessLevel.MEDIUM;
   }
 
+  const maxDepth = options.maxDepth ?? 1;
+  const maxPages = options.maxPages ?? 5;
+  const safeMode = options.safeMode ?? true;
+
   const config: ScanConfiguration = {
     target: {
       url: targetUrl,
       authentication: { type: AuthType.NONE },
-      crawlDepth: options.maxDepth || 1,
-      maxPages: options.maxPages || 5,
+      crawlDepth: maxDepth,
+      maxPages,
       timeout: 60000,
     },
     scanners: {
@@ -139,19 +179,13 @@ export async function runActiveSecurityScan(
       active: {
         enabled: true,
         aggressiveness,
+        safeMode,
+        maxDepth,
+        maxPages,
       },
     },
     detectors: {
-      enabled:
-        options.detectors === 'all'
-          ? ['*']
-          : options.detectors === 'sql'
-            ? ['sql-injection']
-            : options.detectors === 'xss'
-              ? ['xss']
-              : options.detectors === 'errors'
-                ? ['error-based']
-                : ['*'],
+      enabled: resolveActiveDetectorSelection(options.detectors),
       disabled: [],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       sensitivity: 'normal' as any,
@@ -186,7 +220,13 @@ export async function runActiveSecurityScan(
   const registry = DetectorRegistry.getInstance();
 
   const engine = new ScanEngine();
-  const scanner = new ActiveScanner();
+  const scanner = new ActiveScanner({
+    aggressiveness,
+    maxDepth,
+    maxPages,
+    safeMode,
+    surfaceTypes: options.surfaceTypes,
+  });
 
   // Get detectors from registry based on config
   const detectors = registry.getActiveDetectors(config.detectors);
@@ -251,7 +291,7 @@ export async function runPassiveSecurityScan(
       url: targetUrl,
       authentication: { type: AuthType.NONE },
       crawlDepth: 0, // Passive scans typically don't crawl
-      maxPages: options.maxPages || 1,
+      maxPages: options.maxPages ?? 1,
       timeout: 30000,
     },
     scanners: {

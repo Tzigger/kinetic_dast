@@ -1,4 +1,4 @@
-import { Page, BrowserContext } from '@playwright/test';
+import type { BrowserContext, Page } from 'playwright';
 
 import { ScanConfiguration } from '../../types/config';
 import { ScanResult } from '../../types/scan-result';

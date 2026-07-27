@@ -114,6 +114,12 @@ export class PayloadInjector {
       strategy?: InjectionStrategy;
       submit?: boolean;
       baseUrl?: string;
+      /**
+       * Optional post-injection SPA stability wait. Set to 0 for flows that
+       * have a stronger completion signal, such as an awaited authentication
+       * API response.
+       */
+      stabilityTimeoutMs?: number;
     } = {}
   ): Promise<InjectionResult> {
     const encoding = options.encoding || PayloadEncoding.NONE;
@@ -289,9 +295,13 @@ export class PayloadInjector {
           surface.type === AttackSurfaceType.API_PARAM ||
           surface.type === AttackSurfaceType.JSON_BODY;
         const context = isBackgroundRequest ? 'api' : 'navigation';
-        const timeout = isBackgroundRequest ? 2000 : PayloadInjector.DEFAULT_NETWORK_TIMEOUT;
+        const timeout =
+          options.stabilityTimeoutMs ??
+          (isBackgroundRequest ? 2000 : PayloadInjector.DEFAULT_NETWORK_TIMEOUT);
 
-        await this.spaWaitStrategy.waitForStability(page, timeout, context);
+        if (timeout > 0) {
+          await this.spaWaitStrategy.waitForStability(page, timeout, context);
+        }
 
         const body = await page.content();
         result.response = {
@@ -464,6 +474,7 @@ export class PayloadInjector {
       delayMs?: number;
       baseUrl?: string;
       maxConcurrent?: number;
+      stabilityTimeoutMs?: number;
     } = {}
   ): Promise<InjectionResult[]> {
     this.logger.info(
@@ -735,7 +746,20 @@ export class PayloadInjector {
     payload: string
   ): Promise<number | null> {
     const currentUrl = new URL(page.url());
-    currentUrl.searchParams.set(surface.name, payload);
+
+    if (surface.metadata['source'] === 'hash') {
+      const hashQueryIndex = currentUrl.hash.indexOf('?');
+      const hashRoute =
+        hashQueryIndex === -1 ? currentUrl.hash : currentUrl.hash.slice(0, hashQueryIndex);
+      const hashQuery = hashQueryIndex === -1 ? '' : currentUrl.hash.slice(hashQueryIndex + 1);
+      const hashParams = new URLSearchParams(hashQuery);
+
+      hashParams.set(surface.name, payload);
+      currentUrl.hash = `${hashRoute}?${hashParams.toString()}`;
+    } else {
+      currentUrl.searchParams.set(surface.name, payload);
+    }
+
     const response = await page.goto(currentUrl.toString(), { waitUntil: 'domcontentloaded' });
     return response ? response.status() : null;
   }

@@ -1,4 +1,4 @@
-import { Page, Locator } from '@playwright/test';
+import type { Locator, Page } from 'playwright';
 
 /**
  * Find all input elements on a page

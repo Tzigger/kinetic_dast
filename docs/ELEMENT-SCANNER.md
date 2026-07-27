@@ -64,7 +64,10 @@ interface ElementScanConfig {
   
   /** Delay between scanning elements (ms) */
   delayBetweenElements?: number;
-  
+
+  /** Filter destructive active payloads */
+  safeMode?: boolean;
+
   /** Authentication configuration (Auto-login) */
   authentication?: PageAuthConfig;
   
