@@ -333,10 +333,12 @@ jobs:
         with:
           name: dist
           path: dist/
-      
+
+      - name: Verify E2E CLI artifact
+        run: test -f dist/cli/index.js
+
       - name: Run E2E tests
-        run: npm run test:e2e
-        continue-on-error: true
+        run: npm run test:e2e -- --runInBand
       
       - name: Upload test results
         if: always()

@@ -21,6 +21,7 @@ coverage/
 reports/
 *.html
 *.json
+!tsconfig.test.json
 *.sarif
 
 # Logs
