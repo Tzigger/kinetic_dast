@@ -72,6 +72,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Chromium for the MCP endpoint probe
+        run: npx playwright install chromium --with-deps
+
       - name: Build package
         run: npm run build
 
