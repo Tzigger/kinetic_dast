@@ -38,6 +38,54 @@ Kinetic can also run as a Model Context Protocol (MCP) server for AI-assisted se
 - **Structured outputs** optimized for LLM clients, with compact findings, guardrail status, and request metadata.
 - **Dry-run support** for planning scans without executing a full test run.
 
+#### Quick MCP setup
+
+Build Kinetic once and install the Chromium runtime used by its browser-backed tools:
+
+```bash
+git clone https://github.com/Tzigger/kinetic_dast.git
+cd kinetic_dast
+npm ci
+npm run build
+npx playwright install chromium
+```
+
+All MCP clients start the same stdio server. Replace `/absolute/path/to/kinetic_dast` below with the clone's absolute path. On Windows, forward-slash paths such as `C:/Projects/kinetic_dast/...` work in both JSON and TOML.
+
+**Cursor** — add this to the project at `.cursor/mcp.json` ([Cursor MCP docs](https://cursor.com/docs/mcp)):
+
+```json
+{
+  "mcpServers": {
+    "kinetic-dast": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/kinetic_dast/dist/cli/index.js",
+        "--mcp"
+      ]
+    }
+  }
+}
+```
+
+**Claude Code** — register it for the current project ([Claude Code MCP docs](https://code.claude.com/docs/en/mcp)):
+
+```bash
+claude mcp add --transport stdio --scope project kinetic-dast -- node /absolute/path/to/kinetic_dast/dist/cli/index.js --mcp
+```
+
+**Codex** — add this to `.codex/config.toml` for the project, or `~/.codex/config.toml` globally ([Codex MCP docs](https://developers.openai.com/codex/mcp/)):
+
+```toml
+[mcp_servers.kinetic-dast]
+command = "node"
+args = ["/absolute/path/to/kinetic_dast/dist/cli/index.js", "--mcp"]
+```
+
+Codex CLI, the Codex IDE extension, and the Codex desktop app share this configuration. Claude Desktop uses the same `mcpServers` JSON entry shown for Cursor; see the detailed examples below for its platform-specific configuration file location.
+
+After reloading the client, the available tools should include `passive_check`, `targeted_scan`, `probe_json_endpoint`, and `scan_changed_routes`. Only scan systems you own or are authorized to test; remote and production targets remain blocked until the tool call supplies Kinetic's explicit scope confirmations.
+
 See [examples/mcp/README.md](./examples/mcp/README.md) for setup and usage examples.
 
 ## Quick Start
